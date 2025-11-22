@@ -1,0 +1,132 @@
+const path = require('path');
+const express = require('express');
+const http = require('http');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const morgan = require('morgan');
+const dotenv = require('dotenv');
+const { Server } = require('socket.io');
+const mongoose = require('mongoose');
+const cron = require('node-cron');
+
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+// Debug: Check if .env is loaded
+console.log('MONGO_URI:', process.env.MONGO_URI ? 'Loaded' : 'Not found');
+
+const authRoutes = require('./routes/auth');
+const fieldRoutes = require('./routes/fields');
+const matchRoutesFactory = require('./routes/matches');
+const courtRoutes = require('./routes/courts');
+const Match = require('./models/Match');
+
+const app = express();
+const server = http.createServer(app);
+
+// Allow both frontend ports (3000 for frontend folder, 5173 for client folder)
+const allowedOrigins = process.env.CLIENT_URL 
+  ? [process.env.CLIENT_URL] 
+  : ['http://localhost:3000', 'http://localhost:5173'];
+
+const CLIENT_URL = allowedOrigins[0];
+
+const io = new Server(server, {
+  cors: { origin: allowedOrigins, credentials: true }
+});
+
+app.set('io', io);
+
+app.use(morgan('dev'));
+app.use(express.json());
+app.use(cookieParser());
+app.use(cors({ 
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all origins in development
+    }
+  },
+  credentials: true 
+}));
+
+app.use('/api/auth', authRoutes);
+app.use('/api/fields', fieldRoutes);
+app.use('/api/matches', matchRoutesFactory(io));
+app.use('/api/courts', courtRoutes);
+
+io.on('connection', (socket) => {
+  socket.on('join_match_room', (matchId) => { if (matchId) socket.join(`match:${matchId}`); });
+  socket.on('leave_match_room', (matchId) => { if (matchId) socket.leave(`match:${matchId}`); });
+});
+
+const PORT = process.env.PORT || 5050;
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/playmatch';
+
+// Function to check and mark cancelled matches (otkazano)
+async function checkCancelledMatches() {
+  try {
+    const now = new Date();
+    // Pronađi aktivne mečeve gde je registrationDeadline prošao
+    // Proverava: ako je now > registrationDeadline, onda je deadline prošao
+    // Filtrirati samo mečeve koji imaju registrationDeadline field
+    const matches = await Match.find({
+      status: { $in: ['open'] },
+      registrationDeadline: { $exists: true, $ne: null} // Proverava da field postoji, nije null, i da je prošao
+    });
+    
+    if (matches.length > 0) {
+      console.log(`🔍 Pronađeno ${matches.length} meč(ev)a sa isteklim rokom za prijavu`);
+      
+      let cancelledCount = 0;
+      // Proveri svaki meč eksplicitno i označi kao otkazano
+      for (const match of matches) {
+        // Proveri da li registrationDeadline postoji i da li je prošao
+        if (match.registrationDeadline && now > match.registrationDeadline) {
+          match.status = 'otkazano';
+          await match.save();
+          io.to(`match:${match._id.toString()}`).emit('match_updated', match);
+          console.log(`  ✓ Meč ${match._id} označen kao otkazano (deadline: ${match.registrationDeadline.toISOString()})`);
+          cancelledCount++;
+        } else {
+          console.log(`  ⚠ Meč ${match._id} nema validan registrationDeadline`);
+        }
+      }
+      
+      console.log(`✅ ${cancelledCount} meč(ev)a označen(o) kao otkazano zbog isteka roka za prijavu`);
+    } else {
+      console.log('ℹ️  Nema mečeva sa isteklim rokom za prijavu');
+    }
+  } catch (error) {
+    console.error('❌ Greška pri proveri otkazanih mečeva:', error);
+  }
+}
+
+console.log(`Attempting to connect to MongoDB...`);
+mongoose.connect(MONGO_URI, {
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+}).then(() => {
+  console.log('✅ MongoDB connected successfully');
+  
+  // Check cancelled matches on startup
+  checkCancelledMatches();
+  
+  // Cron job: check for cancelled matches every hour (at minute 0)
+  // Cron expression '0 * * * *' = svakog sata u 0 minuta
+  cron.schedule('* * * * *', () => {
+    console.log('🕐 Pokretanje cron job-a za proveru otkazanih mečeva...');
+    checkCancelledMatches();
+  });
+  console.log('⏰ Cron job postavljen: provera otkazanih mečeva svakog sata');
+  
+  server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+}).catch((err) => {
+  console.error('❌ MongoDB connection error:', err.message);
+  console.error('Please check your MONGO_URI in .env file');
+  process.exit(1);
+});
+
+
