@@ -123,7 +123,6 @@ export default function Home() {
       // Filter active matches (open, full, and pending - not failed, completed, or cancelled)
       const activeMatches = matchesRes.data.filter((m: Match) => 
         (m.status === 'open' || m.status === 'full') && 
-        m.status !== 'otkazano' &&
         m.courtApproval !== 'rejected'
       );
       setAllMatches(activeMatches);
@@ -195,13 +194,12 @@ export default function Home() {
       api.get('/api/matches').then((matchesRes) => {
         const activeMatches = matchesRes.data.filter((m: Match) => 
           (m.status === 'open' || m.status === 'full') && 
-          m.status !== 'otkazano' &&
           m.courtApproval !== 'rejected'
         );
         setAllMatches(activeMatches);
         // Re-apply distance filter if user location available
         if (userLocation) {
-          const nearbyMatches = activeMatches.filter((m) => {
+          const nearbyMatches = activeMatches.filter((m: Match) => {
             // Check if fieldId exists and has valid coordinates
             if (!m.fieldId || !m.fieldId.lat || !m.fieldId.lng) return false;
             const distance = getDistance(
@@ -215,7 +213,7 @@ export default function Home() {
           setMatches(nearbyMatches);
         } else {
           // Filter out matches without valid fieldId
-          const validMatches = activeMatches.filter((m) => 
+          const validMatches = activeMatches.filter((m: Match) => 
             m.fieldId && m.fieldId.lat && m.fieldId.lng
           );
           setMatches(validMatches);
