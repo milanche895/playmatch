@@ -16,7 +16,8 @@ const matchSchema = new mongoose.Schema(
       default: 'approved' 
     },
     courtApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    courtApprovedAt: { type: Date }
+    courtApprovedAt: { type: Date },
+    description: { type: String } // Opis rezervacije (npr. za koga je rezervisan termin)
   },
   { timestamps: true }
 );

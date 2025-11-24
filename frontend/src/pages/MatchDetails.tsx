@@ -76,28 +76,53 @@ export default function MatchDetails() {
   const center: [number, number] = [fieldId.lat, fieldId.lng];
 
   return (
-    <Stack spacing={2}>
-      <Typography variant="h5" fontWeight={600}>{match.sport} na {fieldId.name}</Typography>
-      <Stack direction="row" spacing={1} alignItems="center">
+    <Stack spacing={{ xs: 1.5, sm: 2 }}>
+      <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
+        {match.sport} na {fieldId.name}
+      </Typography>
+      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 1 }}>
         <Chip 
-          label={`Status: ${match.status}`} 
+          label={`Status: ${match.status === 'full' ? 'Pun' : match.status === 'open' ? 'Otvoren' : match.status === 'completed' ? 'Završen' : match.status}`} 
           color={
             match.status === 'failed' ? 'error' :
             match.status === 'full' ? 'warning' :
-            'success'
+            match.status === 'completed' ? 'success' :
+            'primary'
           }
+          sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 24, sm: 32 } }}
         />
-        <Chip color="primary" label={`Igrači: ${match.players.length}/${match.playersNeeded}`} />
+        <Chip 
+          color="primary" 
+          label={`Igrači: ${match.players.length}/${match.playersNeeded}`}
+          sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 24, sm: 32 } }}
+        />
       </Stack>
-      <Typography variant="body1">
+      <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
         <strong>Datum meča:</strong> {formatDateTime(match.dateTime)}
       </Typography>
-      <Typography variant="body1" color={new Date() > new Date(match.registrationDeadline) ? 'error.main' : 'text.primary'}>
+      <Typography 
+        variant="body1" 
+        color={new Date() > new Date(match.registrationDeadline) ? 'error.main' : 'text.primary'}
+        sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}
+      >
         <strong>Rok za prijavu:</strong> {formatDateTime(match.registrationDeadline)}
         {new Date() > new Date(match.registrationDeadline) && ' (ISTEKAO)'}
       </Typography>
-      <Paper elevation={1} sx={{ p: 0, overflow: 'hidden', height: 360 }}>
-        <MapContainer center={center} zoom={14} style={{ height: '100%', width: '100%' }}>
+      <Paper 
+        elevation={1} 
+        sx={{ 
+          p: 0, 
+          overflow: 'hidden', 
+          height: { xs: 280, sm: 360 },
+          borderRadius: { xs: 2, sm: 3 }
+        }}
+      >
+        <MapContainer 
+          center={center} 
+          zoom={14} 
+          style={{ height: '100%', width: '100%' }}
+          scrollWheelZoom={true}
+        >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -107,22 +132,39 @@ export default function MatchDetails() {
           </Marker>
         </MapContainer>
       </Paper>
-      <Typography variant="h6">Igrači</Typography>
-      <Stack direction="row" spacing={1} flexWrap="wrap">
+      <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600 }}>
+        Igrači
+      </Typography>
+      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: { xs: 0.5, sm: 1 } }}>
         {match.players.map((p) => (
-          <Chip key={p._id} label={p.name} />
+          <Chip 
+            key={p._id} 
+            label={p.name}
+            sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 24, sm: 32 } }}
+          />
         ))}
       </Stack>
       {match.status === 'failed' ? (
-        <Typography variant="body1" color="error">
+        <Typography variant="body1" color="error" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
           Ovaj meč nije uspeo - nije bilo dovoljno igrača do roka za prijavu.
         </Typography>
       ) : new Date() > new Date(match.registrationDeadline) ? (
-        <Typography variant="body1" color="warning.main">
+        <Typography variant="body1" color="warning.main" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
           Rok za prijavu je istekao. Ne možete se pridružiti ovom meču.
         </Typography>
       ) : (
-        <Button variant="contained" disabled={!canJoin} onClick={join}>
+        <Button 
+          variant="contained" 
+          disabled={!canJoin} 
+          onClick={join}
+          fullWidth
+          size="large"
+          sx={{ 
+            fontSize: { xs: '1rem', sm: '1.125rem' },
+            py: { xs: 1.25, sm: 1.5 },
+            fontWeight: 600
+          }}
+        >
           Pridruži se meču
         </Button>
       )}

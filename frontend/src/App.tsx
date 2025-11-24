@@ -8,6 +8,7 @@ import MatchDetails from './pages/MatchDetails';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ManageFields from './pages/ManageFields';
+import MojTermine from './pages/MojTermine';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -37,7 +38,13 @@ function AppContent() {
   return (
     <>
       <Navbar />
-      <Container sx={{ py: 3 }}>
+      <Container 
+        maxWidth={false}
+        sx={{ 
+          py: { xs: 2, sm: 3 },
+          px: { xs: 1, sm: 2, md: 3 }
+        }}
+      >
         <Routes>
           <Route path="/" element={<Home />} />
           <Route
@@ -54,6 +61,14 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <ManageFields />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/moji-termini"
+            element={
+              <ProtectedRoute>
+                <MojTermine />
               </ProtectedRoute>
             }
           />

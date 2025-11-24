@@ -164,7 +164,14 @@ function matchesRoutesFactory(io) {
     
     const already = match.players.some((p) => p.toString() === req.user.id);
     if (!already) match.players.push(req.user.id);
-    if (match.players.length >= match.playersNeeded) match.status = 'full';
+    if (match.players.length >= match.playersNeeded) {
+      match.status = 'full';
+      // Ako je meč pun, automatski postavi courtApproval na 'approved' (rezervisano) ako je bio 'pending'
+      if (match.courtApproval === 'pending') {
+        match.courtApproval = 'approved';
+        match.courtApprovedAt = new Date();
+      }
+    }
     await match.save();
     const populated = await Match.findById(match._id)
       .populate('fieldId')

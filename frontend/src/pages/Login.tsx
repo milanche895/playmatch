@@ -23,13 +23,60 @@ export default function Login() {
 
   return (
     <form onSubmit={onSubmit}>
-      <Stack spacing={2} maxWidth={420}>
-        <Typography variant="h5" fontWeight={600}>Prijava</Typography>
-        {error && <Alert severity="error">{error}</Alert>}
-        <TextField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <TextField label="Lozinka" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        <Button type="submit" variant="contained">Prijavi se</Button>
-        <Typography variant="body2">Nemate nalog? <Link to="/register">Registrujte se</Link></Typography>
+      <Stack 
+        spacing={{ xs: 2, sm: 2.5 }} 
+        maxWidth={420}
+        sx={{ width: '100%', mx: 'auto' }}
+      >
+        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.5rem', sm: '1.75rem' } }}>
+          Prijava
+        </Typography>
+        {error && <Alert severity="error" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>{error}</Alert>}
+        <TextField 
+          label="Email" 
+          type="email" 
+          value={email} 
+          onChange={(e) => setEmail(e.target.value)} 
+          required
+          fullWidth
+          sx={{
+            '& .MuiInputBase-root': {
+              fontSize: { xs: '0.875rem', sm: '1rem' }
+            }
+          }}
+        />
+        <TextField 
+          label="Lozinka" 
+          type="password" 
+          value={password} 
+          onChange={(e) => setPassword(e.target.value)} 
+          required
+          fullWidth
+          sx={{
+            '& .MuiInputBase-root': {
+              fontSize: { xs: '0.875rem', sm: '1rem' }
+            }
+          }}
+        />
+        <Button 
+          type="submit" 
+          variant="contained" 
+          fullWidth
+          size="large"
+          sx={{ 
+            fontSize: { xs: '1rem', sm: '1.125rem' },
+            py: { xs: 1.25, sm: 1.5 },
+            fontWeight: 600
+          }}
+        >
+          Prijavi se
+        </Button>
+        <Typography 
+          variant="body2" 
+          sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, textAlign: 'center' }}
+        >
+          Nemate nalog? <Link to="/register" style={{ color: '#2e7d32', fontWeight: 600 }}>Registrujte se</Link>
+        </Typography>
       </Stack>
     </form>
   );

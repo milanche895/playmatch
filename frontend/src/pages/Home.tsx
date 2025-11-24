@@ -8,19 +8,21 @@ import api from '../lib/api';
 import { Match, Field } from '../types';
 import { useAuth } from '../context/AuthContext';
 
-// Custom icons using HTML div icons for better customization
+// Custom icons using HTML div icons for better customization - football style
 function createCustomIcon(color: string) {
   return L.divIcon({
     className: 'custom-marker',
-    html: `<div style="background-color: ${color}; width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 30],
-    popupAnchor: [0, -30]
+    html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 3px 6px rgba(0,0,0,0.3); position: relative;">
+      <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(45deg); width: 4px; height: 4px; background-color: white; border-radius: 50%;"></div>
+    </div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+    popupAnchor: [0, -32]
   });
 }
 
-const matchIcon = createCustomIcon('#4caf50'); // Green for all matches
-const fieldIcon = createCustomIcon('#2196f3'); // Blue for fields
+const matchIcon = createCustomIcon('#2e7d32'); // Forest green for matches
+const fieldIcon = createCustomIcon('#ff9800'); // Orange for fields
 
 // Function to calculate distance between two coordinates (in km)
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -239,8 +241,8 @@ export default function Home() {
   }
 
   return (
-    <Stack spacing={2}>
-      <Typography variant="h5" fontWeight={600}>
+    <Stack spacing={{ xs: 1.5, sm: 2 }}>
+      <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
         {user ? 'Tereni i Aktivni Mečevi' : 'Sportski Tereni'}
       </Typography>
       {!user && (
@@ -260,10 +262,25 @@ export default function Home() {
         </Box>
       )}
       {!loading && user && matches.length === 0 && (
-        <Alert severity="info">Nema aktivnih mečeva unutar {maxDistance}km</Alert>
+        <Alert severity="info" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+          Nema aktivnih mečeva unutar {maxDistance}km
+        </Alert>
       )}
-      <Paper elevation={1} sx={{ p: 0, overflow: 'hidden', height: '70vh' }}>
-        <MapContainer center={mapCenter} zoom={userLocation ? 13 : 12} style={{ height: '100%', width: '100%' }}>
+      <Paper 
+        elevation={1} 
+        sx={{ 
+          p: 0, 
+          overflow: 'hidden', 
+          height: { xs: '60vh', sm: '70vh' },
+          borderRadius: { xs: 2, sm: 3 }
+        }}
+      >
+        <MapContainer 
+          center={mapCenter} 
+          zoom={userLocation ? 13 : 12} 
+          style={{ height: '100%', width: '100%' }}
+          scrollWheelZoom={true}
+        >
           {userLocation && <MapCenter position={mapCenter} />}
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -286,21 +303,21 @@ export default function Home() {
                   position={[field.lat, field.lng]}
                   icon={fieldIcon}
                 >
-                  <Popup>
-                    <Stack spacing={1} sx={{ minWidth: 200, maxWidth: 300 }}>
-                      <Typography variant="subtitle1" fontWeight={600}>
+                  <Popup maxWidth={300} autoClose={false} closeOnClick={false}>
+                    <Stack spacing={1} sx={{ minWidth: { xs: 180, sm: 200 }, maxWidth: { xs: 250, sm: 300 } }}>
+                      <Typography variant="subtitle1" fontWeight={600} sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
                         {field.name}
                       </Typography>
-                      <Typography variant="body2">
+                      <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                         <strong>Sport:</strong> {field.sport.charAt(0).toUpperCase() + field.sport.slice(1)}
                       </Typography>
                       {field.price && field.price > 0 && (
-                        <Typography variant="body2" color="primary">
+                        <Typography variant="body2" color="primary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                           <strong>Cena:</strong> {field.price} RSD
                         </Typography>
                       )}
                       {userLocation && (
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                           <strong>Udaljenost:</strong> {getDistance(
                             userLocation[0],
                             userLocation[1],
@@ -314,33 +331,33 @@ export default function Home() {
                       {fieldMatches.length > 0 && (
                         <>
                           <Divider />
-                          <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>
+                          <Typography variant="body2" fontWeight={600} sx={{ mt: 1, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                             Mečevi na ovom terenu ({fieldMatches.length}):
                           </Typography>
-                          <Stack spacing={1} sx={{ maxHeight: 300, overflowY: 'auto' }}>
+                          <Stack spacing={1} sx={{ maxHeight: { xs: 200, sm: 300 }, overflowY: 'auto' }}>
                             {fieldMatches.map((match) => (
-                              <Box key={match._id} sx={{ p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                              <Box key={match._id} sx={{ p: { xs: 0.75, sm: 1 }, border: '1px solid #e0e0e0', borderRadius: 1 }}>
                                 <Stack spacing={0.5}>
-                                  <Typography variant="body2" fontWeight={600}>
+                                  <Typography variant="body2" fontWeight={600} sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                                     {match.sport.charAt(0).toUpperCase() + match.sport.slice(1)} Meč
                                   </Typography>
-                                  <Typography variant="body2" fontSize="0.75rem">
+                                  <Typography variant="body2" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
                                     <strong>Datum:</strong> {formatDateTime(match.dateTime)}
                                   </Typography>
-                                  <Typography variant="body2" fontSize="0.75rem" color="text.secondary">
-                                    <strong>Rok za prijavu:</strong> {formatDateTime(match.registrationDeadline)}
+                                  <Typography variant="body2" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }} color="text.secondary">
+                                    <strong>Rok:</strong> {formatDateTime(match.registrationDeadline)}
                                   </Typography>
                                   <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
                                     <Chip 
                                       label={`${match.players.length}/${match.playersNeeded}`}
                                       size="small"
-                                      sx={{ fontSize: '0.7rem', height: 20 }}
+                                      sx={{ fontSize: { xs: '0.65rem', sm: '0.7rem' }, height: { xs: 18, sm: 20 } }}
                                       color={match.status === 'full' ? 'warning' : match.status === 'failed' ? 'default' : 'primary'}
                                     />
                                     <Chip 
                                       label={match.courtApproval === 'pending' ? 'Na čekanju' : match.status === 'full' ? 'Pun' : match.status === 'open' ? 'Otvoren' : match.status}
                                       size="small"
-                                      sx={{ fontSize: '0.7rem', height: 20 }}
+                                      sx={{ fontSize: { xs: '0.65rem', sm: '0.7rem' }, height: { xs: 18, sm: 20 } }}
                                       color={
                                         match.courtApproval === 'pending' ? 'default' :
                                         match.status === 'full' ? 'warning' : 
@@ -355,7 +372,7 @@ export default function Home() {
                                     component={Link} 
                                     to={`/matches/${match._id}`}
                                     fullWidth
-                                    sx={{ mt: 0.5, fontSize: '0.75rem' }}
+                                    sx={{ mt: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem' }, py: { xs: 0.25, sm: 0.5 } }}
                                   >
                                     Detalji
                                   </Button>
@@ -366,9 +383,9 @@ export default function Home() {
                                       component={Link}
                                       to="/login"
                                       fullWidth
-                                      sx={{ mt: 0.5, fontSize: '0.75rem' }}
+                                      sx={{ mt: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem' }, py: { xs: 0.25, sm: 0.5 } }}
                                     >
-                                      Prijavi se da se pridružiš
+                                      Prijavi se
                                     </Button>
                                   )}
                                   {user && match.status !== 'full' && !isUserInMatch(match) && (
@@ -380,13 +397,13 @@ export default function Home() {
                                         handleJoinMatch(match._id);
                                       }}
                                       fullWidth
-                                      sx={{ mt: 0.5, fontSize: '0.75rem' }}
+                                      sx={{ mt: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem' }, py: { xs: 0.25, sm: 0.5 } }}
                                     >
                                       Pridruži se
                                     </Button>
                                   )}
                                   {user && isUserInMatch(match) && (
-                                    <Chip label="Pridružen" color="success" size="small" sx={{ mt: 0.5, fontSize: '0.7rem', height: 24 }} />
+                                    <Chip label="Pridružen" color="success" size="small" sx={{ mt: 0.5, fontSize: { xs: '0.65rem', sm: '0.7rem' }, height: { xs: 20, sm: 24 } }} />
                                   )}
                                 </Stack>
                               </Box>
@@ -402,9 +419,9 @@ export default function Home() {
                           component={Link}
                           to={`/create?fieldId=${field._id}`}
                           fullWidth
-                          sx={{ mt: 1 }}
+                          sx={{ mt: 1, fontSize: { xs: '0.7rem', sm: '0.875rem' }, py: { xs: 0.5, sm: 0.75 } }}
                         >
-                          Kreiraj Meč Ovde
+                          Kreiraj Meč
                         </Button>
                       )}
                       {!user && (
@@ -414,9 +431,9 @@ export default function Home() {
                           component={Link}
                           to="/login"
                           fullWidth
-                          sx={{ mt: 1 }}
+                          sx={{ mt: 1, fontSize: { xs: '0.7rem', sm: '0.875rem' }, py: { xs: 0.5, sm: 0.75 } }}
                         >
-                          Prijavi se da kreiraš meč
+                          Prijavi se
                         </Button>
                       )}
                     </Stack>
@@ -450,12 +467,12 @@ export default function Home() {
                   position={[field.lat, field.lng]}
                   icon={matchIcon}
                 >
-                  <Popup>
-                    <Stack spacing={2} sx={{ minWidth: 250, maxHeight: 400, overflowY: 'auto' }}>
-                      <Typography variant="subtitle1" fontWeight={600}>
+                  <Popup maxWidth={300} autoClose={false} closeOnClick={false}>
+                    <Stack spacing={2} sx={{ minWidth: { xs: 200, sm: 250 }, maxWidth: { xs: 280, sm: 300 }, maxHeight: { xs: 350, sm: 400 }, overflowY: 'auto' }}>
+                      <Typography variant="subtitle1" fontWeight={600} sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
                         {field.name || 'Nepoznat Teren'}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                         {fieldMatches.length} meč{fieldMatches.length !== 1 ? 'eva' : ''} na ovom terenu
                       </Typography>
                       {userLocation && field.lat && field.lng && (
@@ -470,26 +487,28 @@ export default function Home() {
                       )}
                       <Divider />
                       {fieldMatches.map((match) => (
-                        <Box key={match._id} sx={{ p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                        <Box key={match._id} sx={{ p: { xs: 0.75, sm: 1 }, border: '1px solid #e0e0e0', borderRadius: 1 }}>
                           <Stack spacing={1}>
-                            <Typography variant="body2" fontWeight={600}>
+                            <Typography variant="body2" fontWeight={600} sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                               {match.sport.charAt(0).toUpperCase() + match.sport.slice(1)} Meč
                             </Typography>
-                            <Typography variant="body2">
+                            <Typography variant="body2" sx={{ fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>
                               <strong>Datum:</strong> {formatDateTime(match.dateTime)}
                             </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              <strong>Rok za prijavu:</strong> {formatDateTime(match.registrationDeadline)}
+                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>
+                              <strong>Rok:</strong> {formatDateTime(match.registrationDeadline)}
                             </Typography>
-                            <Stack direction="row" spacing={1} alignItems="center">
+                            <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
                               <Chip 
-                                label={`${match.players.length}/${match.playersNeeded} igrača`}
+                                label={`${match.players.length}/${match.playersNeeded}`}
                                 size="small"
+                                sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' }, height: { xs: 18, sm: 24 } }}
                                 color={match.status === 'full' ? 'warning' : match.status === 'failed' ? 'default' : 'primary'}
                               />
                               <Chip 
-                                label={match.courtApproval === 'pending' ? 'pending' : match.status}
+                                label={match.courtApproval === 'pending' ? 'pending' : match.status === 'full' ? 'Pun' : match.status === 'open' ? 'Otvoren' : match.status}
                                 size="small"
+                                sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' }, height: { xs: 18, sm: 24 } }}
                                 color={
                                   match.courtApproval === 'pending' ? 'default' :
                                   match.status === 'full' ? 'warning' : 
@@ -498,13 +517,13 @@ export default function Home() {
                                 }
                               />
                             </Stack>
-                            <Stack direction="row" spacing={1}>
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap">
                               <Button 
                                 variant="outlined" 
                                 size="small" 
                                 component={Link} 
                                 to={`/matches/${match._id}`}
-                                fullWidth
+                                sx={{ flex: 1, minWidth: { xs: '100%', sm: 'auto' }, fontSize: { xs: '0.7rem', sm: '0.875rem' }, py: { xs: 0.25, sm: 0.5 } }}
                               >
                                 Detalji
                               </Button>
@@ -516,13 +535,13 @@ export default function Home() {
                                     e.stopPropagation();
                                     handleJoinMatch(match._id);
                                   }}
-                                  fullWidth
+                                  sx={{ flex: 1, minWidth: { xs: '100%', sm: 'auto' }, fontSize: { xs: '0.7rem', sm: '0.875rem' }, py: { xs: 0.25, sm: 0.5 } }}
                                 >
                                   Pridruži se
                                 </Button>
                               )}
                               {isUserInMatch(match) && (
-                                <Chip label="Pridružen" color="success" size="small" />
+                                <Chip label="Pridružen" color="success" size="small" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }} />
                               )}
                             </Stack>
                           </Stack>

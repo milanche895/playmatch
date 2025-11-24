@@ -38,6 +38,7 @@ export type Match = {
   courtApproval?: 'pending' | 'approved' | 'rejected';
   courtApprovedBy?: string;
   courtApprovedAt?: string;
+  description?: string; // Opis rezervacije
 };
 
 

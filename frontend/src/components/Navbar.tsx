@@ -43,6 +43,11 @@ export default function Navbar() {
       path: user?.role === 'court' ? '/manage-fields' : '/create',
       show: !!user
     },
+    { 
+      label: 'Moji Termini', 
+      path: '/moji-termini',
+      show: !!user && user?.role === 'court'
+    },
     { label: 'Prijava', path: '/login', show: !user },
     { label: 'Registracija', path: '/register', show: !user },
   ];
@@ -82,14 +87,14 @@ export default function Navbar() {
 
   return (
     <>
-      <AppBar position="static">
-        <Toolbar>
+      <AppBar position="static" sx={{ bgcolor: '#2e7d32' }}>
+        <Toolbar sx={{ minHeight: { xs: 48, sm: 64 }, px: { xs: 1, sm: 2 } }}>
           <IconButton
             color="inherit"
             aria-label="open drawer"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { md: 'none' } }}
+            sx={{ mr: 1, display: { md: 'none' }, p: { xs: 0.75, sm: 1 } }}
           >
             <MenuIcon />
           </IconButton>
@@ -98,51 +103,91 @@ export default function Navbar() {
             sx={{ 
               flexGrow: { xs: 1, md: 0 },
               mr: { md: 4 },
-              fontWeight: 600
+              fontWeight: 700,
+              fontSize: { xs: '1rem', sm: '1.25rem' }
             }} 
             component={RouterLink} 
             to="/" 
             color="inherit" 
             style={{ textDecoration: 'none' }}
           >
-            PlayMatch Global
+            ⚽ PlayMatch
           </Typography>
           <Stack 
             direction="row" 
-            spacing={1}
+            spacing={{ xs: 0.5, sm: 1 }}
             sx={{ 
               display: { xs: 'none', md: 'flex' },
               flexGrow: 1
             }}
           >
-            <Button color="inherit" component={RouterLink} to="/">
+            <Button 
+              color="inherit" 
+              component={RouterLink} 
+              to="/"
+              sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
+            >
               Početna
             </Button>
             {user?.role === 'court' ? (
-              <Button color="inherit" component={RouterLink} to="/manage-fields">
-                Moji Tereni
-              </Button>
+              <>
+                <Button 
+                  color="inherit" 
+                  component={RouterLink} 
+                  to="/manage-fields"
+                  sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
+                >
+                  Moji Tereni
+                </Button>
+                <Button 
+                  color="inherit" 
+                  component={RouterLink} 
+                  to="/moji-termini"
+                  sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
+                >
+                  Moji Termini
+                </Button>
+              </>
             ) : user ? (
-              <Button color="inherit" component={RouterLink} to="/create">
+              <Button 
+                color="inherit" 
+                component={RouterLink} 
+                to="/create"
+                sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
+              >
                 Kreiraj Meč
               </Button>
             ) : null}
           </Stack>
           <Stack 
             direction="row" 
-            spacing={1}
+            spacing={{ xs: 0.5, sm: 1 }}
             sx={{ display: { xs: 'none', md: 'flex' } }}
           >
             {user ? (
-              <Button color="inherit" onClick={handleLogout}>
+              <Button 
+                color="inherit" 
+                onClick={handleLogout}
+                sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
+              >
                 Odjavi se
               </Button>
             ) : (
               <>
-                <Button color="inherit" component={RouterLink} to="/login">
+                <Button 
+                  color="inherit" 
+                  component={RouterLink} 
+                  to="/login"
+                  sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
+                >
                   Prijava
                 </Button>
-                <Button color="inherit" component={RouterLink} to="/register">
+                <Button 
+                  color="inherit" 
+                  component={RouterLink} 
+                  to="/register"
+                  sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
+                >
                   Registracija
                 </Button>
               </>

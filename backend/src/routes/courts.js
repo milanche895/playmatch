@@ -134,6 +134,36 @@ router.post('/matches/:id/cancel', auth(true), requireCourt, async (req, res) =>
   }
 });
 
+// Mark match as completed
+router.post('/matches/:id/complete', auth(true), requireCourt, async (req, res) => {
+  try {
+    const match = await Match.findById(req.params.id);
+    if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+    
+    const field = await Field.findById(match.fieldId);
+    if (!field || field.courtOwner?.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Ne posedujete ovaj teren' });
+    }
+    
+    match.status = 'completed';
+    await match.save();
+    
+    const populated = await Match.findById(match._id)
+      .populate('fieldId')
+      .populate('players', 'name')
+      .populate('createdBy', 'name');
+    
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
+    }
+    
+    res.json(populated);
+  } catch (e) {
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
 // Update working hours
 router.put('/working-hours', auth(true), requireCourt, async (req, res) => {
   try {
@@ -182,6 +212,218 @@ router.put('/default-deadline', auth(true), requireCourt, async (req, res) => {
     
     res.json({ defaultRegistrationDeadlineHours: user.defaultRegistrationDeadlineHours });
   } catch (e) {
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Get all appointments for all fields owned by court
+router.get('/appointments', auth(true), requireCourt, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Get all fields owned by this court
+    const fields = await Field.find({ courtOwner: req.user.id });
+    const fieldIds = fields.map(f => f._id);
+    
+    if (fieldIds.length === 0) {
+      return res.json({
+        reserved: [],
+        free: [],
+        fields: []
+      });
+    }
+    
+    // Get today's date range (start and end of today)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+    
+    // Get all matches for today
+    const todayMatches = await Match.find({
+      fieldId: { $in: fieldIds },
+      dateTime: { $gte: today, $lte: todayEnd }
+    })
+      .populate('fieldId', 'name sport')
+      .populate('players', 'name')
+      .populate('createdBy', 'name')
+      .sort({ dateTime: 1 });
+    
+    // Rezervisani termini za danas: approved + (full ili completed)
+    const reserved = todayMatches.filter(m => 
+      m.courtApproval === 'approved' && 
+      m.status !== 'otkazano' && 
+      m.status !== 'failed' &&
+      (m.status === 'full' || m.status === 'completed')
+    );
+    
+    // For free slots calculation, we need all matches in a wider range
+    const start = startDate ? new Date(startDate) : new Date();
+    const end = endDate ? new Date(endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30 days
+    
+    // Get all matches for free slots calculation
+    const matches = await Match.find({
+      fieldId: { $in: fieldIds },
+      dateTime: { $gte: start, $lte: end }
+    })
+      .populate('fieldId', 'name sport')
+      .populate('players', 'name')
+      .populate('createdBy', 'name')
+      .sort({ dateTime: 1 });
+    
+    // Calculate free slots - ONLY FOR TODAY
+    const free = [];
+    const matchDuration = 60 * 60 * 1000; // 60 minutes in milliseconds
+    
+    // Use already declared today and todayEnd variables from above
+    
+    // For each field, calculate free slots for today only
+    for (const field of fields) {
+      const fieldMatches = matches.filter(m => m.fieldId._id.toString() === field._id.toString());
+      
+      // Get working hours for this field (or use default from court)
+      const workingHours = field.workingHours || {};
+      const court = await User.findById(req.user.id);
+      const defaultWorkingHours = court?.workingHours || {};
+      
+      // Get today's day name
+      const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][today.getDay()];
+      const dayHours = workingHours[dayName] || defaultWorkingHours[dayName] || { start: '09:00', end: '22:00', closed: false };
+      
+      if (!dayHours.closed && dayHours.start && dayHours.end) {
+        // Parse start and end times
+        const [startHour, startMin] = dayHours.start.split(':').map(Number);
+        const [endHour, endMin] = dayHours.end.split(':').map(Number);
+        
+        const dayStart = new Date(today);
+        dayStart.setHours(startHour, startMin, 0, 0);
+        
+        const dayEnd = new Date(today);
+        dayEnd.setHours(endHour, endMin, 0, 0);
+        
+        // Generate hourly slots for today only
+        let slotTime = new Date(dayStart);
+        while (slotTime < dayEnd) {
+          const slotEnd = new Date(slotTime.getTime() + matchDuration);
+          
+          // Check if this slot overlaps with any existing match (approved or pending)
+          // Exclude only cancelled/rejected matches
+          const hasOverlap = fieldMatches.some(match => {
+            // Skip cancelled or rejected matches
+            if (match.status === 'otkazano' || match.courtApproval === 'rejected') {
+              return false;
+            }
+            
+            const matchStart = new Date(match.dateTime).getTime();
+            const matchEnd = matchStart + matchDuration;
+            const slotStartTime = slotTime.getTime();
+            const slotEndTime = slotEnd.getTime();
+            
+            // Check if time ranges overlap
+            return slotStartTime < matchEnd && matchStart < slotEndTime;
+          });
+          
+          // Only add if slot is in the future (or today) and doesn't overlap
+          if (slotTime >= new Date() && !hasOverlap) {
+            free.push({
+              fieldId: {
+                _id: field._id,
+                name: field.name,
+                sport: field.sport
+              },
+              dateTime: slotTime.toISOString(),
+              available: true
+            });
+          }
+          
+          slotTime = new Date(slotTime.getTime() + matchDuration);
+        }
+      }
+    }
+    
+    // Calculate weekly statistics
+    // Get start of current week (Monday)
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    // Calculate days to subtract to get to Monday (1 = Monday, 0 = Sunday)
+    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - daysToMonday);
+    weekStart.setHours(0, 0, 0, 0);
+    
+    // Get end of current week (Sunday)
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    
+    // Get all matches for this week
+    const weekMatches = await Match.find({
+      fieldId: { $in: fieldIds },
+      dateTime: { $gte: weekStart, $lte: weekEnd }
+    })
+      .populate('fieldId', 'name sport price')
+      .populate('players', 'name')
+      .populate('createdBy', 'name')
+      .sort({ dateTime: 1 });
+    
+    // Filter completed matches (exclude cancelled/rejected)
+    const completedMatches = weekMatches.filter(m => 
+      m.status === 'completed' && 
+      m.courtApproval === 'approved' &&
+      m.status !== 'otkazano'
+    );
+    
+    // Filter paid matches (for now, use completed as paid - TODO: Add paid field to Match model)
+    const paidMatches = weekMatches.filter(m => 
+      m.status === 'completed' && 
+      m.courtApproval === 'approved' &&
+      m.status !== 'otkazano'
+      // When paid field is added: && m.paid === true
+    );
+    
+    // Filter cancelled/not held matches for this week
+    const cancelledMatches = weekMatches.filter(m => 
+      m.status === 'otkazano' || m.courtApproval === 'rejected'
+    );
+    
+    // Calculate total revenue for paid/completed matches
+    let totalRevenue = 0;
+    paidMatches.forEach(match => {
+      const field = match.fieldId;
+      const price = field.price || 0;
+      totalRevenue += price;
+    });
+    
+    // Calculate total revenue for all completed matches (for the completed tab)
+    let completedTotalRevenue = 0;
+    completedMatches.forEach(match => {
+      const field = match.fieldId;
+      const price = field.price || 0;
+      completedTotalRevenue += price;
+    });
+    
+    res.json({
+      reserved,
+      free,
+      weekly: {
+        matches: weekMatches,
+        stats: {
+          completed: completedMatches.length,
+          paid: paidMatches.length,
+          totalRevenue: totalRevenue
+        }
+      },
+      completed: completedMatches,
+      completedStats: {
+        total: completedMatches.length,
+        paid: paidMatches.length,
+        totalRevenue: completedTotalRevenue
+      },
+      cancelled: cancelledMatches,
+      fields: fields.map(f => ({ _id: f._id, name: f.name, sport: f.sport }))
+    });
+  } catch (e) {
+    console.error('Error fetching appointments:', e);
     res.status(500).json({ message: 'Greška servera' });
   }
 });
@@ -352,6 +594,93 @@ router.put('/fields/:fieldId/price', auth(true), requireCourt, async (req, res) 
     
     res.json(field);
   } catch (e) {
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Reserve a free slot (create a match with status 'full' and courtApproval 'approved')
+router.post('/appointments/reserve', auth(true), requireCourt, async (req, res) => {
+  try {
+    const { fieldId, dateTime, description } = req.body;
+    
+    if (!fieldId || !dateTime) {
+      return res.status(400).json({ message: 'Nedostaju fieldId ili dateTime' });
+    }
+    
+    // Check if field belongs to this court
+    const field = await Field.findById(fieldId);
+    if (!field || field.courtOwner?.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Ne posedujete ovaj teren' });
+    }
+    
+    const matchDate = new Date(dateTime);
+    // Round to full hour
+    matchDate.setMinutes(0);
+    matchDate.setSeconds(0);
+    matchDate.setMilliseconds(0);
+    
+    // Check if slot is still free (no overlapping matches)
+    const matchDuration = 60 * 60 * 1000; // 60 minutes
+    const matchStart = matchDate.getTime();
+    const matchEnd = matchStart + matchDuration;
+    
+    const overlappingMatches = await Match.find({
+      fieldId,
+      status: { $nin: ['otkazano', 'failed'] },
+      $or: [
+        { courtApproval: { $ne: 'rejected' } },
+        { courtApproval: { $exists: false } }
+      ],
+      dateTime: {
+        $gte: new Date(matchStart - matchDuration),
+        $lte: new Date(matchEnd)
+      }
+    });
+    
+    const hasOverlap = overlappingMatches.some(existingMatch => {
+      const existingStart = new Date(existingMatch.dateTime).getTime();
+      const existingEnd = existingStart + matchDuration;
+      return matchStart < existingEnd && existingStart < matchEnd;
+    });
+    
+    if (hasOverlap) {
+      return res.status(409).json({ message: 'Termin je već rezervisan' });
+    }
+    
+    // Calculate registration deadline (set to match time since it's already reserved)
+    const deadlineDate = new Date(matchDate);
+    deadlineDate.setHours(deadlineDate.getHours() - 1); // 1 hour before match
+    
+    // Create match with status 'full' and courtApproval 'approved'
+    const match = await Match.create({
+      sport: field.sport,
+      fieldId: field._id,
+      dateTime: matchDate,
+      registrationDeadline: deadlineDate,
+      playersNeeded: 0, // Court reservation doesn't need players
+      players: [],
+      createdBy: req.user.id,
+      status: 'full',
+      courtApproval: 'approved',
+      courtApprovedBy: req.user.id,
+      courtApprovedAt: new Date(),
+      description: description || undefined // Opis rezervacije
+    });
+    
+    const populated = await Match.findById(match._id)
+      .populate('fieldId', 'name sport')
+      .populate('players', 'name')
+      .populate('createdBy', 'name');
+    
+    // Get io from app settings (if available)
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
+    }
+    
+    res.status(201).json(populated);
+  } catch (e) {
+    console.error('Error reserving slot:', e);
     res.status(500).json({ message: 'Greška servera' });
   }
 });
