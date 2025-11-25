@@ -5,7 +5,7 @@ services:
     env: node
     region: frankfurt
     plan: free
-    buildCommand: cd backend && npm install
+    buildCommand: cd backend && npm ci
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
@@ -25,8 +25,8 @@ services:
     env: node
     region: frankfurt
     plan: free
-    buildCommand: cd frontend && npm install && npm run build
-    startCommand: cd frontend && npx vite preview --port $PORT --host
+    buildCommand: cd frontend && npm ci && npm run build
+    startCommand: cd frontend && vite preview --port $PORT --host
     envVars:
       - key: VITE_API_URL
         sync: false  # Set this to your backend URL after deployment
