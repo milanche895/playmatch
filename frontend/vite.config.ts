@@ -11,6 +11,9 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         ws: true, // Enable websocket proxying
+        // Ensure cookies are forwarded properly
+        cookieDomainRewrite: '',
+        cookiePathRewrite: '/',
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
             console.log('Proxy error:', err);

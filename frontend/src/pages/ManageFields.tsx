@@ -249,8 +249,8 @@ export default function ManageFields() {
     const defaultHours: Record<string, { start: string; end: string; closed: boolean }> = {};
     days.forEach(day => {
       const existing = field.workingHours?.[day];
-      let start = '09';
-      let end = '22';
+      let start = '16';
+      let end = '23';
       if (existing && existing.start) {
         // Extract hour from "HH:MM" or use as is if already just hour
         start = existing.start.includes(':') ? existing.start.split(':')[0] : existing.start;
@@ -338,9 +338,28 @@ export default function ManageFields() {
 
   return (
     <Stack spacing={3}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Typography variant="h4" fontWeight={600}>Moji Tereni</Typography>
-        <Button variant="contained" onClick={openAddDialog}>
+      <Stack 
+        direction={{ xs: 'column', sm: 'row' }} 
+        justifyContent="space-between" 
+        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        spacing={{ xs: 2, sm: 0 }}
+      >
+        <Typography 
+          variant="h4" 
+          fontWeight={600}
+          sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}
+        >
+          Moji Tereni
+        </Typography>
+        <Button 
+          variant="contained" 
+          onClick={openAddDialog}
+          sx={{ 
+            fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+            py: { xs: 1, sm: 0.75 },
+            width: { xs: '100%', sm: 'auto' }
+          }}
+        >
           Dodaj Novi Teren
         </Button>
       </Stack>
@@ -359,30 +378,110 @@ export default function ManageFields() {
             const isLoading = loadingAppointments[field._id];
             
             return (
-              <Card key={field._id}>
-                <CardContent>
-                  <Stack spacing={2}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                      <Stack spacing={1} sx={{ flex: 1 }}>
-                        <Typography variant="h6">{field.name}</Typography>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Chip label={field.sport} size="small" />
-                          <Typography variant="body2" color="text.secondary">
-                            Cena: {field.price || 0} RSD
+              <Card key={field._id} sx={{ mb: 2 }}>
+                <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
+                  <Stack spacing={{ xs: 2, sm: 2.5 }}>
+                    {/* Header - responsive layout */}
+                    <Stack 
+                      direction={{ xs: 'column', sm: 'row' }} 
+                      justifyContent="space-between" 
+                      alignItems={{ xs: 'flex-start', sm: 'flex-start' }}
+                      spacing={{ xs: 2, sm: 2 }}
+                    >
+                      {/* Field Info */}
+                      <Stack spacing={1.5} sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography 
+                          variant="h6" 
+                          fontWeight={600}
+                          sx={{ 
+                            fontSize: { xs: '1.1rem', sm: '1.25rem' },
+                            wordBreak: 'break-word'
+                          }}
+                        >
+                          {field.name}
+                        </Typography>
+                        
+                        {/* Sport and Price - responsive */}
+                        <Stack 
+                          direction={{ xs: 'column', sm: 'row' }} 
+                          spacing={{ xs: 1, sm: 1.5 }} 
+                          alignItems={{ xs: 'flex-start', sm: 'center' }}
+                          flexWrap="wrap"
+                        >
+                          <Chip 
+                            label={field.sport} 
+                            size="small" 
+                            sx={{ 
+                              fontSize: { xs: '0.75rem', sm: '0.8125rem' },
+                              height: { xs: 24, sm: 28 }
+                            }} 
+                          />
+                          <Typography 
+                            variant="body2" 
+                            color="text.secondary"
+                            sx={{ 
+                              fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                              fontWeight: 500
+                            }}
+                          >
+                            Cena: <strong>{field.price || 0} RSD</strong>
                           </Typography>
                         </Stack>
-                        <Typography variant="body2" color="text.secondary">
+                        
+                        {/* Location - hidden on very small screens, shown on larger */}
+                        <Typography 
+                          variant="body2" 
+                          color="text.secondary"
+                          sx={{ 
+                            fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                            display: { xs: 'none', sm: 'block' }
+                          }}
+                        >
                           Lokacija: {field.lat.toFixed(6)}, {field.lng.toFixed(6)}
                         </Typography>
                       </Stack>
-                      <Stack direction="row" spacing={1}>
-                        <Button variant="outlined" onClick={() => openEditDialog(field)}>
-                          Izmeni Teren
+                      
+                      {/* Action Buttons - responsive */}
+                      <Stack 
+                        direction={{ xs: 'column', sm: 'row' }} 
+                        spacing={{ xs: 1, sm: 1 }}
+                        sx={{ 
+                          width: { xs: '100%', sm: 'auto' },
+                          minWidth: { xs: '100%', sm: 'auto' }
+                        }}
+                      >
+                        <Button 
+                          variant="outlined" 
+                          onClick={() => openEditDialog(field)}
+                          size="small"
+                          sx={{ 
+                            fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                            py: { xs: 0.75, sm: 0.5 },
+                            width: { xs: '100%', sm: 'auto' }
+                          }}
+                        >
+                          Izmeni
                         </Button>
-                        <Button variant="outlined" onClick={() => handleOpenWorkingHoursDialog(field)}>
+                        <Button 
+                          variant="outlined" 
+                          onClick={() => handleOpenWorkingHoursDialog(field)}
+                          size="small"
+                          sx={{ 
+                            fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                            py: { xs: 0.75, sm: 0.5 },
+                            width: { xs: '100%', sm: 'auto' }
+                          }}
+                        >
                           Radno Vreme
                         </Button>
-                        <IconButton onClick={() => toggleFieldExpanded(field._id)}>
+                        <IconButton 
+                          onClick={() => toggleFieldExpanded(field._id)}
+                          size="small"
+                          sx={{ 
+                            alignSelf: { xs: 'flex-end', sm: 'center' },
+                            ml: { xs: 'auto', sm: 0 }
+                          }}
+                        >
                           {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                         </IconButton>
                       </Stack>
@@ -404,25 +503,50 @@ export default function ManageFields() {
                               </Typography>
                               <Stack spacing={1}>
                                 {fieldAppointments.pending.map((match) => (
-                                  <Card key={match._id} variant="outlined">
-                                    <CardContent>
-                                      <Stack spacing={1}>
-                                        <Typography variant="body2">
-                                          <strong>Datum:</strong> {formatDateTime(match.dateTime)}
-                                        </Typography>
-                                        <Typography variant="body2">
-                                          <strong>Kreirao:</strong> {match.createdBy.name}
-                                        </Typography>
-                                        <Typography variant="body2">
-                                          <strong>Igrači:</strong> {match.players.length}/{match.playersNeeded}
-                                        </Typography>
-                                        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                                  <Card key={match._id} variant="outlined" sx={{ mb: 1 }}>
+                                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                                      <Stack spacing={1.5}>
+                                        <Stack spacing={0.5}>
+                                          <Typography 
+                                            variant="body2" 
+                                            sx={{ 
+                                              fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                                              fontWeight: 600
+                                            }}
+                                          >
+                                            {formatDateTime(match.dateTime)}
+                                          </Typography>
+                                          <Typography 
+                                            variant="body2" 
+                                            color="text.secondary"
+                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                                          >
+                                            Kreirao: <strong>{match.createdBy.name}</strong>
+                                          </Typography>
+                                          <Typography 
+                                            variant="body2" 
+                                            color="text.secondary"
+                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                                          >
+                                            Igrači: <strong>{match.players.length}/{match.playersNeeded}</strong>
+                                          </Typography>
+                                        </Stack>
+                                        <Stack 
+                                          direction={{ xs: 'column', sm: 'row' }} 
+                                          spacing={1} 
+                                          sx={{ mt: 1 }}
+                                        >
                                           <Button
                                             size="small"
                                             variant="contained"
                                             color="success"
                                             startIcon={<CheckCircleIcon />}
                                             onClick={() => handleApprove(match._id, field._id)}
+                                            sx={{ 
+                                              fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                                              py: { xs: 0.75, sm: 0.5 },
+                                              width: { xs: '100%', sm: 'auto' }
+                                            }}
                                           >
                                             Odobri
                                           </Button>
@@ -432,6 +556,11 @@ export default function ManageFields() {
                                             color="error"
                                             startIcon={<CancelIcon />}
                                             onClick={() => handleReject(match._id, field._id)}
+                                            sx={{ 
+                                              fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                                              py: { xs: 0.75, sm: 0.5 },
+                                              width: { xs: '100%', sm: 'auto' }
+                                            }}
                                           >
                                             Odbij
                                           </Button>
@@ -441,6 +570,11 @@ export default function ManageFields() {
                                             color="error"
                                             startIcon={<CancelIcon />}
                                             onClick={() => handleCancel(match._id, field._id)}
+                                            sx={{ 
+                                              fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                                              py: { xs: 0.75, sm: 0.5 },
+                                              width: { xs: '100%', sm: 'auto' }
+                                            }}
                                           >
                                             Otkaži
                                           </Button>
@@ -461,31 +595,56 @@ export default function ManageFields() {
                               </Typography>
                               <Stack spacing={1}>
                                 {fieldAppointments.onRequest.map((match) => (
-                                  <Card key={match._id} variant="outlined" sx={{ borderColor: 'info.main' }}>
-                                    <CardContent>
-                                      <Stack spacing={1}>
-                                        <Typography variant="body2">
-                                          <strong>Datum:</strong> {formatDateTime(match.dateTime)}
+                                  <Card key={match._id} variant="outlined" sx={{ borderColor: 'info.main', mb: 1 }}>
+                                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                                      <Stack spacing={1.5}>
+                                        <Stack spacing={0.5}>
+                                          <Typography 
+                                            variant="body2" 
+                                            sx={{ 
+                                              fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                                              fontWeight: 600
+                                            }}
+                                          >
+                                            {formatDateTime(match.dateTime)}
+                                          </Typography>
+                                          <Typography 
+                                            variant="body2" 
+                                            color="text.secondary"
+                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                                          >
+                                            Kreirao: <strong>{match.createdBy.name}</strong>
+                                          </Typography>
+                                          <Typography 
+                                            variant="body2" 
+                                            color="text.secondary"
+                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                                          >
+                                            Igrači: <strong>{match.players.length}/{match.playersNeeded}</strong>
+                                          </Typography>
+                                          <Typography 
+                                            variant="body2" 
+                                            color="info.main"
+                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' }, fontWeight: 500 }}
+                                          >
+                                          Status: Traže se igrači
                                         </Typography>
-                                        <Typography variant="body2">
-                                          <strong>Kreirao:</strong> {match.createdBy.name}
-                                        </Typography>
-                                        <Typography variant="body2">
-                                          <strong>Igrači:</strong> {match.players.length}/{match.playersNeeded}
-                                        </Typography>
-                                        <Typography variant="body2" color="info.main">
-                                          <strong>Status:</strong> Traže se igrači
-                                        </Typography>
-                                        <Button
-                                          size="small"
-                                          variant="outlined"
-                                          color="error"
-                                          startIcon={<CancelIcon />}
-                                          onClick={() => handleCancel(match._id, field._id)}
-                                          sx={{ mt: 1 }}
-                                        >
-                                          Otkaži
-                                        </Button>
+                                      </Stack>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="error"
+                                        startIcon={<CancelIcon />}
+                                        onClick={() => handleCancel(match._id, field._id)}
+                                        sx={{ 
+                                          fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                                          py: { xs: 0.75, sm: 0.5 },
+                                          mt: { xs: 0.5, sm: 1 },
+                                          width: { xs: '100%', sm: 'auto' }
+                                        }}
+                                      >
+                                        Otkaži
+                                      </Button>
                                       </Stack>
                                     </CardContent>
                                   </Card>
@@ -502,28 +661,53 @@ export default function ManageFields() {
                               </Typography>
                               <Stack spacing={1}>
                                 {fieldAppointments.reserved.map((match) => (
-                                  <Card key={match._id} variant="outlined">
-                                    <CardContent>
-                                      <Stack spacing={1}>
-                                        <Typography variant="body2">
-                                          <strong>Datum:</strong> {formatDateTime(match.dateTime)}
-                                        </Typography>
-                                        <Typography variant="body2">
-                                          <strong>Kreirao:</strong> {match.createdBy.name}
-                                        </Typography>
-                                        <Typography variant="body2">
-                                          <strong>Igrači:</strong> {match.players.length}/{match.playersNeeded}
-                                        </Typography>
-                                        <Typography variant="body2">
-                                          <strong>Status:</strong> {match.status}
-                                        </Typography>
+                                  <Card key={match._id} variant="outlined" sx={{ mb: 1 }}>
+                                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                                      <Stack spacing={1.5}>
+                                        <Stack spacing={0.5}>
+                                          <Typography 
+                                            variant="body2" 
+                                            sx={{ 
+                                              fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                                              fontWeight: 600
+                                            }}
+                                          >
+                                            {formatDateTime(match.dateTime)}
+                                          </Typography>
+                                          <Typography 
+                                            variant="body2" 
+                                            color="text.secondary"
+                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                                          >
+                                            Kreirao: <strong>{match.createdBy.name}</strong>
+                                          </Typography>
+                                          <Typography 
+                                            variant="body2" 
+                                            color="text.secondary"
+                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                                          >
+                                            Igrači: <strong>{match.players.length}/{match.playersNeeded}</strong>
+                                          </Typography>
+                                          <Typography 
+                                            variant="body2" 
+                                            color="text.secondary"
+                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                                          >
+                                            Status: <strong>{match.status}</strong>
+                                          </Typography>
+                                        </Stack>
                                         <Button
                                           size="small"
                                           variant="outlined"
                                           color="error"
                                           startIcon={<CancelIcon />}
                                           onClick={() => handleCancel(match._id, field._id)}
-                                          sx={{ mt: 1 }}
+                                          sx={{ 
+                                            fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                                            py: { xs: 0.75, sm: 0.5 },
+                                            mt: { xs: 0.5, sm: 1 },
+                                            width: { xs: '100%', sm: 'auto' }
+                                          }}
                                         >
                                           Otkaži
                                         </Button>
@@ -543,17 +727,32 @@ export default function ManageFields() {
                               </Typography>
                               <Stack spacing={1}>
                                 {fieldAppointments.cancelled.map((match) => (
-                                  <Card key={match._id} variant="outlined" sx={{ opacity: 0.7 }}>
-                                    <CardContent>
+                                  <Card key={match._id} variant="outlined" sx={{ opacity: 0.7, mb: 1 }}>
+                                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                                       <Stack spacing={1}>
-                                        <Typography variant="body2" color="text.secondary">
-                                          <strong>Datum:</strong> {formatDateTime(match.dateTime)}
+                                        <Typography 
+                                          variant="body2" 
+                                          color="text.secondary"
+                                          sx={{ 
+                                            fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                                            fontWeight: 500
+                                          }}
+                                        >
+                                          {formatDateTime(match.dateTime)}
                                         </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                          <strong>Kreirao:</strong> {match.createdBy.name}
+                                        <Typography 
+                                          variant="body2" 
+                                          color="text.secondary"
+                                          sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                                        >
+                                          Kreirao: <strong>{match.createdBy.name}</strong>
                                         </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                          <strong>Status:</strong> Otkazano
+                                        <Typography 
+                                          variant="body2" 
+                                          color="text.secondary"
+                                          sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
+                                        >
+                                          Status: <strong>Otkazano</strong>
                                         </Typography>
                                       </Stack>
                                     </CardContent>
@@ -606,18 +805,17 @@ export default function ManageFields() {
             </TextField>
             <TextField
               type="number"
-              label="Cena (RSD)"
+              label="Cena (RSDs)"
               value={price}
-              onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
+              onChange={(e) => setPrice(parseFloat(e.target.value))}
               required
               fullWidth
-              inputProps={{ min: 0 }}
             />
             <TextField
               type="number"
               label="Rok za prijavu (sati pre meča)"
               value={registrationDeadlineHours}
-              onChange={(e) => setRegistrationDeadlineHours(parseInt(e.target.value) || 24)}
+              onChange={(e) => setRegistrationDeadlineHours(parseInt(e.target.value))}
               required
               fullWidth
               inputProps={{ min: 1, max: 168 }}
@@ -694,7 +892,7 @@ export default function ManageFields() {
                 saturday: 'Subota',
                 sunday: 'Nedelja'
               };
-              const dayData = workingHours[day] || { start: '09', end: '22', closed: false };
+              const dayData = workingHours[day] || { start: '17', end: '23', closed: false };
               // Extract hour if in "HH:MM" format
               const startHour = dayData.start.includes(':') ? dayData.start.split(':')[0] : dayData.start;
               const endHour = dayData.end.includes(':') ? dayData.end.split(':')[0] : dayData.end;

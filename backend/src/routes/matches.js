@@ -37,12 +37,29 @@ function matchesRoutesFactory(io) {
         return res.status(400).json({ message: 'Nedostaju polja' });
       }
       
-      const matchDate = new Date(dateTime);
+      console.log('[CREATE MATCH] Received dateTime:', dateTime, 'Type:', typeof dateTime);
+      
+      // Parse dateTime - if it's in YYYY-MM-DDTHH:MM format (no timezone), treat as local time
+      // Otherwise parse normally
+      let matchDate;
+      if (typeof dateTime === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dateTime)) {
+        // Format: YYYY-MM-DDTHH:MM (no timezone) - treat as local time
+        // Extract components and create Date in local timezone
+        const [datePart, timePart] = dateTime.split('T');
+        const [year, month, day] = datePart.split('-').map(Number);
+        const [hours, minutes] = timePart.split(':').map(Number);
+        matchDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+        console.log('[CREATE MATCH] Parsed as local time:', matchDate.toISOString(), 'Local:', matchDate.toString());
+      } else {
+        matchDate = new Date(dateTime);
+        console.log('[CREATE MATCH] Parsed date:', matchDate.toISOString(), 'Local:', matchDate.toString());
+      }
       
       // Round match time to full hour (set minutes, seconds, milliseconds to 0)
       matchDate.setMinutes(0);
       matchDate.setSeconds(0);
       matchDate.setMilliseconds(0);
+      console.log('[CREATE MATCH] Rounded date:', matchDate.toISOString(), 'Local:', matchDate.toString());
       
       const field = await Field.findById(fieldId);
       if (!field) return res.status(404).json({ message: 'Teren nije pronađen' });
@@ -63,10 +80,11 @@ function matchesRoutesFactory(io) {
       const matchStart = matchDate.getTime();
       const matchEnd = matchStart + matchDuration;
       
-      // Find existing matches on the same field that overlap with the new match time
+      // Find existing matches on the same field that could potentially overlap
+      // We'll check a wider range first, then verify actual overlap
       // Check all matches except cancelled (otkazano) and failed ones
       // Include pending matches as they also reserve the field
-      const overlappingMatches = await Match.find({
+      const potentialMatches = await Match.find({
         fieldId,
         status: { $nin: ['otkazano', 'failed'] },
         // Also exclude rejected matches
@@ -76,35 +94,62 @@ function matchesRoutesFactory(io) {
         ],
         dateTime: {
           $gte: new Date(matchStart - matchDuration), // Check 1 hour before
-          $lte: new Date(matchEnd) // Check up to 1 hour after
+          $lte: new Date(matchEnd + matchDuration) // Check 1 hour after end
         }
       });
       
-      // Check if any existing match overlaps with the new match time
-      const hasOverlap = overlappingMatches.some(existingMatch => {
-        const existingStart = new Date(existingMatch.dateTime).getTime();
+      // Check if any existing match actually overlaps with the new match time
+      // Two time ranges overlap if they share any common time
+      // Range A: [matchStart, matchEnd) where matchEnd = matchStart + 1 hour
+      // Range B: [existingStart, existingEnd) where existingEnd = existingStart + 1 hour
+      // They overlap if: matchStart < existingEnd && existingStart < matchEnd
+      // Note: 20:00-21:00 and 21:00-22:00 should NOT overlap (boundary case)
+      const hasOverlap = potentialMatches.some(existingMatch => {
+        // Round existing match time to full hour (same as new match)
+        const existingDate = new Date(existingMatch.dateTime);
+        existingDate.setMinutes(0);
+        existingDate.setSeconds(0);
+        existingDate.setMilliseconds(0);
+        
+        const existingStart = existingDate.getTime();
         const existingEnd = existingStart + matchDuration;
         
-        // Check if time ranges overlap
-        // Two ranges overlap if: start1 < end2 && start2 < end1
-        return matchStart < existingEnd && existingStart < matchEnd;
+        // Check if time ranges actually overlap
+        // Two ranges overlap if: matchStart < existingEnd && existingStart < matchEnd
+        // For non-overlapping: if matchStart >= existingEnd OR existingStart >= matchEnd, they don't overlap
+        // For overlapping: matchStart < existingEnd AND existingStart < matchEnd
+        const overlaps = matchStart < existingEnd && existingStart < matchEnd;
+        
+        return overlaps;
       });
       
       if (hasOverlap) {
-        const overlappingMatch = overlappingMatches.find(m => {
-          const existingStart = new Date(m.dateTime).getTime();
+        const overlappingMatch = potentialMatches.find(m => {
+          // Round existing match time to full hour (same as new match)
+          const existingDate = new Date(m.dateTime);
+          existingDate.setMinutes(0);
+          existingDate.setSeconds(0);
+          existingDate.setMilliseconds(0);
+          
+          const existingStart = existingDate.getTime();
           const existingEnd = existingStart + matchDuration;
           return matchStart < existingEnd && existingStart < matchEnd;
         });
         
         const overlappingTime = overlappingMatch 
-          ? new Date(overlappingMatch.dateTime).toLocaleString('sr-RS', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
+          ? (() => {
+              const date = new Date(overlappingMatch.dateTime);
+              date.setMinutes(0);
+              date.setSeconds(0);
+              date.setMilliseconds(0);
+              return date.toLocaleString('sr-RS', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+            })()
           : '';
         
         return res.status(409).json({ 

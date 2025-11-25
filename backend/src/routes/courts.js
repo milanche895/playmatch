@@ -249,12 +249,12 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
       .populate('createdBy', 'name')
       .sort({ dateTime: 1 });
     
-    // Rezervisani termini za danas: approved + (full ili completed)
+    // Rezervisani termini za danas: approved + (open, full ili completed)
     const reserved = todayMatches.filter(m => 
       m.courtApproval === 'approved' && 
       m.status !== 'otkazano' && 
       m.status !== 'failed' &&
-      (m.status === 'full' || m.status === 'completed')
+      (m.status === 'open' || m.status === 'full' || m.status === 'completed')
     );
     
     // For free slots calculation, we need all matches in a wider range
@@ -546,8 +546,8 @@ router.put('/fields/:fieldId/working-hours', auth(true), requireCourt, async (re
     const formattedWorkingHours = {};
     for (const [day, dayData] of Object.entries(workingHours)) {
       if (dayData && typeof dayData === 'object') {
-        let start = dayData.start || '09';
-        let end = dayData.end || '22';
+        let start = dayData.start || '16';
+        let end = dayData.end || '23';
         
         // If it's just a number, convert to "HH:00" format
         if (!start.includes(':')) {

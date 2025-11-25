@@ -30,7 +30,13 @@ router.post('/register', async (req, res) => {
       avatarUrl,
       role: role || 'player'
     });
+    
+    // Set cookie before sending response
     setTokenCookie(res, user._id.toString());
+    
+    // Log for debugging
+    console.log('User registered:', user.email, 'Role:', user.role, 'ID:', user._id);
+    
     res.json({ 
       _id: user._id, 
       name: user.name, 
@@ -39,6 +45,7 @@ router.post('/register', async (req, res) => {
       role: user.role
     });
   } catch (e) {
+    console.error('Registration error:', e);
     res.status(500).json({ message: 'Server error' });
   }
 });

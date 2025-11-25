@@ -255,7 +255,7 @@ export default function MojTermine() {
 
       {activeTab === 0 && (
         <Stack spacing={2}>
-          <Alert severity="info">Rezervisani termini za danas (uključujući završene)</Alert>
+          <Alert severity="info">Rezervisani termini za danas (uključujući otvorene, pune i završene)</Alert>
           {appointments.reserved.length === 0 ? (
             <Alert severity="info">Nema rezervisanih termina za danas.</Alert>
           ) : (
@@ -274,9 +274,9 @@ export default function MojTermine() {
                         sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
                       />
                       <Chip
-                        label={match.status === 'full' ? 'Pun' : match.status === 'completed' ? 'Završen' : match.status}
+                        label={match.status === 'full' ? 'Pun' : match.status === 'completed' ? 'Završen' : match.status === 'open' ? 'Otvoren' : match.status}
                         size="small"
-                        color={match.status === 'full' ? 'warning' : match.status === 'completed' ? 'success' : 'default'}
+                        color={match.status === 'full' ? 'warning' : match.status === 'completed' ? 'success' : match.status === 'open' ? 'info' : 'default'}
                         sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
                       />
                     </Stack>

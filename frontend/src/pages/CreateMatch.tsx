@@ -62,13 +62,37 @@ export default function CreateMatch() {
   const [loadingSlots, setLoadingSlots] = useState(false);
   
   // Helper function to round time to full hour (minutes = 00)
+  // If input is already in YYYY-MM-DDTHH:MM format (from URL), just sets minutes to 00
+  // Otherwise parses and formats in local time
   function roundToFullHour(dateTimeString: string): string {
     if (!dateTimeString) return dateTimeString;
+    
+    // If already in YYYY-MM-DDTHH:MM format (from URL), just set minutes to 00
+    // This preserves the exact hour sent from Home page
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dateTimeString)) {
+      const rounded = dateTimeString.replace(/:\d{2}$/, ':00');
+      console.log('roundToFullHour - already formatted:', dateTimeString, '->', rounded);
+      return rounded;
+    }
+    
+    // Otherwise parse and format
     const d = new Date(dateTimeString);
+    
+    // Round to full hour
     d.setMinutes(0);
     d.setSeconds(0);
     d.setMilliseconds(0);
-    return d.toISOString().slice(0, 16);
+    
+    // Format using local time (as displayed to user)
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    
+    const formatted = `${year}-${month}-${day}T${hours}:${minutes}`;
+    console.log('roundToFullHour - parsed:', dateTimeString, '->', formatted, '(local hours:', d.getHours(), ', UTC hours:', d.getUTCHours(), ')');
+    return formatted;
   }
 
   const [playersNeeded, setPlayersNeeded] = useState<number>(10);
@@ -94,14 +118,31 @@ export default function CreateMatch() {
 
   // Load field details and generate available time slots when field is selected
   useEffect(() => {
+    // Check if dateTime is provided in query params
+    const dateTimeParam = query.get('dateTime');
+    if (dateTimeParam) {
+      try {
+        const parsedDateTime = roundToFullHour(dateTimeParam);
+        setSelectedDateTime(parsedDateTime);
+        // Extract date part for selectedDate (YYYY-MM-DD format)
+        const datePart = parsedDateTime.split('T')[0];
+        setSelectedDate(datePart);
+        console.log('Setting dateTime from query:', dateTimeParam, '-> parsed:', parsedDateTime);
+      } catch (err) {
+        console.error('Invalid dateTime parameter:', err);
+      }
+    }
+    
     if (fieldId) {
       loadFieldDetailsAndSlots();
     } else {
       setSelectedField(null);
       setAvailableTimeSlots([]);
-      setSelectedDateTime('');
+      if (!dateTimeParam) {
+        setSelectedDateTime('');
+      }
     }
-  }, [fieldId]);
+  }, [fieldId, query]);
 
   async function loadFieldDetailsAndSlots() {
     if (!fieldId) return;
@@ -112,6 +153,11 @@ export default function CreateMatch() {
       const fieldRes = await api.get<Field>(`/api/fields/${fieldId}`);
       const field = fieldRes.data;
       setSelectedField(field);
+      
+      // Set sport to match field sport
+      if (field.sport) {
+        setSport(field.sport);
+      }
 
       // Load existing matches for this field to check for conflicts
       const matchesRes = await api.get<Match[]>('/api/matches');
@@ -125,14 +171,19 @@ export default function CreateMatch() {
       const slots = generateAvailableTimeSlots(field, fieldMatches);
       setAvailableTimeSlots(slots);
       
-      // Set first available slot as default if any exist
-      if (slots.length > 0) {
-        const firstSlot = slots[0];
-        setSelectedDate(firstSlot.date);
-        setSelectedDateTime(firstSlot.datetime);
-      } else {
-        setSelectedDate('');
-        setSelectedDateTime('');
+      // Only set first available slot if dateTime is not already set from query params
+      const dateTimeParam = query.get('dateTime');
+      if (!dateTimeParam) {
+        if (slots.length > 0) {
+          const firstSlot = slots[0];
+          setSelectedDate(firstSlot.date);
+          setSelectedDateTime(firstSlot.datetime);
+        } else {
+          setSelectedDate('');
+          if (!selectedDateTime) {
+            setSelectedDateTime('');
+          }
+        }
       }
     } catch (err: any) {
       console.error('Failed to load field details:', err);
@@ -140,6 +191,16 @@ export default function CreateMatch() {
     } finally {
       setLoadingSlots(false);
     }
+  }
+
+  // Helper function to format date as YYYY-MM-DDTHH:MM in local timezone (no UTC conversion)
+  function formatLocalDateTime(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   }
 
   function generateAvailableTimeSlots(field: Field, existingMatches: Match[]): AvailableTimeSlot[] {
@@ -152,12 +213,16 @@ export default function CreateMatch() {
     const workingHours = field.workingHours || {};
     const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     
-    // Create a set of reserved times (existing matches)
+    // Create a set of reserved times (existing matches) - use local time format
     const reservedTimes = new Set<string>();
     existingMatches.forEach(match => {
       if (match.status !== 'otkazano' && match.courtApproval !== 'rejected') {
         const matchDate = new Date(match.dateTime);
-        const matchTime = matchDate.toISOString().slice(0, 16);
+        // Round to full hour and format in local time
+        matchDate.setMinutes(0);
+        matchDate.setSeconds(0);
+        matchDate.setMilliseconds(0);
+        const matchTime = formatLocalDateTime(matchDate);
         reservedTimes.add(matchTime);
       }
     });
@@ -182,7 +247,8 @@ export default function CreateMatch() {
         // Skip if slot is in the past
         if (slotDate <= now) continue;
         
-        const datetime = slotDate.toISOString().slice(0, 16);
+        // Format datetime in local time (not UTC)
+        const datetime = formatLocalDateTime(slotDate);
         
         // Skip if already reserved
         if (reservedTimes.has(datetime)) continue;
@@ -195,8 +261,11 @@ export default function CreateMatch() {
         });
         const timeStr = `${hour.toString().padStart(2, '0')}:00`;
         
+        // Format date as YYYY-MM-DD in local time
+        const dateOnly = `${slotDate.getFullYear()}-${String(slotDate.getMonth() + 1).padStart(2, '0')}-${String(slotDate.getDate()).padStart(2, '0')}`;
+        
         slots.push({
-          date: slotDate.toISOString().slice(0, 10),
+          date: dateOnly,
           time: timeStr,
           datetime,
           display: `${dateStr} ${timeStr}`
@@ -266,11 +335,15 @@ export default function CreateMatch() {
     }
     
     try {
+      // Ensure dateTime is properly formatted before sending
+      const dateTimeToSend = roundToFullHour(selectedDateTime);
+      console.log('Submitting match with dateTime:', dateTimeToSend, '(original:', selectedDateTime, ')');
+      
       // Backend will calculate registrationDeadline automatically
       const res = await api.post<Match>('/api/matches', { 
         sport, 
         fieldId, 
-        dateTime: selectedDateTime, 
+        dateTime: dateTimeToSend, 
         playersNeeded 
       });
       navigate(`/matches/${res.data._id}`);
@@ -469,7 +542,7 @@ export default function CreateMatch() {
               Molimo odaberite teren da biste videli dostupne termine
             </Alert>
           )}
-          <TextField type="number" label="Potrebno igrača" value={playersNeeded} inputProps={{ min: 1 }} onChange={(e) => setPlayersNeeded(parseInt(e.target.value || '1', 10))} required />
+          <TextField type="number" label="Potrebno igrača" value={playersNeeded} inputProps={{ min: 1 }} onChange={(e) => setPlayersNeeded(parseInt(e.target.value))} required />
           <Button type="submit" variant="contained">Kreiraj Meč</Button>
         </Stack>
       </form>

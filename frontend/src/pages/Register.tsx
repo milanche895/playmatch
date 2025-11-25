@@ -28,9 +28,12 @@ export default function Register() {
     setError(null);
     try {
       await register(name, email, password, role);
+      // Small delay to ensure cookie is set before navigation
+      await new Promise(resolve => setTimeout(resolve, 100));
       navigate('/');
-    } catch (e) {
-      setError('Registracija nije uspela');
+    } catch (e: any) {
+      console.error('Registration error:', e);
+      setError(e.response?.data?.message || 'Registracija nije uspela');
     }
   }
 

@@ -59,6 +59,7 @@ export default function Home() {
   const navigate = useNavigate();
   const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [allFieldMatches, setAllFieldMatches] = useState<Record<string, Match[]>>({}); // All matches for each field
   const [fields, setFields] = useState<Field[]>([]);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,7 +119,7 @@ export default function Home() {
       console.error('Failed to load fields');
     });
 
-    // Load matches (for both logged in and not logged in users)
+    // Load all matches (for both logged in and not logged in users)
     api.get('/api/matches').then((matchesRes) => {
       // Filter active matches (open, full - not failed, completed, or cancelled)
       const activeMatches = matchesRes.data.filter((m: Match) => 
@@ -127,6 +128,22 @@ export default function Home() {
       );
       setAllMatches(activeMatches);
       setMatches(activeMatches);
+      
+      // Group all matches (including reserved/completed) by field for popup display
+      const matchesByField: Record<string, Match[]> = {};
+      matchesRes.data.forEach((match: Match) => {
+        if (!match.fieldId) return;
+        const fieldId = typeof match.fieldId === 'object' ? match.fieldId._id : match.fieldId;
+        if (!matchesByField[fieldId]) {
+          matchesByField[fieldId] = [];
+        }
+        // Include all matches except cancelled/rejected
+        if (match.status !== 'otkazano' && match.courtApproval !== 'rejected') {
+          matchesByField[fieldId].push(match);
+        }
+      });
+      setAllFieldMatches(matchesByField);
+      
       setLoading(false);
     }).catch(() => {
       setLoading(false);
@@ -238,6 +255,26 @@ export default function Home() {
     });
   }
 
+  // Convert ISO dateTime string to local time format for URL (YYYY-MM-DDTHH:MM)
+  // This preserves the time as displayed to the user (local timezone)
+  // The backend will interpret this as local time (no timezone offset)
+  function formatDateTimeForURL(dateTimeString: string): string {
+    const date = new Date(dateTimeString);
+    
+    // Use local time methods to get the time as displayed to user
+    // This ensures we send the same hour that the user sees on screen (e.g., 22:00)
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = '00'; // Always round to full hour
+    
+    // Return in format without timezone - backend will treat as local time
+    const formatted = `${year}-${month}-${day}T${hours}:${minutes}`;
+    console.log('formatDateTimeForURL:', dateTimeString, '->', formatted, '(displayed hour:', date.getHours(), ')');
+    return formatted;
+  }
+
   return (
     <Stack spacing={2}>
       <Typography variant="h5" fontWeight={600}>
@@ -274,11 +311,27 @@ export default function Home() {
           {fields
             .filter((field) => field.lat && field.lng)
             .map((field) => {
-              // Get matches for this field
+              // Get ALL matches for this field (reserved, completed, active, etc.)
+              const allMatchesForField = allFieldMatches[field._id] || [];
+              // Get active matches for filtering on map
               const fieldMatches = matches.filter(m => {
                 const matchFieldId = typeof m.fieldId === 'object' ? m.fieldId._id : m.fieldId;
                 return matchFieldId === field._id;
               });
+              
+              // Sort matches by date
+              const sortedMatches = [...allMatchesForField].sort((a, b) => 
+                new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime()
+              );
+              
+              // Separate active and reserved/completed matches
+              const activeMatches = sortedMatches.filter(m => 
+                (m.status === 'open' || m.status === 'full') && m.courtApproval !== 'rejected'
+              );
+              const reservedMatches = sortedMatches.filter(m => 
+                m.courtApproval === 'approved' && 
+                (m.status === 'full' || m.status === 'completed')
+              );
               
               return (
                 <Marker 
@@ -287,7 +340,7 @@ export default function Home() {
                   icon={fieldIcon}
                 >
                   <Popup>
-                    <Stack spacing={1} sx={{ minWidth: 200, maxWidth: 300 }}>
+                    <Stack spacing={1.5} sx={{ minWidth: 250, maxWidth: 350 }}>
                       <Typography variant="subtitle1" fontWeight={600}>
                         {field.name}
                       </Typography>
@@ -310,18 +363,60 @@ export default function Home() {
                         </Typography>
                       )}
                       
-                      {/* Show matches for this field */}
-                      {fieldMatches.length > 0 && (
+                      {/* Show all reserved matches for this field */}
+                      {reservedMatches.length > 0 && (
                         <>
                           <Divider />
-                          <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>
-                            Mečevi na ovom terenu ({fieldMatches.length}):
+                          <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>
+                            Rezervisani termini ({reservedMatches.length}):
                           </Typography>
-                          <Stack spacing={1} sx={{ maxHeight: 300, overflowY: 'auto' }}>
-                            {fieldMatches.map((match) => (
+                          <Stack spacing={1} sx={{ maxHeight: 250, overflowY: 'auto' }}>
+                            {reservedMatches.map((match) => (
+                              <Box key={match._id} sx={{ p: 1, border: '1px solid #e0e0e0', borderRadius: 1, bgcolor: '#f5f5f5' }}>
+                                <Stack spacing={0.5}>
+                                  <Typography variant="body2" fontSize="0.8rem" fontWeight={600}>
+                                    {formatDateTime(match.dateTime)}
+                                  </Typography>
+                                  <Typography variant="body2" fontSize="0.75rem" color="text.secondary">
+                                    {match.players.length}/{match.playersNeeded} igrača
+                                    {match.status === 'completed' && ' • Završeno'}
+                                  </Typography>
+                                  {match.description && (
+                                    <Typography variant="body2" fontSize="0.75rem" color="text.secondary" fontStyle="italic">
+                                      {match.description}
+                                    </Typography>
+                                  )}
+                                  {user && user.role === 'player' && (
+                                    <Button 
+                                      variant="outlined" 
+                                      size="small"
+                                      component={Link}
+                                      to={`/create?fieldId=${field._id}&dateTime=${encodeURIComponent(formatDateTimeForURL(match.dateTime))}`}
+                                      fullWidth
+                                      sx={{ mt: 0.5, fontSize: '0.7rem' }}
+                                    >
+                                      Kreiraj novi termin
+                                    </Button>
+                                  )}
+                                </Stack>
+                              </Box>
+                            ))}
+                          </Stack>
+                        </>
+                      )}
+                      
+                      {/* Show active matches for this field */}
+                      {activeMatches.length > 0 && (
+                        <>
+                          <Divider />
+                          <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>
+                            Aktivni mečevi ({activeMatches.length}):
+                          </Typography>
+                          <Stack spacing={1} sx={{ maxHeight: 250, overflowY: 'auto' }}>
+                            {activeMatches.map((match) => (
                               <Box key={match._id} sx={{ p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>
                                 <Stack spacing={0.5}>
-                                  <Typography variant="body2" fontWeight={600}>
+                                  <Typography variant="body2" fontSize="0.8rem" fontWeight={600}>
                                     {match.sport.charAt(0).toUpperCase() + match.sport.slice(1)} Meč
                                   </Typography>
                                   <Typography variant="body2" fontSize="0.75rem">
@@ -388,12 +483,32 @@ export default function Home() {
                                   {user && isUserInMatch(match) && (
                                     <Chip label="Pridružen" color="success" size="small" sx={{ mt: 0.5, fontSize: '0.7rem', height: 24 }} />
                                   )}
+                                  {user && user.role === 'player' && (
+                                    <Button 
+                                      variant="outlined" 
+                                      size="small"
+                                      component={Link}
+                                      to={`/create?fieldId=${field._id}`}
+                                      fullWidth
+                                      sx={{ mt: 0.5, fontSize: '0.7rem' }}
+                                    >
+                                      Kreiraj novi termin
+                                    </Button>
+                                  )}
                                 </Stack>
                               </Box>
                             ))}
                           </Stack>
                         </>
                       )}
+                      
+                      {reservedMatches.length === 0 && activeMatches.length === 0 && (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          Nema rezervisanih termina
+                        </Typography>
+                      )}
+                      
+                      <Divider />
                       
                       {user && user.role === 'player' && (
                         <Button 
@@ -402,9 +517,9 @@ export default function Home() {
                           component={Link}
                           to={`/create?fieldId=${field._id}`}
                           fullWidth
-                          sx={{ mt: 1 }}
+                          sx={{ mt: 0.5 }}
                         >
-                          Kreiraj Meč Ovde
+                          Kreiraj Novi Meč
                         </Button>
                       )}
                       {!user && (
@@ -414,7 +529,7 @@ export default function Home() {
                           component={Link}
                           to="/login"
                           fullWidth
-                          sx={{ mt: 1 }}
+                          sx={{ mt: 0.5 }}
                         >
                           Prijavi se da kreiraš meč
                         </Button>
@@ -468,6 +583,32 @@ export default function Home() {
                           ).toFixed(1)} km
                         </Typography>
                       )}
+                      
+                      {user && user.role === 'player' && (
+                        <Button 
+                          variant="contained" 
+                          size="small"
+                          component={Link}
+                          to={`/create?fieldId=${fieldId}`}
+                          fullWidth
+                          sx={{ mt: 0.5, fontSize: '0.875rem' }}
+                        >
+                          Kreiraj Meč
+                        </Button>
+                      )}
+                      {!user && (
+                        <Button 
+                          variant="outlined" 
+                          size="small"
+                          component={Link}
+                          to="/login"
+                          fullWidth
+                          sx={{ mt: 0.5 }}
+                        >
+                          Prijavi se da kreiraš meč
+                        </Button>
+                      )}
+                      
                       <Divider />
                       {fieldMatches.map((match) => (
                         <Box key={match._id} sx={{ p: 1, border: '1px solid #e0e0e0', borderRadius: 1 }}>

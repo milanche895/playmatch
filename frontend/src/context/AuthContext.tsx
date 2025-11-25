@@ -46,8 +46,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function register(name: string, email: string, password: string, role?: 'player' | 'court') {
-    const res = await api.post('/api/auth/register', { name, email, password, role });
-    setUser(res.data);
+    try {
+      const res = await api.post('/api/auth/register', { name, email, password, role });
+      setUser(res.data);
+      // Verify that cookie was set by checking if we can get user info
+      // This ensures cookie is properly set before proceeding
+      try {
+        const meRes = await api.get('/api/auth/me');
+        if (meRes.data) {
+          setUser(meRes.data);
+        }
+      } catch (meErr) {
+        console.warn('Could not verify authentication after registration:', meErr);
+        // Don't throw - registration was successful, cookie might just need a moment
+      }
+    } catch (error) {
+      // Re-throw error so Register component can handle it
+      throw error;
+    }
   }
 
   async function logout() {
