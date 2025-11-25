@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import api from '../lib/api';
 import { Field, Match } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 // Fix Leaflet icon issue
 // @ts-ignore
@@ -48,6 +49,7 @@ type AvailableTimeSlot = {
 };
 
 export default function CreateMatch() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const query = useQuery();
   const [fields, setFields] = useState<Field[]>([]);
@@ -240,6 +242,14 @@ export default function CreateMatch() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    
+    // Check if user is logged in
+    if (!user) {
+      setError('Morate biti ulogovani da biste kreirali meč');
+      setTimeout(() => navigate('/login'), 2000);
+      return;
+    }
+    
     if (!fieldId) {
       setError('Molimo odaberite teren');
       return;
@@ -248,6 +258,13 @@ export default function CreateMatch() {
       setError('Molimo odaberite termin');
       return;
     }
+    
+    // Check if cookie exists (for debugging)
+    const hasCookie = document.cookie.includes('token');
+    if (!hasCookie) {
+      console.warn('Warning: No token cookie found. You may need to log in again.');
+    }
+    
     try {
       // Backend will calculate registrationDeadline automatically
       const res = await api.post<Match>('/api/matches', { 
@@ -258,7 +275,13 @@ export default function CreateMatch() {
       });
       navigate(`/matches/${res.data._id}`);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Neuspešno kreiranje meča');
+      console.error('Error creating match:', err);
+      if (err.response?.status === 401) {
+        setError('Niste autentifikovani. Molimo ulogujte se ponovo.');
+        setTimeout(() => navigate('/login'), 2000);
+      } else {
+        setError(err.response?.data?.message || 'Neuspešno kreiranje meča');
+      }
     }
   }
 

@@ -5,6 +5,7 @@ function auth(required = true) {
     try {
       const token = req.cookies?.token;
       if (!token) {
+        console.log(`[AUTH] No token found for ${req.method} ${req.path}`);
         if (required) return res.status(401).json({ message: 'Not authenticated' });
         req.user = null;
         return next();
@@ -13,6 +14,7 @@ function auth(required = true) {
       req.user = { id: payload.id };
       return next();
     } catch (err) {
+      console.log(`[AUTH] Token verification failed for ${req.method} ${req.path}:`, err.message);
       if (required) return res.status(401).json({ message: 'Invalid token' });
       req.user = null;
       return next();
