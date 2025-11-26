@@ -255,6 +255,18 @@ export default function Home() {
     });
   }
 
+  // Check if a date is today (same day, month, year)
+  function isToday(dateTimeString: string): boolean {
+    const matchDate = new Date(dateTimeString);
+    const today = new Date();
+    
+    return (
+      matchDate.getDate() === today.getDate() &&
+      matchDate.getMonth() === today.getMonth() &&
+      matchDate.getFullYear() === today.getFullYear()
+    );
+  }
+
   // Convert ISO dateTime string to local time format for URL (YYYY-MM-DDTHH:MM)
   // This preserves the time as displayed to the user (local timezone)
   // The backend will interpret this as local time (no timezone offset)
@@ -319,18 +331,25 @@ export default function Home() {
                 return matchFieldId === field._id;
               });
               
-              // Sort matches by date
-              const sortedMatches = [...allMatchesForField].sort((a, b) => 
+              // Filter and sort matches by date - only show today's matches
+              const todayMatches = allMatchesForField.filter(m => isToday(m.dateTime));
+              const sortedMatches = [...todayMatches].sort((a, b) => 
                 new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime()
               );
               
               // Separate active and reserved/completed matches
-              const activeMatches = sortedMatches.filter(m => 
-                (m.status === 'open' || m.status === 'full') && m.courtApproval !== 'rejected'
-              );
+              // Reserved matches: approved matches (open, full, or completed) - shown first
               const reservedMatches = sortedMatches.filter(m => 
                 m.courtApproval === 'approved' && 
-                (m.status === 'full' || m.status === 'completed')
+                (m.status === 'open' || m.status === 'full' || m.status === 'completed')
+              );
+              // Active matches: pending approval (not yet approved/rejected) - exclude already reserved
+              const reservedMatchIds = new Set(reservedMatches.map(m => m._id));
+              const activeMatches = sortedMatches.filter(m => 
+                !reservedMatchIds.has(m._id) &&
+                (m.status === 'open' || m.status === 'full') &&
+                m.courtApproval !== 'rejected' &&
+                m.status !== 'otkazano'
               );
               
               return (
@@ -542,10 +561,15 @@ export default function Home() {
 
           {/* Match markers - grouped by field */}
           {(() => {
-            // Group matches by field
+            // Group matches by field - only today's matches
             const matchesByField = new Map<string, Match[]>();
             matches
-              .filter((match) => match.fieldId && match.fieldId.lat && match.fieldId.lng)
+              .filter((match) => 
+                match.fieldId && 
+                match.fieldId.lat && 
+                match.fieldId.lng &&
+                isToday(match.dateTime)
+              )
               .forEach((match) => {
                 const fieldId = match.fieldId._id;
                 if (!matchesByField.has(fieldId)) {

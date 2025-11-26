@@ -5,12 +5,18 @@ const User = require('../models/User');
 
 const router = express.Router();
 
-function setTokenCookie(res, userId) {
+function setTokenCookie(res, userId, req = null) {
   const token = jwt.sign({ id: userId }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
+  // Use secure cookies in production (HTTPS), but allow insecure in development
+  // On Render, we're behind a proxy, so check x-forwarded-proto header
+  const isHttps = req && (req.secure || req.headers['x-forwarded-proto'] === 'https');
+  const isProduction = process.env.NODE_ENV === 'production';
+  const useSecure = isProduction && isHttps;
+  
   res.cookie('token', token, { 
     httpOnly: true, 
     sameSite: 'lax', 
-    secure: false, 
+    secure: useSecure, // Secure cookies only in production with HTTPS
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/'
   });
@@ -31,8 +37,11 @@ router.post('/register', async (req, res) => {
       role: role || 'player'
     });
     
+    // Generate token
+    const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
+    
     // Set cookie before sending response
-    setTokenCookie(res, user._id.toString());
+    setTokenCookie(res, user._id.toString(), req);
     
     // Log for debugging
     console.log('User registered:', user.email, 'Role:', user.role, 'ID:', user._id);
@@ -42,7 +51,8 @@ router.post('/register', async (req, res) => {
       name: user.name, 
       email: user.email, 
       avatarUrl: user.avatarUrl,
-      role: user.role
+      role: user.role,
+      token // Include token in response for localStorage
     });
   } catch (e) {
     console.error('Registration error:', e);
@@ -57,13 +67,15 @@ router.post('/login', async (req, res) => {
     if (!user) return res.status(401).json({ message: 'Neispravni podaci za prijavu' });
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ message: 'Neispravni podaci za prijavu' });
-    setTokenCookie(res, user._id.toString());
+    const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
+    setTokenCookie(res, user._id.toString(), req);
     res.json({ 
       _id: user._id, 
       name: user.name, 
       email: user.email, 
       avatarUrl: user.avatarUrl,
-      role: user.role
+      role: user.role,
+      token // Include token in response for localStorage
     });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });

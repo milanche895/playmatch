@@ -38,7 +38,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function login(email: string, password: string) {
     try {
       const res = await api.post('/api/auth/login', { email, password });
-      setUser(res.data);
+      // Save token to localStorage if provided
+      if (res.data.token) {
+        localStorage.setItem('token', res.data.token);
+      }
+      // Remove token from response before setting user
+      const { token, ...userData } = res.data;
+      setUser(userData);
     } catch (error) {
       // Re-throw error so Login component can handle it
       throw error;
@@ -48,7 +54,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function register(name: string, email: string, password: string, role?: 'player' | 'court') {
     try {
       const res = await api.post('/api/auth/register', { name, email, password, role });
-      setUser(res.data);
+      // Save token to localStorage if provided
+      if (res.data.token) {
+        localStorage.setItem('token', res.data.token);
+      }
+      // Remove token from response before setting user
+      const { token, ...userData } = res.data;
+      setUser(userData);
       // Verify that cookie was set by checking if we can get user info
       // This ensures cookie is properly set before proceeding
       try {
@@ -68,6 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function logout() {
     await api.post('/api/auth/logout');
+    // Remove token from localStorage
+    localStorage.removeItem('token');
     setUser(null);
   }
 

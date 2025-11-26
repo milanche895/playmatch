@@ -8,6 +8,21 @@ const api = axios.create({
   timeout: 10000
 });
 
+// Add request interceptor to include token in Authorization header
+api.interceptors.request.use(
+  (config) => {
+    // Get token from localStorage
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 // Add response interceptor to handle errors
 api.interceptors.response.use(
   (response) => response,

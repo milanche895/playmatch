@@ -3,7 +3,17 @@ const jwt = require('jsonwebtoken');
 function auth(required = true) {
   return (req, res, next) => {
     try {
-      const token = req.cookies?.token;
+      // Try to get token from cookie first, then from Authorization header
+      let token = req.cookies?.token;
+      
+      // If no cookie token, try Authorization header (Bearer token)
+      if (!token && req.headers.authorization) {
+        const authHeader = req.headers.authorization;
+        if (authHeader.startsWith('Bearer ')) {
+          token = authHeader.substring(7);
+        }
+      }
+      
       if (!token) {
         console.log(`[AUTH] No token found for ${req.method} ${req.path}`);
         if (required) return res.status(401).json({ message: 'Not authenticated' });
