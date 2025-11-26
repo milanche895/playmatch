@@ -183,9 +183,34 @@ export default function Home() {
     }
     try {
       const res = await api.post(`/api/matches/${matchId}/join`);
+      const updatedMatch = res.data;
+      
       // Update all matches list
-      const updatedAllMatches = allMatches.map(m => m._id === matchId ? res.data : m);
+      const updatedAllMatches = allMatches.map(m => m._id === matchId ? updatedMatch : m);
       setAllMatches(updatedAllMatches);
+      
+      // Update allFieldMatches for map popup display
+      if (updatedMatch.fieldId) {
+        const fieldId = typeof updatedMatch.fieldId === 'object' ? updatedMatch.fieldId._id : updatedMatch.fieldId;
+        setAllFieldMatches(prev => {
+          const updated = { ...prev };
+          if (!updated[fieldId]) {
+            updated[fieldId] = [];
+          }
+          // Find and update the match in the field's matches array
+          const fieldMatches = updated[fieldId];
+          const matchIndex = fieldMatches.findIndex(m => m._id === matchId);
+          if (matchIndex >= 0) {
+            fieldMatches[matchIndex] = updatedMatch;
+          } else {
+            // If match not found, add it (shouldn't happen, but just in case)
+            if (updatedMatch.status !== 'otkazano' && updatedMatch.courtApproval !== 'rejected') {
+              fieldMatches.push(updatedMatch);
+            }
+          }
+          return updated;
+        });
+      }
       
       // Filter by distance and status
       const filteredMatches = updatedAllMatches.filter((m: Match) => {
@@ -207,13 +232,29 @@ export default function Home() {
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || 'Neuspešno pridruživanje meču';
       alert(errorMsg);
-      // Reload matches to get updated status
+      // Reload all matches to get updated status
       api.get('/api/matches').then((matchesRes) => {
         const activeMatches = matchesRes.data.filter((m: Match) => 
           (m.status === 'open' || m.status === 'full') && 
           m.courtApproval !== 'rejected'
         );
         setAllMatches(activeMatches);
+        
+        // Update allFieldMatches
+        const matchesByField: Record<string, Match[]> = {};
+        matchesRes.data.forEach((match: Match) => {
+          if (!match.fieldId) return;
+          const fieldId = typeof match.fieldId === 'object' ? match.fieldId._id : match.fieldId;
+          if (!matchesByField[fieldId]) {
+            matchesByField[fieldId] = [];
+          }
+          // Include all matches except cancelled/rejected
+          if (match.status !== 'otkazano' && match.courtApproval !== 'rejected') {
+            matchesByField[fieldId].push(match);
+          }
+        });
+        setAllFieldMatches(matchesByField);
+        
         // Re-apply distance filter if user location available
         if (userLocation) {
           const nearbyMatches = activeMatches.filter((m: Match) => {
