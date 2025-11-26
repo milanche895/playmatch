@@ -348,8 +348,7 @@ export default function Home() {
               const activeMatches = sortedMatches.filter(m => 
                 !reservedMatchIds.has(m._id) &&
                 (m.status === 'open' || m.status === 'full') &&
-                m.courtApproval !== 'rejected' &&
-                m.status !== 'otkazano'
+                m.courtApproval !== 'rejected'
               );
               
               return (
