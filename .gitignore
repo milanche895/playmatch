@@ -14,14 +14,23 @@ build/
 .next/
 out/
 .cache/
+backend/dist/
+frontend/dist/
+frontend/build/
 
-# Environment variables
+# Environment variables (NEVER commit these!)
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 .env*.local
+.env.backup
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+*.env
 
 # Logs
 logs/
@@ -31,6 +40,8 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+backend/logs/
+frontend/logs/
 
 # OS files
 .DS_Store
@@ -59,6 +70,8 @@ $RECYCLE.BIN/
 coverage/
 .nyc_output/
 *.lcov
+backend/coverage/
+frontend/coverage/
 
 # Temporary files
 *.tmp
@@ -67,23 +80,85 @@ coverage/
 .temp/
 tmp/
 temp/
+backend/tmp/
+frontend/tmp/
 
 # Vite
 .vite/
+frontend/.vite/
 
 # TypeScript
 *.tsbuildinfo
+*.tsbuildinfo.*
+frontend/*.tsbuildinfo
+backend/*.tsbuildinfo
 
 # Render specific
 .render/
 
-# MongoDB
+# MongoDB / Database
 *.db
 *.sqlite
 *.sqlite3
+data/
+backend/data/
+mongodb-data/
+*.mongo
 
-# Misc
+# Uploads / User generated content (if any)
+uploads/
+backend/uploads/
+frontend/uploads/
+public/uploads/
+images/uploads/
+avatars/
+backend/avatars/
+frontend/avatars/
+
+# Backup files
+*.backup
+*.bak
+backup/
+backups/
+*.old
+backend/backup/
+frontend/backup/
+
+# Security / Keys (NEVER commit!)
 *.pem
 *.key
 *.cert
+*.crt
+*.csr
+*.pfx
+*.p12
+*.jks
+*.keystore
+secrets/
+*.secret
+
+# Session storage
+sessions/
+backend/sessions/
+
+# Old/unused folders (if applicable - uncomment if needed)
+# client/
+# server/
+
+# PM2 (if used)
+.pm2/
+ecosystem.config.js.bak
+
+# Docker (if used, but keep docker-compose.yml if needed)
+*.dockerignore.bak
+.docker/
+
+# Misc
+*.pid
+*.seed
+*.pid.lock
+.cache/
+.npm/
+.eslintcache
+.stylelintcache
 
