@@ -525,7 +525,7 @@ export default function Home() {
                                       Prijavi se da se pridružiš
                                     </Button>
                                   )}
-                                  {user && match.status !== 'full' && !isUserInMatch(match) && (
+                                  {user && match.status !== 'full' && !isUserInMatch(match) && user.role !== 'court' && (
                                     <Button 
                                       variant="contained" 
                                       size="small"
@@ -713,7 +713,7 @@ export default function Home() {
                               >
                                 Detalji
                               </Button>
-                              {match.status !== 'full' && !isUserInMatch(match) && (
+                              {match.status !== 'full' && !isUserInMatch(match) && user?.role !== 'court' && (
                                 <Button 
                                   variant="contained" 
                                   size="small"

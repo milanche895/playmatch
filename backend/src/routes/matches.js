@@ -1,6 +1,7 @@
 const express = require('express');
 const Match = require('../models/Match');
 const Field = require('../models/Field');
+const User = require('../models/User');
 const auth = require('../middleware/auth');
 
 function matchesRoutesFactory(io) {
@@ -22,6 +23,7 @@ function matchesRoutesFactory(io) {
       .populate('fieldId')
       .populate('players', 'name')
       .populate('createdBy', 'name')
+      .populate('playerCancellations.playerId', 'name')
       .sort({ dateTime: 1 });
     
     // Filter out matches with null or invalid fieldId
@@ -174,7 +176,8 @@ function matchesRoutesFactory(io) {
       const populated = await Match.findById(match._id)
         .populate('fieldId')
         .populate('players', 'name')
-        .populate('createdBy', 'name');
+        .populate('createdBy', 'name')
+        .populate('playerCancellations.playerId', 'name');
       res.status(201).json(populated);
     } catch (e) {
       res.status(500).json({ message: 'Greška servera' });
@@ -185,7 +188,8 @@ function matchesRoutesFactory(io) {
     const match = await Match.findById(req.params.id)
       .populate('fieldId')
       .populate('players', 'name')
-      .populate('createdBy', 'name');
+      .populate('createdBy', 'name')
+      .populate('playerCancellations.playerId', 'name');
     if (!match) return res.status(404).json({ message: 'Nije pronađeno' });
     if (!match.fieldId || !match.fieldId.lat || !match.fieldId.lng) {
       return res.status(404).json({ message: 'Teren meča je nevažeći ili nedostaje' });
@@ -196,6 +200,12 @@ function matchesRoutesFactory(io) {
   router.post('/:id/join', auth(true), async (req, res) => {
     const match = await Match.findById(req.params.id);
     if (!match) return res.status(404).json({ message: 'Not found' });
+    
+    // Check if user has role 'court' - courts cannot join matches
+    const user = await User.findById(req.user.id);
+    if (user && user.role === 'court') {
+      return res.status(403).json({ message: 'Tereni ne mogu da se pridruže meču' });
+    }
     
     // Check if registration deadline has passed
     if (new Date() > match.registrationDeadline) {
@@ -208,7 +218,16 @@ function matchesRoutesFactory(io) {
     }
     
     const already = match.players.some((p) => p.toString() === req.user.id);
-    if (!already) match.players.push(req.user.id);
+    if (!already) {
+      match.players.push(req.user.id);
+      
+      // If player had cancelled before, remove the cancellation record
+      if (match.playerCancellations && match.playerCancellations.length > 0) {
+        match.playerCancellations = match.playerCancellations.filter(
+          c => c.playerId.toString() !== req.user.id.toString()
+        );
+      }
+    }
     if (match.players.length >= match.playersNeeded) {
       match.status = 'full';
       // Ako je meč pun, automatski postavi courtApproval na 'approved' (rezervisano) ako je bio 'pending'
@@ -221,7 +240,8 @@ function matchesRoutesFactory(io) {
     const populated = await Match.findById(match._id)
       .populate('fieldId')
       .populate('players', 'name')
-      .populate('createdBy', 'name');
+      .populate('createdBy', 'name')
+      .populate('playerCancellations.playerId', 'name');
 
     // Check if populated match has valid fieldId
     if (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng) {
@@ -230,6 +250,106 @@ function matchesRoutesFactory(io) {
 
     io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
     res.json(populated);
+  });
+
+  router.post('/:id/leave', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      
+      // Check if user is registered in the match
+      const playerIndex = match.players.findIndex((p) => p.toString() === req.user.id);
+      if (playerIndex === -1) {
+        return res.status(400).json({ message: 'Niste prijavljeni na ovaj meč' });
+      }
+
+      // Don't allow leaving if you're the creator and match is full/completed
+      if (match.createdBy.toString() === req.user.id && (match.status === 'full' || match.status === 'completed')) {
+        return res.status(400).json({ message: 'Ne možete napustiti meč koji ste kreirali i koji je već rezervisan' });
+      }
+
+      // Remove player from match
+      match.players.splice(playerIndex, 1);
+      
+      // Update match status if it was full
+      if (match.status === 'full') {
+        match.status = 'open';
+      }
+
+      await match.save();
+      const populated = await Match.findById(match._id)
+        .populate('fieldId')
+        .populate('players', 'name')
+        .populate('createdBy', 'name');
+
+      // Check if populated match has valid fieldId
+      if (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng) {
+        return res.status(500).json({ message: 'Teren meča je nevažeći' });
+      }
+
+      io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
+      res.json(populated);
+    } catch (e) {
+      console.error('Leave match error:', e);
+      res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Cancel attendance with comment
+  router.post('/:id/cancel-attendance', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      
+      // Check if user is registered in the match
+      const playerIndex = match.players.findIndex((p) => p.toString() === req.user.id);
+      if (playerIndex === -1) {
+        return res.status(400).json({ message: 'Niste prijavljeni na ovaj meč' });
+      }
+
+      // Don't allow cancelling if you're the creator and match is full/completed
+      if (match.createdBy.toString() === req.user.id && (match.status === 'full' || match.status === 'completed')) {
+        return res.status(400).json({ message: 'Ne možete otkazati dolazak na meč koji ste kreirali i koji je već rezervisan' });
+      }
+
+      const { comment } = req.body;
+
+      // Add cancellation record
+      if (!match.playerCancellations) {
+        match.playerCancellations = [];
+      }
+      match.playerCancellations.push({
+        playerId: req.user.id,
+        comment: comment || '',
+        cancelledAt: new Date()
+      });
+
+      // Remove player from match
+      match.players.splice(playerIndex, 1);
+      
+      // Update match status if it was full
+      if (match.status === 'full') {
+        match.status = 'open';
+      }
+
+      await match.save();
+      const populated = await Match.findById(match._id)
+        .populate('fieldId')
+        .populate('players', 'name')
+        .populate('createdBy', 'name')
+        .populate('playerCancellations.playerId', 'name');
+
+      // Check if populated match has valid fieldId
+      if (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng) {
+        return res.status(500).json({ message: 'Teren meča je nevažeći' });
+      }
+
+      io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
+      res.json(populated);
+    } catch (e) {
+      console.error('Cancel attendance error:', e);
+      res.status(500).json({ message: 'Greška servera' });
+    }
   });
 
   return router;

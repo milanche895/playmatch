@@ -9,6 +9,9 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string, role?: 'player' | 'court') => Promise<void>;
   logout: () => Promise<void>;
+  loginWithGoogle: (role?: 'player' | 'court') => void;
+  loginWithFacebook: (role?: 'player' | 'court') => void;
+  loginWithInstagram: (accessToken: string, role?: 'player' | 'court') => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -18,19 +21,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Load current user on mount
+    // Load current user on mount only if token exists
+    const token = localStorage.getItem('token');
+    if (!token) {
+      // No token, user is not logged in
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    // Token exists, check if it's valid
     api.get('/api/auth/me')
       .then((res) => {
         if (res.data) {
           setUser(res.data);
         } else {
           setUser(null);
+          localStorage.removeItem('token'); // Remove invalid token
         }
       })
       .catch((err) => {
-        // Silently fail if not authenticated - this is expected
+        // Token is invalid or expired
         console.log('Not authenticated or error loading user:', err);
         setUser(null);
+        localStorage.removeItem('token'); // Remove invalid token
       })
       .finally(() => setLoading(false));
   }, []);
@@ -85,8 +99,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }
 
+  function loginWithGoogle(role?: 'player' | 'court') {
+    // Redirect to backend Google OAuth endpoint
+    const envApiUrl = import.meta.env.VITE_API_URL;
+    const backendUrl = envApiUrl && envApiUrl.trim() !== '' 
+      ? envApiUrl 
+      : 'http://localhost:5050';
+    // Pass role as state parameter (Google OAuth supports state parameter)
+    const state = role ? encodeURIComponent(JSON.stringify({ role })) : undefined;
+    const url = state 
+      ? `${backendUrl}/api/auth/google?state=${state}`
+      : `${backendUrl}/api/auth/google`;
+    window.location.href = url;
+  }
+
+  function loginWithFacebook(role?: 'player' | 'court') {
+    // Redirect to backend Facebook OAuth endpoint (redirect flow, works with HTTP in development)
+    const envApiUrl = import.meta.env.VITE_API_URL;
+    const backendUrl = envApiUrl && envApiUrl.trim() !== '' 
+      ? envApiUrl 
+      : 'http://localhost:5050';
+    // Pass role as state parameter
+    const state = role ? encodeURIComponent(JSON.stringify({ role })) : undefined;
+    const url = state 
+      ? `${backendUrl}/api/auth/facebook?state=${state}`
+      : `${backendUrl}/api/auth/facebook`;
+    window.location.href = url;
+  }
+
+  async function loginWithInstagram(accessToken: string, role?: 'player' | 'court') {
+    try {
+      const res = await api.post('/api/auth/instagram', { accessToken, role });
+      if (res.data.token) {
+        localStorage.setItem('token', res.data.token);
+      }
+      const { token, ...userData } = res.data;
+      setUser(userData);
+    } catch (error) {
+      throw error;
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, setUser, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, setUser, login, register, logout, loginWithGoogle, loginWithFacebook, loginWithInstagram }}>
       {children}
     </AuthContext.Provider>
   );

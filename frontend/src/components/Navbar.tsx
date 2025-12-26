@@ -1,30 +1,34 @@
-import { useState } from 'react';
-import { 
-  AppBar, 
-  Toolbar, 
-  Typography, 
-  Button, 
-  Stack, 
-  IconButton, 
-  Drawer, 
-  List, 
-  ListItem, 
-  ListItemButton, 
+import { useState } from "react";
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Stack,
+  IconButton,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
   ListItemText,
   Box,
   useTheme,
-  useMediaQuery
-} from '@mui/material';
-import MenuIcon from '@mui/icons-material/Menu';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+  useMediaQuery,
+} from "@mui/material";
+import MenuIcon from "@mui/icons-material/Menu";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+
+// Import logo
+import playmatchLogo from "../assets/logo2.png";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -32,40 +36,45 @@ export default function Navbar() {
 
   const handleLogout = async () => {
     await logout();
-    navigate('/');
+    navigate("/");
     setMobileOpen(false);
   };
 
   const navItems = [
-    { label: 'Početna', path: '/', show: true },
-    { 
-      label: user?.role === 'court' ? 'Moji Tereni' : 'Kreiraj Meč', 
-      path: user?.role === 'court' ? '/manage-fields' : '/create',
-      show: !!user
+    { label: "Početna", path: "/", show: true },
+    {
+      label: user?.role === "court" ? "Moji Tereni" : "Kreiraj Meč",
+      path: user?.role === "court" ? "/manage-fields" : "/create",
+      show: !!user,
     },
-    { 
-      label: 'Moji Termini', 
-      path: '/moji-termini',
-      show: !!user && user?.role === 'court'
+    {
+      label: "Moji Termini",
+      path: "/moji-termini",
+      show: !!user && user?.role === "court",
     },
-    { label: 'Prijava', path: '/login', show: !user },
-    { label: 'Registracija', path: '/register', show: !user },
+    {
+      label: "Moj Profil",
+      path: "/profil",
+      show: !!user && user?.role === "player",
+    },
+    { label: "Prijava", path: "/login", show: !user },
+    { label: "Registracija", path: "/register", show: !user },
   ];
 
   const drawer = (
-    <Box onClick={handleDrawerToggle} sx={{ textAlign: 'center', pt: 2 }}>
+    <Box onClick={handleDrawerToggle} sx={{ textAlign: "center", pt: 2 }}>
       <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
         PlayMatch Global
       </Typography>
       <List>
         {navItems
-          .filter(item => item.show)
+          .filter((item) => item.show)
           .map((item) => (
             <ListItem key={item.label} disablePadding>
-              <ListItemButton 
-                component={RouterLink} 
+              <ListItemButton
+                component={RouterLink}
                 to={item.path}
-                sx={{ textAlign: 'center' }}
+                sx={{ textAlign: "center" }}
               >
                 <ListItemText primary={item.label} />
               </ListItemButton>
@@ -73,10 +82,7 @@ export default function Navbar() {
           ))}
         {user && (
           <ListItem disablePadding>
-            <ListItemButton 
-              onClick={handleLogout}
-              sx={{ textAlign: 'center' }}
-            >
+            <ListItemButton onClick={handleLogout} sx={{ textAlign: "center" }}>
               <ListItemText primary="Odjavi se" />
             </ListItemButton>
           </ListItem>
@@ -87,124 +93,122 @@ export default function Navbar() {
 
   return (
     <>
-      <AppBar position="static" sx={{ bgcolor: '#2e7d32' }}>
-        <Toolbar sx={{ minHeight: { xs: 48, sm: 64 }, px: { xs: 1, sm: 2 } }}>
-          <IconButton
-            color="inherit"
-            aria-label="open drawer"
-            edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 1, display: { md: 'none' }, p: { xs: 0.75, sm: 1 } }}
-          >
-            <MenuIcon />
-          </IconButton>
-          <Typography 
-            variant="h6" 
-            sx={{ 
-              flexGrow: { xs: 1, md: 0 },
-              mr: { md: 4 },
-              fontWeight: 700,
-              fontSize: { xs: '1rem', sm: '1.25rem' }
-            }} 
-            component={RouterLink} 
-            to="/" 
-            color="inherit" 
-            style={{ textDecoration: 'none' }}
-          >
-            ⚽ PlayMatch
-          </Typography>
-          <Stack 
-            direction="row" 
-            spacing={{ xs: 0.5, sm: 1 }}
-            sx={{ 
-              display: { xs: 'none', md: 'flex' },
-              flexGrow: 1
+      <AppBar position="static" sx={{ bgcolor: "#2e7d32" }}>
+        <Toolbar
+          sx={{
+            minHeight: { xs: 48, sm: 64 },
+            px: { xs: 1, sm: 2 },
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          {/* LOGO LEVO */}
+          <Box
+            component={RouterLink}
+            to="/"
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              textDecoration: "none",
             }}
           >
-            <Button 
-              color="inherit" 
-              component={RouterLink} 
-              to="/"
-              sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
-            >
+            <Box
+              component="img"
+              src={playmatchLogo}
+              alt="PlayMatch logo"
+              sx={{
+                height: 80,
+                width: "auto",
+                cursor: "pointer",
+                mr: 1,
+              }}
+            />
+          </Box>
+
+          {/* Desktop navigacija */}
+          <Stack
+            direction="row"
+            spacing={2}
+            sx={{
+              display: { xs: "none", md: "flex" },
+              alignItems: "center",
+            }}
+          >
+            <Button color="inherit" component={RouterLink} to="/">
               Početna
             </Button>
-            {user?.role === 'court' ? (
+
+            {user?.role === "court" ? (
               <>
-                <Button 
-                  color="inherit" 
-                  component={RouterLink} 
+                <Button
+                  color="inherit"
+                  component={RouterLink}
                   to="/manage-fields"
-                  sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
                 >
                   Moji Tereni
                 </Button>
-                <Button 
-                  color="inherit" 
-                  component={RouterLink} 
+                <Button
+                  color="inherit"
+                  component={RouterLink}
                   to="/moji-termini"
-                  sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
                 >
                   Moji Termini
                 </Button>
               </>
             ) : user ? (
-              <Button 
-                color="inherit" 
-                component={RouterLink} 
-                to="/create"
-                sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
-              >
-                Kreiraj Meč
-              </Button>
+              <>
+                <Button color="inherit" component={RouterLink} to="/create">
+                  Kreiraj Meč
+                </Button>
+                <Button color="inherit" component={RouterLink} to="/profil">
+                  Moj Profil
+                </Button>
+              </>
             ) : null}
-          </Stack>
-          <Stack 
-            direction="row" 
-            spacing={{ xs: 0.5, sm: 1 }}
-            sx={{ display: { xs: 'none', md: 'flex' } }}
-          >
+
             {user ? (
-              <Button 
-                color="inherit" 
-                onClick={handleLogout}
-                sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
-              >
+              <Button color="inherit" onClick={handleLogout}>
                 Odjavi se
               </Button>
             ) : (
               <>
-                <Button 
-                  color="inherit" 
-                  component={RouterLink} 
-                  to="/login"
-                  sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
-                >
+                <Button color="inherit" component={RouterLink} to="/login">
                   Prijava
                 </Button>
-                <Button 
-                  color="inherit" 
-                  component={RouterLink} 
-                  to="/register"
-                  sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, px: { xs: 1, sm: 2 } }}
-                >
+                <Button color="inherit" component={RouterLink} to="/register">
                   Registracija
                 </Button>
               </>
             )}
           </Stack>
+
+          {/* MENU (HAMBURGER) DESNO NA MOBILU */}
+          <IconButton
+            color="inherit"
+            aria-label="open drawer"
+            edge="end"
+            onClick={handleDrawerToggle}
+            sx={{
+              display: { md: "none" },
+              pr: 2, // padding-right
+              mr: 1, // dodatni margin ako želiš da još odmakne
+            }}
+          >
+          <MenuIcon sx={{ fontSize: 32 }} /> 
+          </IconButton>
         </Toolbar>
       </AppBar>
+
+      {/* DRAWER */}
       <Drawer
         variant="temporary"
         open={mobileOpen}
         onClose={handleDrawerToggle}
-        ModalProps={{
-          keepMounted: true, // Better open performance on mobile.
-        }}
+        ModalProps={{ keepMounted: true }}
         sx={{
-          display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 280 },
+          display: { xs: "block", md: "none" },
+          "& .MuiDrawer-paper": { boxSizing: "border-box", width: 280 },
         }}
       >
         {drawer}
@@ -212,5 +216,3 @@ export default function Navbar() {
     </>
   );
 }
-
-

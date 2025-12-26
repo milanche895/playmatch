@@ -5,6 +5,8 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
+const session = require('express-session');
+const passport = require('passport');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const cron = require('node-cron');
@@ -18,6 +20,7 @@ const authRoutes = require('./routes/auth');
 const fieldRoutes = require('./routes/fields');
 const matchRoutesFactory = require('./routes/matches');
 const courtRoutes = require('./routes/courts');
+const playerRoutes = require('./routes/players');
 const Match = require('./models/Match');
 
 const app = express();
@@ -39,6 +42,19 @@ app.set('io', io);
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(cookieParser());
+
+// Session configuration for OAuth
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'dev_session_secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 } // 24 hours
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
 app.use(cors({ 
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps, Postman, etc.)
@@ -52,10 +68,36 @@ app.use(cors({
   credentials: true 
 }));
 
+// Handle Chrome DevTools .well-known requests to avoid CSP warnings
+app.get('/.well-known/*', (req, res) => {
+  // Set CORS headers to allow the request
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+
+// Also handle the specific Chrome DevTools path
+app.get('/.well-known/appspecific/com.chrome.devtools.json', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+
+// Handle OPTIONS preflight for .well-known
+app.options('/.well-known/*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(204).end();
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/fields', fieldRoutes);
 app.use('/api/matches', matchRoutesFactory(io));
 app.use('/api/courts', courtRoutes);
+app.use('/api/players', playerRoutes);
 
 io.on('connection', (socket) => {
   socket.on('join_match_room', (matchId) => { if (matchId) socket.join(`match:${matchId}`); });

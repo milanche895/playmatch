@@ -1,12 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Stack, Typography, Button, Chip, Paper } from '@mui/material';
+import {
+  Stack,
+  Typography,
+  Button,
+  Chip,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Box,
+  Divider
+} from '@mui/material';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import CancelIcon from '@mui/icons-material/Cancel';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import api from '../lib/api';
 import { Match } from '../types';
 import { socket } from '../lib/socket';
+import { useAuth } from '../context/AuthContext';
 
 // Fix default Leaflet icon URLs
 // @ts-ignore
@@ -19,7 +34,11 @@ L.Icon.Default.mergeOptions({
 
 export default function MatchDetails() {
   const { id } = useParams();
+  const { user } = useAuth();
   const [match, setMatch] = useState<Match | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelComment, setCancelComment] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -40,10 +59,20 @@ export default function MatchDetails() {
   }, [id]);
 
   const canJoin = useMemo(() => {
-    if (!match) return false;
+    if (!match || !user) return false;
     const deadlinePassed = new Date() > new Date(match.registrationDeadline);
-    return match.status !== 'full' && match.status !== 'failed' && !deadlinePassed;
-  }, [match]);
+    const isAlreadyJoined = match.players.some(p => p._id === user._id);
+    return !isAlreadyJoined && match.status !== 'full' && match.status !== 'failed' && !deadlinePassed;
+  }, [match, user]);
+
+  const canLeave = useMemo(() => {
+    if (!match || !user) return false;
+    const isJoined = match.players.some(p => p._id === user._id);
+    const isCreator = match.createdBy._id === user._id;
+    const deadlinePassed = new Date() > new Date(match.registrationDeadline);
+    // Can leave if joined, not the creator (or creator but match not full/completed), and deadline hasn't passed
+    return isJoined && (!isCreator || (match.status !== 'full' && match.status !== 'completed')) && !deadlinePassed;
+  }, [match, user]);
 
   async function join() {
     if (!id) return;
@@ -56,6 +85,36 @@ export default function MatchDetails() {
         // Reload match to get updated status
         api.get(`/api/matches/${id}`).then((res) => setMatch(res.data));
       }
+    }
+  }
+
+  function handleOpenCancelDialog() {
+    setCancelDialogOpen(true);
+    setCancelComment('');
+  }
+
+  function handleCloseCancelDialog() {
+    setCancelDialogOpen(false);
+    setCancelComment('');
+  }
+
+  async function handleCancelAttendance() {
+    if (!id) return;
+    try {
+      setCancelling(true);
+      const res = await api.post(`/api/matches/${id}/cancel-attendance`, {
+        comment: cancelComment.trim()
+      });
+      setMatch(res.data);
+      handleCloseCancelDialog();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Neuspešno otkazivanje dolaska');
+      if (id) {
+        // Reload match to get updated status
+        api.get(`/api/matches/${id}`).then((res) => setMatch(res.data));
+      }
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -144,6 +203,34 @@ export default function MatchDetails() {
           />
         ))}
       </Stack>
+      
+      {/* Show cancellations if any */}
+      {match.playerCancellations && match.playerCancellations.length > 0 && (
+        <Box>
+          <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600, mt: 2 }}>
+            Otkazani dolasci
+          </Typography>
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            {match.playerCancellations.map((cancellation, index) => (
+              <Paper key={index} elevation={1} sx={{ p: 2 }}>
+                <Stack spacing={0.5}>
+                  <Typography variant="body2" fontWeight="bold">
+                    {typeof cancellation.playerId === 'object' ? cancellation.playerId.name : 'Nepoznat korisnik'}
+                  </Typography>
+                  {cancellation.comment && (
+                    <Typography variant="body2" color="text.secondary">
+                      {cancellation.comment}
+                    </Typography>
+                  )}
+                  <Typography variant="caption" color="text.secondary">
+                    {formatDateTime(cancellation.cancelledAt)}
+                  </Typography>
+                </Stack>
+              </Paper>
+            ))}
+          </Stack>
+        </Box>
+      )}
       {match.status === 'failed' ? (
         <Typography variant="body1" color="error" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
           Ovaj meč nije uspeo - nije bilo dovoljno igrača do roka za prijavu.
@@ -152,10 +239,25 @@ export default function MatchDetails() {
         <Typography variant="body1" color="warning.main" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
           Rok za prijavu je istekao. Ne možete se pridružiti ovom meču.
         </Typography>
-      ) : (
+      ) : canLeave ? (
+        <Button 
+          variant="outlined" 
+          color="error"
+          onClick={handleOpenCancelDialog}
+          fullWidth
+          size="large"
+          startIcon={<CancelIcon />}
+          sx={{ 
+            fontSize: { xs: '1rem', sm: '1.125rem' },
+            py: { xs: 1.25, sm: 1.5 },
+            fontWeight: 600
+          }}
+        >
+          Otkaži dolazak
+        </Button>
+      ) : canJoin ? (
         <Button 
           variant="contained" 
-          disabled={!canJoin} 
           onClick={join}
           fullWidth
           size="large"
@@ -167,7 +269,41 @@ export default function MatchDetails() {
         >
           Pridruži se meču
         </Button>
-      )}
+      ) : null}
+
+      {/* Cancel Attendance Dialog */}
+      <Dialog open={cancelDialogOpen} onClose={handleCloseCancelDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Otkaži dolazak na meč</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Da li ste sigurni da želite da otkažete dolazak na ovaj meč? (Opcionalno) dodajte komentar:
+            </Typography>
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Razlog otkazivanja (opciono)"
+              value={cancelComment}
+              onChange={(e) => setCancelComment(e.target.value)}
+              placeholder="Npr. Ne mogu da dođem zbog obaveza..."
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCancelDialog} disabled={cancelling}>
+            Odustani
+          </Button>
+          <Button
+            onClick={handleCancelAttendance}
+            variant="contained"
+            color="error"
+            disabled={cancelling}
+          >
+            {cancelling ? 'Otkazivanje...' : 'Otkaži dolazak'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

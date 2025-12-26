@@ -17,7 +17,13 @@ const matchSchema = new mongoose.Schema(
     },
     courtApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     courtApprovedAt: { type: Date },
-    description: { type: String } // Opis rezervacije (npr. za koga je rezervisan termin)
+    description: { type: String }, // Opis rezervacije (npr. za koga je rezervisan termin)
+    // Player cancellations - track when players cancel their attendance with comments
+    playerCancellations: [{
+      playerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      comment: { type: String, default: '' },
+      cancelledAt: { type: Date, default: Date.now }
+    }]
   },
   { timestamps: true }
 );

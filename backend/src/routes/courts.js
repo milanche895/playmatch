@@ -219,7 +219,7 @@ router.put('/default-deadline', auth(true), requireCourt, async (req, res) => {
 // Get all appointments for all fields owned by court
 router.get('/appointments', auth(true), requireCourt, async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, month, year } = req.query;
     
     // Get all fields owned by this court
     const fields = await Field.find({ courtOwner: req.user.id });
@@ -228,18 +228,19 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
     if (fieldIds.length === 0) {
       return res.json({
         reserved: [],
+        pending: [],
         free: [],
         fields: []
       });
     }
     
-    // Get today's date range (start and end of today)
+    // Get today's date range (start and end of today) - for pending and free slots
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayEnd = new Date(today);
     todayEnd.setHours(23, 59, 59, 999);
     
-    // Get all matches for today
+    // Get all matches for today (for pending and free slots)
     const todayMatches = await Match.find({
       fieldId: { $in: fieldIds },
       dateTime: { $gte: today, $lte: todayEnd }
@@ -249,12 +250,24 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
       .populate('createdBy', 'name')
       .sort({ dateTime: 1 });
     
-    // Rezervisani termini za danas: approved + (open, full ili completed)
-    const reserved = todayMatches.filter(m => 
-      m.courtApproval === 'approved' && 
-      m.status !== 'otkazano' && 
-      m.status !== 'failed' &&
-      (m.status === 'open' || m.status === 'full' || m.status === 'completed')
+    // Rezervisani termini: svi full termini koji su approved i NISU završeni (completed)
+    // Uzimamo SVE termine bez obzira na datum - samo oni koji još nisu završeni
+    const allReservedMatches = await Match.find({
+      fieldId: { $in: fieldIds },
+      courtApproval: 'approved',
+      status: 'full' // 'full' status znači da termin nije završen (completed)
+    })
+      .populate('fieldId', 'name sport')
+      .populate('players', 'name')
+      .populate('createdBy', 'name')
+      .sort({ dateTime: 1 });
+    
+    const reserved = allReservedMatches;
+    
+    // Termini na čekanju: pending approval (samo za danas)
+    const pending = todayMatches.filter(m => 
+      m.courtApproval === 'pending' && 
+      m.status !== 'otkazano'
     );
     
     // For free slots calculation, we need all matches in a wider range
@@ -306,10 +319,11 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
         while (slotTime < dayEnd) {
           const slotEnd = new Date(slotTime.getTime() + matchDuration);
           
-          // Check if this slot overlaps with any existing match (approved or pending)
-          // Exclude only cancelled/rejected matches
+          // Check if this slot overlaps with any existing match
+          // Exclude cancelled/rejected matches (they become free again)
+          // Exclude pending matches (they are in pending tab, not free)
           const hasOverlap = fieldMatches.some(match => {
-            // Skip cancelled or rejected matches
+            // Skip cancelled or rejected matches - they become free again
             if (match.status === 'otkazano' || match.courtApproval === 'rejected') {
               return false;
             }
@@ -402,8 +416,53 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
       completedTotalRevenue += price;
     });
     
+    // Calculate monthly statistics
+    // Default to current month if not specified
+    const selectedMonth = month ? parseInt(month) : now.getMonth() + 1; // 1-12
+    const selectedYear = year ? parseInt(year) : now.getFullYear();
+    
+    // Get start and end of selected month
+    const monthStart = new Date(selectedYear, selectedMonth - 1, 1);
+    monthStart.setHours(0, 0, 0, 0);
+    
+    const monthEnd = new Date(selectedYear, selectedMonth, 0); // Last day of month
+    monthEnd.setHours(23, 59, 59, 999);
+    
+    // Get all matches for selected month
+    const monthMatches = await Match.find({
+      fieldId: { $in: fieldIds },
+      dateTime: { $gte: monthStart, $lte: monthEnd }
+    })
+      .populate('fieldId', 'name sport price')
+      .populate('players', 'name')
+      .populate('createdBy', 'name')
+      .sort({ dateTime: 1 });
+    
+    // Filter completed matches for the month
+    const monthlyCompletedMatches = monthMatches.filter(m => 
+      m.status === 'completed' && 
+      m.courtApproval === 'approved' &&
+      m.status !== 'otkazano'
+    );
+    
+    // Filter paid matches for the month
+    const monthlyPaidMatches = monthMatches.filter(m => 
+      m.status === 'completed' && 
+      m.courtApproval === 'approved' &&
+      m.status !== 'otkazano'
+    );
+    
+    // Calculate total revenue for monthly paid matches
+    let monthlyTotalRevenue = 0;
+    monthlyPaidMatches.forEach(match => {
+      const field = match.fieldId;
+      const price = field.price || 0;
+      monthlyTotalRevenue += price;
+    });
+    
     res.json({
       reserved,
+      pending,
       free,
       weekly: {
         matches: weekMatches,
@@ -412,6 +471,16 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
           paid: paidMatches.length,
           totalRevenue: totalRevenue
         }
+      },
+      monthly: {
+        matches: monthMatches,
+        stats: {
+          completed: monthlyCompletedMatches.length,
+          paid: monthlyPaidMatches.length,
+          totalRevenue: monthlyTotalRevenue
+        },
+        month: selectedMonth,
+        year: selectedYear
       },
       completed: completedMatches,
       completedStats: {

@@ -7,8 +7,10 @@ import CreateMatch from './pages/CreateMatch';
 import MatchDetails from './pages/MatchDetails';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import AuthCallback from './pages/AuthCallback';
 import ManageFields from './pages/ManageFields';
 import MojTermine from './pages/MojTermine';
+import PlayerProfile from './pages/PlayerProfile';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -72,8 +74,17 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/profil"
+            element={
+              <ProtectedRoute>
+                <PlayerProfile />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
         </Routes>
       </Container>
     </>

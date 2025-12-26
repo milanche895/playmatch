@@ -1,0 +1,559 @@
+import { useState, useEffect } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  Stack,
+  Grid,
+  Avatar,
+  Chip,
+  Divider,
+  CircularProgress,
+  Alert,
+  Paper
+} from '@mui/material';
+import {
+  Edit as EditIcon,
+  Save as SaveIcon,
+  Cancel as CancelIcon,
+  SportsSoccer as SportsIcon,
+  EmojiEvents as TrophyIcon,
+  EventAvailable as EventIcon,
+  CancelPresentation as CancelIcon2,
+  TrendingUp as TrendingUpIcon,
+  Person as PersonIcon
+} from '@mui/icons-material';
+import api from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import { User, PlayerAnalytics } from '../types';
+
+export default function PlayerProfile() {
+  const { user: currentUser } = useAuth();
+  const [user, setUser] = useState<User | null>(null);
+  const [analytics, setAnalytics] = useState<PlayerAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const [formData, setFormData] = useState({
+    name: '',
+    bio: '',
+    skills: '',
+    phone: '',
+    location: '',
+    preferredSports: [] as string[],
+    experience: 'beginner' as 'beginner' | 'intermediate' | 'advanced' | 'professional',
+    avatarUrl: ''
+  });
+
+  useEffect(() => {
+    loadProfile();
+    loadAnalytics();
+  }, []);
+
+  async function loadProfile() {
+    try {
+      setLoading(true);
+      const res = await api.get('/api/players/profile');
+      setUser(res.data);
+      setFormData({
+        name: res.data.name || '',
+        bio: res.data.bio || '',
+        skills: res.data.skills || '',
+        phone: res.data.phone || '',
+        location: res.data.location || '',
+        preferredSports: res.data.preferredSports || [],
+        experience: res.data.experience || 'beginner',
+        avatarUrl: res.data.avatarUrl || ''
+      });
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Greška pri učitavanju profila');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadAnalytics() {
+    try {
+      const res = await api.get('/api/players/analytics');
+      setAnalytics(res.data);
+    } catch (err: any) {
+      console.error('Analytics error:', err);
+    }
+  }
+
+  async function handleSave() {
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+      
+      const res = await api.put('/api/players/profile', formData);
+      setUser(res.data);
+      setEditing(false);
+      setSuccess('Profil je uspešno ažuriran!');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Greška pri čuvanju profila');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancel() {
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        bio: user.bio || '',
+        skills: user.skills || '',
+        phone: user.phone || '',
+        location: user.location || '',
+        preferredSports: user.preferredSports || [],
+        experience: user.experience || 'beginner',
+        avatarUrl: user.avatarUrl || ''
+      });
+    }
+    setEditing(false);
+    setError(null);
+  }
+
+  function handleAddSport() {
+    const sport = prompt('Unesite naziv sporta:');
+    if (sport && sport.trim() && !formData.preferredSports.includes(sport.trim())) {
+      setFormData({
+        ...formData,
+        preferredSports: [...formData.preferredSports, sport.trim()]
+      });
+    }
+  }
+
+  function handleRemoveSport(sport: string) {
+    setFormData({
+      ...formData,
+      preferredSports: formData.preferredSports.filter(s => s !== sport)
+    });
+  }
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Alert severity="error">Korisnik nije pronađen</Alert>
+    );
+  }
+
+  const experienceLabels: Record<string, string> = {
+    beginner: 'Početnik',
+    intermediate: 'Srednji',
+    advanced: 'Napredni',
+    professional: 'Profesionalac'
+  };
+
+  return (
+    <Stack spacing={3}>
+      {/* Header */}
+      <Box display="flex" justifyContent="space-between" alignItems="center">
+        <Typography variant="h4" component="h1">
+          Moj Profil
+        </Typography>
+        {!editing && (
+          <Button
+            variant="contained"
+            startIcon={<EditIcon />}
+            onClick={() => setEditing(true)}
+          >
+            Izmeni Profil
+          </Button>
+        )}
+      </Box>
+
+      {error && (
+        <Alert severity="error" onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
+
+      {success && (
+        <Alert severity="success" onClose={() => setSuccess(null)}>
+          {success}
+        </Alert>
+      )}
+
+      <Grid container spacing={3}>
+        {/* Profile Information */}
+        <Grid item xs={12} md={8}>
+          <Card>
+            <CardContent>
+              <Stack spacing={3}>
+                {/* Avatar and Basic Info */}
+                <Box display="flex" gap={3} alignItems="flex-start">
+                  <Avatar
+                    src={editing ? formData.avatarUrl : user.avatarUrl}
+                    sx={{ width: 100, height: 100 }}
+                  >
+                    {user.name?.charAt(0).toUpperCase()}
+                  </Avatar>
+                  <Box flex={1}>
+                    {editing ? (
+                      <TextField
+                        fullWidth
+                        label="URL avatara"
+                        value={formData.avatarUrl}
+                        onChange={(e) => setFormData({ ...formData, avatarUrl: e.target.value })}
+                        margin="normal"
+                        size="small"
+                      />
+                    ) : null}
+                  </Box>
+                </Box>
+
+                {/* Name */}
+                {editing ? (
+                  <TextField
+                    fullWidth
+                    label="Ime"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    required
+                  />
+                ) : (
+                  <Typography variant="h5">{user.name}</Typography>
+                )}
+
+                {/* Email (read-only) */}
+                <TextField
+                  fullWidth
+                  label="Email"
+                  value={user.email}
+                  disabled
+                  variant="outlined"
+                />
+
+                {/* Bio */}
+                {editing ? (
+                  <TextField
+                    fullWidth
+                    label="Biografija"
+                    value={formData.bio}
+                    onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                    multiline
+                    rows={4}
+                    placeholder="Napišite nešto o sebi..."
+                  />
+                ) : (
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Biografija
+                    </Typography>
+                    <Typography variant="body1">
+                      {user.bio || 'Nema biografije'}
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Skills */}
+                {editing ? (
+                  <TextField
+                    fullWidth
+                    label="Veštine"
+                    value={formData.skills}
+                    onChange={(e) => setFormData({ ...formData, skills: e.target.value })}
+                    multiline
+                    rows={2}
+                    placeholder="Opisite svoje veštine..."
+                  />
+                ) : (
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Veštine
+                    </Typography>
+                    <Typography variant="body1">
+                      {user.skills || 'Nisu navedene veštine'}
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Phone */}
+                {editing ? (
+                  <TextField
+                    fullWidth
+                    label="Telefon"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  />
+                ) : (
+                  user.phone && (
+                    <Box>
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        Telefon
+                      </Typography>
+                      <Typography variant="body1">{user.phone}</Typography>
+                    </Box>
+                  )
+                )}
+
+                {/* Location */}
+                {editing ? (
+                  <TextField
+                    fullWidth
+                    label="Lokacija"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  />
+                ) : (
+                  user.location && (
+                    <Box>
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        Lokacija
+                      </Typography>
+                      <Typography variant="body1">{user.location}</Typography>
+                    </Box>
+                  )
+                )}
+
+                {/* Experience */}
+                {editing ? (
+                  <TextField
+                    fullWidth
+                    select
+                    label="Nivo iskustva"
+                    value={formData.experience}
+                    onChange={(e) => setFormData({ ...formData, experience: e.target.value as any })}
+                    SelectProps={{ native: true }}
+                  >
+                    <option value="beginner">Početnik</option>
+                    <option value="intermediate">Srednji</option>
+                    <option value="advanced">Napredni</option>
+                    <option value="professional">Profesionalac</option>
+                  </TextField>
+                ) : (
+                  <Box>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Nivo iskustva
+                    </Typography>
+                    <Chip
+                      label={experienceLabels[user.experience || 'beginner']}
+                      color="primary"
+                      variant="outlined"
+                    />
+                  </Box>
+                )}
+
+                {/* Preferred Sports */}
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    Omiljeni sportovi
+                  </Typography>
+                  {editing ? (
+                    <Stack spacing={1}>
+                      <Box display="flex" gap={1} flexWrap="wrap">
+                        {formData.preferredSports.map((sport) => (
+                          <Chip
+                            key={sport}
+                            label={sport}
+                            onDelete={() => handleRemoveSport(sport)}
+                            color="primary"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={handleAddSport}
+                      >
+                        + Dodaj sport
+                      </Button>
+                    </Stack>
+                  ) : (
+                    <Box display="flex" gap={1} flexWrap="wrap">
+                      {user.preferredSports && user.preferredSports.length > 0 ? (
+                        user.preferredSports.map((sport) => (
+                          <Chip key={sport} label={sport} color="primary" variant="outlined" />
+                        ))
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          Nisu navedeni omiljeni sportovi
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+                </Box>
+
+                {/* Edit Actions */}
+                {editing && (
+                  <Stack direction="row" spacing={2} justifyContent="flex-end">
+                    <Button
+                      variant="outlined"
+                      startIcon={<CancelIcon />}
+                      onClick={handleCancel}
+                      disabled={saving}
+                    >
+                      Otkaži
+                    </Button>
+                    <Button
+                      variant="contained"
+                      startIcon={<SaveIcon />}
+                      onClick={handleSave}
+                      disabled={saving}
+                    >
+                      {saving ? 'Čuvanje...' : 'Sačuvaj'}
+                    </Button>
+                  </Stack>
+                )}
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Analytics */}
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Statistika
+              </Typography>
+              <Divider sx={{ my: 2 }} />
+              {analytics ? (
+                <Stack spacing={2}>
+                  {/* Reliability Score */}
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 2,
+                      bgcolor: analytics.reliabilityScore >= 80 ? 'success.light' : analytics.reliabilityScore >= 60 ? 'warning.light' : 'error.light',
+                      color: 'white'
+                    }}
+                  >
+                    <Box display="flex" alignItems="center" gap={1} mb={1}>
+                      <TrendingUpIcon />
+                      <Typography variant="subtitle2" fontWeight="bold">
+                        Pouzdanost
+                      </Typography>
+                    </Box>
+                    <Typography variant="h4" fontWeight="bold">
+                      {analytics.reliabilityScore}%
+                    </Typography>
+                    <Typography variant="caption">
+                      {analytics.reliabilityScore >= 80
+                        ? 'Odličan igrač'
+                        : analytics.reliabilityScore >= 60
+                        ? 'Dobar igrač'
+                        : 'Treba poboljšanje'}
+                    </Typography>
+                  </Paper>
+
+                  {/* Show-up Rate */}
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 2,
+                      bgcolor: 'primary.light',
+                      color: 'white'
+                    }}
+                  >
+                    <Box display="flex" alignItems="center" gap={1} mb={1}>
+                      <PersonIcon />
+                      <Typography variant="subtitle2" fontWeight="bold">
+                        Stopa odaziva
+                      </Typography>
+                    </Box>
+                    <Typography variant="h4" fontWeight="bold">
+                      {analytics.showUpRate}%
+                    </Typography>
+                    <Typography variant="caption">
+                      Prijavljeni mečevi / Odigrani mečevi
+                    </Typography>
+                  </Paper>
+
+                  <Divider />
+
+                  {/* Statistics */}
+                  <Box>
+                    <Stack spacing={1.5}>
+                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <EventIcon color="primary" />
+                          <Typography variant="body2">Ukupno prijavljeno</Typography>
+                        </Box>
+                        <Typography variant="h6" fontWeight="bold">
+                          {analytics.totalRegistered}
+                        </Typography>
+                      </Box>
+
+                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <TrophyIcon color="success" />
+                          <Typography variant="body2">Odigrano</Typography>
+                        </Box>
+                        <Typography variant="h6" fontWeight="bold" color="success.main">
+                          {analytics.totalCompleted}
+                        </Typography>
+                      </Box>
+
+                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <SportsIcon color="info" />
+                          <Typography variant="body2">Rezervisano</Typography>
+                        </Box>
+                        <Typography variant="h6" fontWeight="bold" color="info.main">
+                          {analytics.totalReserved}
+                        </Typography>
+                      </Box>
+
+                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <CancelIcon2 color="error" />
+                          <Typography variant="body2">Otkazano</Typography>
+                        </Box>
+                        <Typography variant="h6" fontWeight="bold" color="error.main">
+                          {analytics.totalCancelled}
+                        </Typography>
+                      </Box>
+
+                      {analytics.totalCancelledWithComment > 0 && (
+                        <Box display="flex" justifyContent="space-between" alignItems="center">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <CancelIcon2 color="warning" />
+                            <Typography variant="body2">Otkazano sa komentarom</Typography>
+                          </Box>
+                          <Typography variant="h6" fontWeight="bold" color="warning.main">
+                            {analytics.totalCancelledWithComment}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <SportsIcon color="secondary" />
+                          <Typography variant="body2">Kreirano</Typography>
+                        </Box>
+                        <Typography variant="h6" fontWeight="bold" color="secondary.main">
+                          {analytics.totalCreated}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Box>
+                </Stack>
+              ) : (
+                <Box display="flex" justifyContent="center" p={2}>
+                  <CircularProgress size={24} />
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Stack>
+  );
+}

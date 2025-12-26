@@ -9,6 +9,26 @@ export type User = {
   };
   defaultPrice?: number;
   defaultRegistrationDeadlineHours?: number;
+  // Player-specific fields
+  bio?: string;
+  skills?: string;
+  phone?: string;
+  location?: string;
+  preferredSports?: string[];
+  experience?: 'beginner' | 'intermediate' | 'advanced' | 'professional';
+};
+
+export type PlayerAnalytics = {
+  totalRegistered: number;
+  totalCompleted: number;
+  totalCancelled: number;
+  totalReserved: number;
+  totalCreated: number;
+  reliabilityScore: number;
+  showUpRate: number;
+  matchesPlayerLeft: number;
+  totalCancelledWithComment: number;
+  cancellationsWithCommentText: number;
 };
 
 export type Field = {
@@ -25,6 +45,12 @@ export type Field = {
   };
 };
 
+export type PlayerCancellation = {
+  playerId: Pick<User, '_id' | 'name'>;
+  comment: string;
+  cancelledAt: string;
+};
+
 export type Match = {
   _id: string;
   sport: string;
@@ -39,6 +65,7 @@ export type Match = {
   courtApprovedBy?: string;
   courtApprovedAt?: string;
   description?: string; // Opis rezervacije
+  playerCancellations?: PlayerCancellation[];
 };
 
 

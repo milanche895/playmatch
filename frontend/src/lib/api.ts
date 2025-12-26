@@ -1,9 +1,9 @@
 import axios from 'axios';
 
-// In development, use empty string to use Vite proxy (better for cookies)
-// In production, use explicit URL or environment variable
+// Always use explicit backend URL (port 5050), not Vite proxy
+// This ensures all API calls go directly to the backend
 const api = axios.create({ 
-  baseURL: import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:5050'),
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5050',
   withCredentials: true,
   timeout: 10000
 });
