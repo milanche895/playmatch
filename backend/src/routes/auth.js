@@ -317,23 +317,25 @@ router.get('/google/callback',
       // Get role from session if available (only set during registration)
       const role = req.session?.oauthRole;
       delete req.session?.oauthRole;
+      console.log(1);
       
       // Only update role for new users (registration)
       // Check if user was just created (has default role 'player' and role exists in session)
       // OR check if user was created within last 5 seconds (new user)
       const userCreatedRecently = (Date.now() - new Date(user.createdAt).getTime()) < 5000;
       const hasDefaultRole = user.role === 'player' || !user.role;
-      
+      console.log(2);
       if (role && (role === 'player' || role === 'court') && (userCreatedRecently || hasDefaultRole)) {
         // This is a new user (registration), set the role
         user.role = role;
         await user.save();
       }
+      console.log(3);
       // If role doesn't exist in session or user is not new, keep existing role (login)
       
       const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
       setTokenCookie(res, user._id.toString(), req);
-      
+      console.log(4);
       // Redirect to frontend with token
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
       console.log(frontendUrl)
@@ -344,10 +346,14 @@ router.get('/google/callback',
         avatarUrl: user.avatarUrl,
         role: user.role
       }))}`);
+      console.log(5);
     } catch (error) {
       console.error('Google OAuth callback error:', error);
+      console.log(enc);
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+      console.log(6);
       res.redirect(`${frontendUrl}/login?error=oauth_failed`);
+      console.log(7);
     }
   }
 );

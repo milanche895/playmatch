@@ -80,7 +80,6 @@ export default function Home() {
               position.coords.longitude
             ];
             setUserLocation(location);
-            console.log('User location obtained:', location);
           } else {
             console.warn('Geolocation returned null coordinates');
             setLocationError('Nije moguće dobiti vašu lokaciju. Prikazuju se svi mečevi.');
