@@ -26,9 +26,9 @@ passport.deserializeUser(async (id, done) => {
 // Configure Google OAuth Strategy
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   const backendUrl = process.env.BACKEND_URL || process.env.API_URL || 'http://localhost:5050';
-  console.log(backendUrl);
+  console.log("1"+backendUrl);
   const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${backendUrl}/api/auth/google/callback`;
-  console.log(callbackUrl);
+  console.log("2"+callbackUrl);
   passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -332,7 +332,8 @@ router.get('/google/callback',
       setTokenCookie(res, user._id.toString(), req);
       console.log(4);
       // Redirect to frontend with token
-      const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+      const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
+      console.log("3"+frontendUrl);
       res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
@@ -344,7 +345,7 @@ router.get('/google/callback',
     } catch (error) {
       console.error('Google OAuth callback error:', error);
       console.log(enc);
-      const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+      const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
       console.log(6);
       res.redirect(`${frontendUrl}/login?error=oauth_failed`);
       console.log(7);
