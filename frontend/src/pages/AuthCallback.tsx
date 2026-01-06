@@ -6,9 +6,11 @@ import api from '../lib/api';
 
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
+  console.log("1"+searchParams);
   const navigate = useNavigate();
+  console.log("2"+navigate);
   const { setUser } = useAuth();
-
+  console.log("3"+setUser);
   useEffect(() => {
     const token = searchParams.get('token');
     const userParam = searchParams.get('user');
