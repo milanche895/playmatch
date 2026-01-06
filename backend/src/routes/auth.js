@@ -173,23 +173,26 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
     }
   }));
 }
+function setTokenCookie(res, userId) {
+  const token = jwt.sign(
+    { id: userId },
+    process.env.JWT_SECRET || 'dev_secret',
+    { expiresIn: '7d' }
+  );
 
-function setTokenCookie(res, userId, req = null) {
-  const token = jwt.sign({ id: userId }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
-  // Use secure cookies in production (HTTPS), but allow insecure in development
-  // On Render, we're behind a proxy, so check x-forwarded-proto header
-  const isHttps = req && (req.secure || req.headers['x-forwarded-proto'] === 'https');
   const isProduction = process.env.NODE_ENV === 'production';
-  const useSecure = isProduction && isHttps;
-  
-  res.cookie('token', token, { 
-    httpOnly: true, 
-    sameSite: 'lax', 
-    secure: useSecure, // Secure cookies only in production with HTTPS
+
+  res.cookie('token', token, {
+    httpOnly: true,
+    path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
-    path: '/'
+
+    // ključ:
+    sameSite: isProduction ? 'none' : 'lax',
+    secure: isProduction, // u produkciji UVEK true
   });
 }
+
 
 router.post('/register', async (req, res) => {
   try {
