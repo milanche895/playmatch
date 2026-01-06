@@ -26,8 +26,9 @@ passport.deserializeUser(async (id, done) => {
 // Configure Google OAuth Strategy
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   const backendUrl = process.env.BACKEND_URL || process.env.API_URL || 'http://localhost:5050';
+  console.log(backendUrl);
   const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${backendUrl}/api/auth/google/callback`;
-  
+  console.log(callbackUrl);
   passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -78,7 +79,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         avatarUrl: profile.photos && profile.photos[0] ? profile.photos[0].value : null,
         role: 'player' // Default, will be updated in callback if session has role
       });
-
+      console.log(passport);
       return done(null, user);
     } catch (error) {
       return done(error, null);
@@ -335,6 +336,7 @@ router.get('/google/callback',
       
       // Redirect to frontend with token
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+      console.log(frontendUrl)
       res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
