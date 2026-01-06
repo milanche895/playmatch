@@ -329,7 +329,7 @@ router.get('/google/callback',
       const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
       setTokenCookie(res, user._id.toString(), req);
       // Redirect to frontend with token
-      const frontendUrl = 'http://localhost:3000';
+      const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
       res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
