@@ -6,22 +6,17 @@ import api from '../lib/api';
 
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
-  console.log("1"+searchParams);
   const navigate = useNavigate();
-  console.log("2"+navigate);
   const { setUser } = useAuth();
-  console.log("3"+setUser);
   useEffect(() => {
     const token = searchParams.get('token');
     const userParam = searchParams.get('user');
     const error = searchParams.get('error');
-    console.log("4"+token);
     if (error) {
       // Redirect to login with error
       navigate(`/login?error=${encodeURIComponent(error)}`);
       return;
     }
-    console.log("5"+token && userParam);
     if (token && userParam) {
       try {
         // Save token to localStorage
@@ -30,7 +25,6 @@ export default function AuthCallback() {
         // Parse user data
         const userData = JSON.parse(decodeURIComponent(userParam));
         setUser(userData);
-        console.log("6"+userData);
         // Verify authentication by calling /me endpoint
         api.get('/api/auth/me')
           .then((res) => {

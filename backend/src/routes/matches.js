@@ -39,8 +39,6 @@ function matchesRoutesFactory(io) {
         return res.status(400).json({ message: 'Nedostaju polja' });
       }
       
-      console.log('[CREATE MATCH] Received dateTime:', dateTime, 'Type:', typeof dateTime);
-      
       // Parse dateTime - if it's in YYYY-MM-DDTHH:MM format (no timezone), treat as local time
       // Otherwise parse normally
       let matchDate;
@@ -51,17 +49,14 @@ function matchesRoutesFactory(io) {
         const [year, month, day] = datePart.split('-').map(Number);
         const [hours, minutes] = timePart.split(':').map(Number);
         matchDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
-        console.log('[CREATE MATCH] Parsed as local time:', matchDate.toISOString(), 'Local:', matchDate.toString());
       } else {
         matchDate = new Date(dateTime);
-        console.log('[CREATE MATCH] Parsed date:', matchDate.toISOString(), 'Local:', matchDate.toString());
       }
       
       // Round match time to full hour (set minutes, seconds, milliseconds to 0)
       matchDate.setMinutes(0);
       matchDate.setSeconds(0);
       matchDate.setMilliseconds(0);
-      console.log('[CREATE MATCH] Rounded date:', matchDate.toISOString(), 'Local:', matchDate.toString());
       
       const field = await Field.findById(fieldId);
       if (!field) return res.status(404).json({ message: 'Teren nije pronađen' });

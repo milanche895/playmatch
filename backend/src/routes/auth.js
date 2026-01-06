@@ -26,9 +26,7 @@ passport.deserializeUser(async (id, done) => {
 // Configure Google OAuth Strategy
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   const backendUrl = process.env.BACKEND_URL || process.env.API_URL || 'http://localhost:5050';
-  console.log("1"+backendUrl);
   const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${backendUrl}/api/auth/google/callback`;
-  console.log("2"+callbackUrl);
   passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -271,9 +269,12 @@ router.post('/logout', (req, res) => {
 router.get('/me', async (req, res) => {
   try {
     const token = req.cookies?.token;
+    console.log("1"+token);
     if (!token) return res.status(401).json({ message: 'Niste autentifikovani' });
     const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev_secret');
+    console.log("2"+payload);
     const user = await User.findById(payload.id).select('-password');
+    console.log("3"+user);
     if (!user) return res.status(404).json({ message: 'Korisnik nije pronađen' });
     res.json(user);
   } catch (e) {
@@ -312,28 +313,23 @@ router.get('/google/callback',
       // Get role from session if available (only set during registration)
       const role = req.session?.oauthRole;
       delete req.session?.oauthRole;
-      console.log(1);
       
       // Only update role for new users (registration)
       // Check if user was just created (has default role 'player' and role exists in session)
       // OR check if user was created within last 5 seconds (new user)
       const userCreatedRecently = (Date.now() - new Date(user.createdAt).getTime()) < 5000;
       const hasDefaultRole = user.role === 'player' || !user.role;
-      console.log(2);
       if (role && (role === 'player' || role === 'court') && (userCreatedRecently || hasDefaultRole)) {
         // This is a new user (registration), set the role
         user.role = role;
         await user.save();
       }
-      console.log(3);
       // If role doesn't exist in session or user is not new, keep existing role (login)
       
       const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
       setTokenCookie(res, user._id.toString(), req);
-      console.log(4);
       // Redirect to frontend with token
-      const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
-      console.log("3"+frontendUrl);
+      const frontendUrl = 'http://localhost:3000';
       res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
@@ -341,14 +337,10 @@ router.get('/google/callback',
         avatarUrl: user.avatarUrl,
         role: user.role
       }))}`);
-      console.log(5);
     } catch (error) {
       console.error('Google OAuth callback error:', error);
-      console.log(enc);
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
-      console.log(6);
       res.redirect(`${frontendUrl}/login?error=oauth_failed`);
-      console.log(7);
     }
   }
 );
