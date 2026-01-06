@@ -79,7 +79,6 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         avatarUrl: profile.photos && profile.photos[0] ? profile.photos[0].value : null,
         role: 'player' // Default, will be updated in callback if session has role
       });
-      console.log(passport);
       return done(null, user);
     } catch (error) {
       return done(error, null);
@@ -113,7 +112,6 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
               fields: 'email'
             }
           });
-          console.log('Facebook response:', fbResponse);
           if (fbResponse.data && fbResponse.data.email) {
             email = fbResponse.data.email;
           }
@@ -216,9 +214,6 @@ router.post('/register', async (req, res) => {
     
     // Set cookie before sending response
     setTokenCookie(res, user._id.toString(), req);
-    
-    // Log for debugging
-    console.log('User registered:', user.email, 'Role:', user.role, 'ID:', user._id);
     
     res.json({ 
       _id: user._id, 
@@ -338,7 +333,6 @@ router.get('/google/callback',
       console.log(4);
       // Redirect to frontend with token
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-      console.log(frontendUrl)
       res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,

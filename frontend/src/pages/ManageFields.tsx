@@ -193,7 +193,6 @@ export default function ManageFields() {
             setMarkerPosition(location);
             setLat(location[0].toFixed(6));
             setLng(location[1].toFixed(6));
-            console.log('User location obtained:', location);
           } else {
             console.warn('Geolocation returned null coordinates');
           }

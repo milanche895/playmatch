@@ -71,7 +71,6 @@ export default function CreateMatch() {
     // This preserves the exact hour sent from Home page
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dateTimeString)) {
       const rounded = dateTimeString.replace(/:\d{2}$/, ':00');
-      console.log('roundToFullHour - already formatted:', dateTimeString, '->', rounded);
       return rounded;
     }
     
@@ -91,7 +90,6 @@ export default function CreateMatch() {
     const minutes = String(d.getMinutes()).padStart(2, '0');
     
     const formatted = `${year}-${month}-${day}T${hours}:${minutes}`;
-    console.log('roundToFullHour - parsed:', dateTimeString, '->', formatted, '(local hours:', d.getHours(), ', UTC hours:', d.getUTCHours(), ')');
     return formatted;
   }
 
@@ -127,7 +125,6 @@ export default function CreateMatch() {
         // Extract date part for selectedDate (YYYY-MM-DD format)
         const datePart = parsedDateTime.split('T')[0];
         setSelectedDate(datePart);
-        console.log('Setting dateTime from query:', dateTimeParam, '-> parsed:', parsedDateTime);
       } catch (err) {
         console.error('Invalid dateTime parameter:', err);
       }
@@ -289,7 +286,6 @@ export default function CreateMatch() {
             setMarkerPosition(location);
             setNewFieldLat(location[0].toFixed(6));
             setNewFieldLng(location[1].toFixed(6));
-            console.log('User location obtained:', location);
           } else {
             console.warn('Geolocation returned null coordinates');
           }
@@ -337,7 +333,6 @@ export default function CreateMatch() {
     try {
       // Ensure dateTime is properly formatted before sending
       const dateTimeToSend = roundToFullHour(selectedDateTime);
-      console.log('Submitting match with dateTime:', dateTimeToSend, '(original:', selectedDateTime, ')');
       
       // Backend will calculate registrationDeadline automatically
       const res = await api.post<Match>('/api/matches', { 

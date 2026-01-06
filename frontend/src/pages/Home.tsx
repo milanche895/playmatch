@@ -323,7 +323,6 @@ export default function Home() {
     
     // Return in format without timezone - backend will treat as local time
     const formatted = `${year}-${month}-${day}T${hours}:${minutes}`;
-    console.log('formatDateTimeForURL:', dateTimeString, '->', formatted, '(displayed hour:', date.getHours(), ')');
     return formatted;
   }
 
