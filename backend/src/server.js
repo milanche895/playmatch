@@ -29,7 +29,7 @@ const server = http.createServer(app);
 // Allow both frontend ports (3000 for frontend folder, 5173 for client folder)
 const allowedOrigins = process.env.CLIENT_URL 
   ? [process.env.CLIENT_URL] 
-  : ['http://localhost:3000', 'http://localhost:5173'];
+  : ['http://localhost:3000', 'http://localhost:5173', 'https://playmatch-1.onrender.com'];
 
 const CLIENT_URL = allowedOrigins[0];
 

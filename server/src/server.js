@@ -17,7 +17,7 @@ const matchRoutesFactory = require('./routes/matches');
 const app = express();
 const server = http.createServer(app);
 
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173' || 'https://playmatch-1.onrender.com';
 const io = new Server(server, {
   cors: {
     origin: CLIENT_URL,
