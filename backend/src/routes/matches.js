@@ -3,6 +3,92 @@ const Match = require('../models/Match');
 const Field = require('../models/Field');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
+const { calculateDistance } = require('../utils/notifications');
+const { sendPushNotifications } = require('../utils/pushNotifications');
+
+// Helper function to notify nearby players about a new match
+async function notifyNearbyPlayers(match, field) {
+  try {
+    // Get all players with notifications enabled and valid location
+    const players = await User.find({
+      role: 'player',
+      notificationEnabled: true,
+      'lastKnownLocation.lat': { $exists: true, $ne: null },
+      'lastKnownLocation.lng': { $exists: true, $ne: null },
+      pushSubscription: { $exists: true, $ne: null }
+    });
+
+    if (players.length === 0) {
+      console.log('No players to notify');
+      return;
+    }
+
+    const fieldLat = field.lat;
+    const fieldLng = field.lng;
+    const nearbyPlayers = [];
+    const expiredSubscriptions = [];
+
+    // Filter players by distance
+    for (const player of players) {
+      // Skip if player is the creator
+      if (player._id.toString() === match.createdBy.toString()) {
+        continue;
+      }
+
+      const playerLat = player.lastKnownLocation.lat;
+      const playerLng = player.lastKnownLocation.lng;
+      const radius = player.notificationRadius || 10; // Default 10km
+
+      const distance = calculateDistance(fieldLat, fieldLng, playerLat, playerLng);
+
+      if (distance <= radius && player.pushSubscription) {
+        nearbyPlayers.push(player);
+      }
+    }
+
+    if (nearbyPlayers.length === 0) {
+      console.log('No nearby players to notify');
+      return;
+    }
+
+    // Format match date for notification
+    const matchDate = new Date(match.dateTime);
+    const dateStr = matchDate.toLocaleDateString('sr-RS', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // Prepare notification payload
+    const payload = {
+      title: 'Novi meč u blizini! ⚽',
+      body: `${field.name} - ${dateStr}`,
+      url: `/matches/${match._id}`,
+      matchId: match._id.toString()
+    };
+
+    // Send notifications
+    const subscriptions = nearbyPlayers.map(p => p.pushSubscription);
+    const result = await sendPushNotifications(subscriptions, payload);
+
+    // Remove expired subscriptions
+    if (result.expiredSubscriptions.length > 0) {
+      for (const expiredSub of result.expiredSubscriptions) {
+        await User.updateMany(
+          { 'pushSubscription.endpoint': expiredSub.endpoint },
+          { $unset: { pushSubscription: 1 } }
+        );
+      }
+    }
+
+    console.log(`✅ Sent ${result.success} push notifications, ${result.failed} failed`);
+  } catch (error) {
+    console.error('Error notifying nearby players:', error);
+    throw error;
+  }
+}
 
 function matchesRoutesFactory(io) {
   const router = express.Router();
@@ -173,6 +259,15 @@ function matchesRoutesFactory(io) {
         .populate('players', 'name')
         .populate('createdBy', 'name')
         .populate('playerCancellations.playerId', 'name');
+      
+      // Send push notifications to nearby players
+      try {
+        await notifyNearbyPlayers(match, field);
+      } catch (error) {
+        console.error('Error sending push notifications:', error);
+        // Don't fail match creation if notifications fail
+      }
+      
       res.status(201).json(populated);
     } catch (e) {
       res.status(500).json({ message: 'Greška servera' });

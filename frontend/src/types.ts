@@ -1,3 +1,12 @@
+// Push subscription type
+export interface PushSubscriptionJSON {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
 export type User = { 
   _id: string; 
   name: string; 
@@ -16,6 +25,15 @@ export type User = {
   location?: string;
   preferredSports?: string[];
   experience?: 'beginner' | 'intermediate' | 'advanced' | 'professional';
+  // Notification settings
+  notificationEnabled?: boolean;
+  notificationRadius?: number;
+  lastKnownLocation?: {
+    lat: number;
+    lng: number;
+    updatedAt?: string;
+  };
+  pushSubscription?: PushSubscriptionJSON | null;
 };
 
 export type PlayerAnalytics = {

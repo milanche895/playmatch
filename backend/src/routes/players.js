@@ -48,7 +48,7 @@ router.put('/profile', auth(true), async (req, res) => {
       return res.status(403).json({ message: 'Samo igrači mogu ažurirati profil' });
     }
 
-    const { bio, skills, phone, location, preferredSports, experience, name, avatarUrl } = req.body;
+    const { bio, skills, phone, location, preferredSports, experience, name, avatarUrl, notificationEnabled, notificationRadius } = req.body;
 
     // Update allowed fields
     if (bio !== undefined) user.bio = bio;
@@ -59,6 +59,13 @@ router.put('/profile', auth(true), async (req, res) => {
     if (experience !== undefined) user.experience = experience;
     if (name !== undefined) user.name = name;
     if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
+    if (notificationEnabled !== undefined) user.notificationEnabled = notificationEnabled;
+    if (notificationRadius !== undefined) {
+      const radius = parseFloat(notificationRadius);
+      if (radius >= 0 && radius <= 100) {
+        user.notificationRadius = radius;
+      }
+    }
 
     await user.save();
     const updatedUser = await User.findById(user._id).select('-password');
@@ -259,6 +266,134 @@ router.get('/analytics', auth(true), async (req, res) => {
   } catch (e) {
     console.error('Analytics error:', e);
     res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Update player location (for notifications)
+router.post('/location', auth(true), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+    if (user.role !== 'player') {
+      return res.status(403).json({ message: 'Samo igrači mogu ažurirati lokaciju' });
+    }
+
+    const { lat, lng } = req.body;
+    if (lat === undefined || lng === undefined) {
+      return res.status(400).json({ message: 'Lat i lng su obavezni' });
+    }
+
+    // Use findByIdAndUpdate to avoid triggering unique index validation issues
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        $set: {
+          lastKnownLocation: {
+            lat: parseFloat(lat),
+            lng: parseFloat(lng),
+            updatedAt: new Date()
+          }
+        }
+      },
+      { new: true, runValidators: false }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+
+    res.json({ message: 'Lokacija ažurirana', location: updatedUser.lastKnownLocation });
+  } catch (e) {
+    console.error('Location update error:', e);
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Subscribe to push notifications
+router.post('/push-subscription', auth(true), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+    if (user.role !== 'player') {
+      return res.status(403).json({ message: 'Samo igrači mogu se pretplatiti na notifikacije' });
+    }
+
+    const subscription = req.body;
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ message: 'Nevažeća push subscription' });
+    }
+
+    // Use findByIdAndUpdate to avoid triggering unique index validation issues
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        $set: {
+          pushSubscription: subscription
+        }
+      },
+      { new: true, runValidators: false }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+
+    res.json({ message: 'Push subscription sačuvana' });
+  } catch (e) {
+    console.error('Push subscription error:', e);
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Get VAPID public key
+router.get('/vapid-public-key', (req, res) => {
+  const { getVapidPublicKey } = require('../utils/pushNotifications');
+  const publicKey = getVapidPublicKey();
+  if (!publicKey) {
+    return res.status(500).json({ message: 'VAPID keys nisu konfigurisane' });
+  }
+  res.json({ publicKey });
+});
+
+// Test push notification endpoint (for testing purposes)
+router.post('/test-push', auth(true), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+    
+    if (!user.pushSubscription) {
+      return res.status(400).json({ 
+        message: 'Nema push subscription. Otvori profil stranicu da se pretplatiš.' 
+      });
+    }
+
+    const { sendPushNotification } = require('../utils/pushNotifications');
+    
+    const testPayload = {
+      title: 'Test Push Notifikacija 🧪',
+      body: 'Ovo je test push notifikacija! Ako vidiš ovo, sve radi!',
+      url: '/',
+      icon: '/icons/icon-192.png'
+    };
+
+    await sendPushNotification(user.pushSubscription, testPayload);
+    
+    res.json({ 
+      message: 'Test push notifikacija je poslata!',
+      success: true 
+    });
+  } catch (error) {
+    console.error('Error sending test push:', error);
+    res.status(500).json({ 
+      message: 'Greška pri slanju test push notifikacije',
+      error: error.message 
+    });
   }
 });
 

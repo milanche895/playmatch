@@ -13,7 +13,10 @@ import {
   Divider,
   CircularProgress,
   Alert,
-  Paper
+  Paper,
+  Switch,
+  FormControlLabel,
+  Slider
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -24,7 +27,8 @@ import {
   EventAvailable as EventIcon,
   CancelPresentation as CancelIcon2,
   TrendingUp as TrendingUpIcon,
-  Person as PersonIcon
+  Person as PersonIcon,
+  Notifications as NotificationsIcon
 } from '@mui/icons-material';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -48,7 +52,9 @@ export default function PlayerProfile() {
     location: '',
     preferredSports: [] as string[],
     experience: 'beginner' as 'beginner' | 'intermediate' | 'advanced' | 'professional',
-    avatarUrl: ''
+    avatarUrl: '',
+    notificationEnabled: true,
+    notificationRadius: 10
   });
 
   useEffect(() => {
@@ -69,8 +75,13 @@ export default function PlayerProfile() {
         location: res.data.location || '',
         preferredSports: res.data.preferredSports || [],
         experience: res.data.experience || 'beginner',
-        avatarUrl: res.data.avatarUrl || ''
+        avatarUrl: res.data.avatarUrl || '',
+        notificationEnabled: res.data.notificationEnabled !== undefined ? res.data.notificationEnabled : true,
+        notificationRadius: res.data.notificationRadius || 10
       });
+      
+      // Request location and update on backend
+      requestLocationAndSubscribe();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Greška pri učitavanju profila');
     } finally {
@@ -114,11 +125,118 @@ export default function PlayerProfile() {
         location: user.location || '',
         preferredSports: user.preferredSports || [],
         experience: user.experience || 'beginner',
-        avatarUrl: user.avatarUrl || ''
+        avatarUrl: user.avatarUrl || '',
+        notificationEnabled: user.notificationEnabled !== undefined ? user.notificationEnabled : true,
+        notificationRadius: user.notificationRadius || 10
       });
     }
     setEditing(false);
     setError(null);
+  }
+
+  // Request geolocation and update on backend, also subscribe to push notifications
+  async function requestLocationAndSubscribe() {
+    if (!currentUser || currentUser.role !== 'player') return;
+
+    try {
+      // Request geolocation
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            try {
+              // Update location on backend
+              await api.post('/api/players/location', {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+              });
+            } catch (err) {
+              console.error('Error updating location:', err);
+            }
+          },
+          (error) => {
+            console.error('Geolocation error:', error);
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      }
+
+      // Subscribe to push notifications
+      if ('serviceWorker' in navigator && 'PushManager' in window) {
+        try {
+          // Check current permission status first
+          let permission = Notification.permission;
+          
+          // If permission is default, request it
+          if (permission === 'default') {
+            permission = await Notification.requestPermission();
+          }
+          
+          // If permission is denied, show message and return
+          if (permission !== 'granted') {
+            if (permission === 'denied') {
+              console.warn('⚠️ Notification permission denied. Please enable notifications in browser settings.');
+              // Could show a user-friendly message here
+            } else {
+              console.warn('Notification permission not granted:', permission);
+            }
+            return;
+          }
+          
+          console.log('✅ Notification permission granted');
+
+          // Get VAPID public key
+          const vapidRes = await api.get('/api/players/vapid-public-key');
+          const vapidPublicKey = vapidRes.data.publicKey;
+
+          if (!vapidPublicKey) {
+            console.warn('VAPID public key not available');
+            return;
+          }
+
+          // Register service worker
+          const registration = await navigator.serviceWorker.ready;
+
+          // Check if already subscribed
+          let subscription = await registration.pushManager.getSubscription();
+          
+          // Subscribe to push notifications if not already subscribed
+          if (!subscription) {
+            const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+            subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: applicationServerKey as ArrayBuffer
+            });
+          }
+
+          // Send subscription to backend
+          await api.post('/api/players/push-subscription', subscription);
+          console.log('Push subscription successful');
+        } catch (err: any) {
+          // User denied notification permission or subscription failed
+          if (err.name !== 'NotAllowedError') {
+            console.error('Error subscribing to push notifications:', err);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in requestLocationAndSubscribe:', error);
+    }
+  }
+
+  // Helper function to convert VAPID key
+  function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+      .replace(/\-/g, '+')
+      .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray.buffer;
   }
 
   function handleAddSport() {
@@ -348,6 +466,73 @@ export default function PlayerProfile() {
                     />
                   </Box>
                 )}
+
+                {/* Notification Settings */}
+                <Divider sx={{ my: 2 }} />
+                <Box>
+                  <Box display="flex" alignItems="center" gap={1} mb={2}>
+                    <NotificationsIcon color="primary" />
+                    <Typography variant="h6">
+                      Postavke Obaveštenja
+                    </Typography>
+                  </Box>
+                  
+                  {editing ? (
+                    <Stack spacing={2}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={formData.notificationEnabled}
+                            onChange={(e) => setFormData({ ...formData, notificationEnabled: e.target.checked })}
+                          />
+                        }
+                        label="Omogući obaveštenja o mečevima u blizini"
+                      />
+                      {formData.notificationEnabled && (
+                        <Box>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            Radius obaveštenja: {formData.notificationRadius} km
+                          </Typography>
+                          <Slider
+                            value={formData.notificationRadius}
+                            onChange={(e, value) => setFormData({ ...formData, notificationRadius: value as number })}
+                            min={1}
+                            max={50}
+                            step={1}
+                            marks={[
+                              { value: 1, label: '1 km' },
+                              { value: 10, label: '10 km' },
+                              { value: 25, label: '25 km' },
+                              { value: 50, label: '50 km' }
+                            ]}
+                            valueLabelDisplay="auto"
+                            valueLabelFormat={(value) => `${value} km`}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            Obavestićemo vas kada se kreira novi meč u okviru izabranog radiusa
+                          </Typography>
+                        </Box>
+                      )}
+                    </Stack>
+                  ) : (
+                    <Stack spacing={1}>
+                      <Typography variant="body2">
+                        <strong>Obaveštenja:</strong>{' '}
+                        {user.notificationEnabled ? 'Omogućena' : 'Onemogućena'}
+                      </Typography>
+                      {user.notificationEnabled && (
+                        <Typography variant="body2">
+                          <strong>Radius:</strong> {user.notificationRadius || 10} km
+                        </Typography>
+                      )}
+                      {user.lastKnownLocation && (
+                        <Typography variant="caption" color="text.secondary">
+                          Poslednja lokacija: {user.lastKnownLocation.lat?.toFixed(4)}, {user.lastKnownLocation.lng?.toFixed(4)}
+                        </Typography>
+                      )}
+                    </Stack>
+                  )}
+                </Box>
 
                 {/* Preferred Sports */}
                 <Box>

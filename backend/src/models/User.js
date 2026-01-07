@@ -37,13 +37,30 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, default: '' }, // Telefon
     location: { type: String, default: '' }, // Lokacija
     preferredSports: [{ type: String }], // Omiljeni sportovi
-    experience: { type: String, enum: ['beginner', 'intermediate', 'advanced', 'professional'], default: 'beginner' } // Nivo iskustva
+    experience: { type: String, enum: ['beginner', 'intermediate', 'advanced', 'professional'], default: 'beginner' }, // Nivo iskustva
+    // Notification settings
+    notificationEnabled: { type: Boolean, default: true }, // Da li želi push notifikacije
+    notificationRadius: { type: Number, default: 10 }, // Radius u km za obaveštenja o mečevima
+    lastKnownLocation: {
+      lat: { type: Number },
+      lng: { type: Number },
+      updatedAt: { type: Date }
+    }, // Poslednja poznata lokacija igrača
+    pushSubscription: { type: mongoose.Schema.Types.Mixed } // Push notification subscription (endpoint, keys)
   },
   { timestamps: true }
 );
 
 // Add index for OAuth provider lookups
-userSchema.index({ provider: 1, providerId: 1 }, { unique: true, sparse: true });
+// Partial index: only unique when providerId exists (for OAuth users)
+userSchema.index(
+  { provider: 1, providerId: 1 }, 
+  { 
+    unique: true, 
+    sparse: true,
+    partialFilterExpression: { providerId: { $exists: true, $ne: null } }
+  }
+);
 
 // Validate password is required for local users
 userSchema.pre('validate', function(next) {

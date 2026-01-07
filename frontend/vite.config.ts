@@ -8,10 +8,33 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.js",
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        injectionPoint: undefined
+      },
       workbox: {
         clientsClaim: true,
         skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/unpkg\.com\/.*/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "unpkg-cache",
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          }
+        ]
       },
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
