@@ -11,19 +11,46 @@ export default defineConfig({
       workbox: {
         clientsClaim: true,
         skipWaiting: true,
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
       },
+      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
         id: "/",
         scope: "/",
-        name: "Moja Aplikacija",
-        short_name: "App",
+        name: "PlayMatch Global",
+        short_name: "PlayMatch",
+        description: "Pronađi igrače i terene za fudbal u tvom gradu",
         start_url: "/",
         display: "standalone",
+        orientation: "portrait",
         background_color: "#ffffff",
-        theme_color: "#111827",
+        theme_color: "#2e7d32",
+        categories: ["sports", "social"],
         icons: [
-          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+          { 
+            src: "/icons/icon-192.png", 
+            sizes: "192x192", 
+            type: "image/png",
+            purpose: "any"
+          },
+          { 
+            src: "/icons/icon-512.png", 
+            sizes: "512x512", 
+            type: "image/png",
+            purpose: "any"
+          },
+          { 
+            src: "/icons/icon-192.png", 
+            sizes: "192x192", 
+            type: "image/png",
+            purpose: "maskable"
+          },
+          { 
+            src: "/icons/icon-512.png", 
+            sizes: "512x512", 
+            type: "image/png",
+            purpose: "maskable"
+          },
         ],
       },
     }),

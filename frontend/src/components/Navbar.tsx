@@ -18,6 +18,7 @@ import {
 import MenuIcon from "@mui/icons-material/Menu";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import InstallButton from "./InstallButton";
 
 // Import logo
 import playmatchLogo from "../assets/logo2.png";
@@ -62,11 +63,11 @@ export default function Navbar() {
   ];
 
   const drawer = (
-    <Box onClick={handleDrawerToggle} sx={{ textAlign: "center", pt: 2 }}>
+    <Box sx={{ textAlign: "center", pt: 2 }}>
       <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
         PlayMatch Global
       </Typography>
-      <List>
+      <List onClick={handleDrawerToggle}>
         {navItems
           .filter((item) => item.show)
           .map((item) => (
@@ -183,20 +184,27 @@ export default function Navbar() {
             )}
           </Stack>
 
-          {/* MENU (HAMBURGER) DESNO NA MOBILU */}
-          <IconButton
-            color="inherit"
-            aria-label="open drawer"
-            edge="end"
-            onClick={handleDrawerToggle}
-            sx={{
-              display: { md: "none" },
-              pr: 2, // padding-right
-              mr: 1, // dodatni margin ako želiš da još odmakne
-            }}
+          {/* Install dugme i hamburger meni na mobilnom */}
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            sx={{ display: { xs: "flex", md: "none" } }}
           >
-          <MenuIcon sx={{ fontSize: 32 }} /> 
-          </IconButton>
+            <InstallButton />
+            <IconButton
+              color="inherit"
+              aria-label="open drawer"
+              edge="end"
+              onClick={handleDrawerToggle}
+              sx={{
+                pr: 2,
+                mr: 1,
+              }}
+            >
+              <MenuIcon sx={{ fontSize: 32 }} />
+            </IconButton>
+          </Stack>
         </Toolbar>
       </AppBar>
 
