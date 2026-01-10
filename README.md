@@ -46,6 +46,18 @@ MONGO_URI=mongodb://localhost:27017/playmatch
 # MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/playmatch
 JWT_SECRET=your_secret_key_here
 CLIENT_URL=http://localhost:3000
+
+# Push Notifications (choose ONE provider)
+PUSH_NOTIFICATION_PROVIDER=onesignal  # or 'fcm'
+
+# For OneSignal:
+ONESIGNAL_APP_ID=your_onesignal_app_id
+ONESIGNAL_REST_API_KEY=your_onesignal_rest_api_key
+
+# For Firebase Cloud Messaging:
+# FIREBASE_ADMIN_CREDENTIALS_PATH=./path/to/service-account-key.json
+# OR
+# FIREBASE_ADMIN_CREDENTIALS={"type":"service_account",...}
 ```
 
 Pokrenite backend:

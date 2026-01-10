@@ -11,6 +11,7 @@ import AuthCallback from './pages/AuthCallback';
 import ManageFields from './pages/ManageFields';
 import MojTermine from './pages/MojTermine';
 import PlayerProfile from './pages/PlayerProfile';
+import NotificationSettings from './pages/NotificationSettings';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
@@ -79,6 +80,14 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <PlayerProfile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/notification-settings"
+            element={
+              <ProtectedRoute>
+                <NotificationSettings />
               </ProtectedRoute>
             }
           />

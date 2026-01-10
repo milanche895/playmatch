@@ -46,7 +46,25 @@ const userSchema = new mongoose.Schema(
       lng: { type: Number },
       updatedAt: { type: Date }
     }, // Poslednja poznata lokacija igrača
-    pushSubscription: { type: mongoose.Schema.Types.Mixed } // Push notification subscription (endpoint, keys)
+    // Push notification subscriptions (legacy VAPID + new providers)
+    pushSubscription: { type: mongoose.Schema.Types.Mixed }, // DEPRECATED: Legacy VAPID subscription
+    // New notification provider subscriptions
+    notificationProvider: { 
+      type: String, 
+      enum: ['onesignal', 'fcm'], 
+      default: null 
+    }, // Which provider is being used
+    oneSignalUserId: { type: String }, // OneSignal player/external ID
+    fcmTokens: [{ 
+      token: { type: String, required: true },
+      deviceInfo: { 
+        userAgent: String,
+        platform: String,
+        language: String
+      },
+      createdAt: { type: Date, default: Date.now },
+      lastSeenAt: { type: Date, default: Date.now }
+    }] // FCM tokens (user can have multiple devices)
   },
   { timestamps: true }
 );

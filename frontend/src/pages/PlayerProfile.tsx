@@ -28,14 +28,17 @@ import {
   CancelPresentation as CancelIcon2,
   TrendingUp as TrendingUpIcon,
   Person as PersonIcon,
-  Notifications as NotificationsIcon
+  Notifications as NotificationsIcon,
+  Settings as SettingsIcon
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { User, PlayerAnalytics } from '../types';
 
 export default function PlayerProfile() {
   const { user: currentUser } = useAuth();
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [analytics, setAnalytics] = useState<PlayerAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,7 +137,7 @@ export default function PlayerProfile() {
     setError(null);
   }
 
-  // Request geolocation and update on backend, also subscribe to push notifications
+  // Request geolocation and update on backend
   async function requestLocationAndSubscribe() {
     if (!currentUser || currentUser.role !== 'player') return;
 
@@ -160,83 +163,10 @@ export default function PlayerProfile() {
         );
       }
 
-      // Subscribe to push notifications
-      if ('serviceWorker' in navigator && 'PushManager' in window) {
-        try {
-          // Check current permission status first
-          let permission = Notification.permission;
-          
-          // If permission is default, request it
-          if (permission === 'default') {
-            permission = await Notification.requestPermission();
-          }
-          
-          // If permission is denied, show message and return
-          if (permission !== 'granted') {
-            if (permission === 'denied') {
-              console.warn('⚠️ Notification permission denied. Please enable notifications in browser settings.');
-              // Could show a user-friendly message here
-            } else {
-              console.warn('Notification permission not granted:', permission);
-            }
-            return;
-          }
-          
-          console.log('✅ Notification permission granted');
-
-          // Get VAPID public key
-          const vapidRes = await api.get('/api/players/vapid-public-key');
-          const vapidPublicKey = vapidRes.data.publicKey;
-
-          if (!vapidPublicKey) {
-            console.warn('VAPID public key not available');
-            return;
-          }
-
-          // Register service worker
-          const registration = await navigator.serviceWorker.ready;
-
-          // Check if already subscribed
-          let subscription = await registration.pushManager.getSubscription();
-          
-          // Subscribe to push notifications if not already subscribed
-          if (!subscription) {
-            const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
-            subscription = await registration.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: applicationServerKey as ArrayBuffer
-            });
-          }
-
-          // Send subscription to backend
-          await api.post('/api/players/push-subscription', subscription);
-          console.log('Push subscription successful');
-        } catch (err: any) {
-          // User denied notification permission or subscription failed
-          if (err.name !== 'NotAllowedError') {
-            console.error('Error subscribing to push notifications:', err);
-          }
-        }
-      }
+      // Note: Push notification subscription is now handled in NotificationSettings page
     } catch (error) {
       console.error('Error in requestLocationAndSubscribe:', error);
     }
-  }
-
-  // Helper function to convert VAPID key
-  function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding)
-      .replace(/\-/g, '+')
-      .replace(/_/g, '/');
-
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray.buffer;
   }
 
   function handleAddSport() {
@@ -470,11 +400,21 @@ export default function PlayerProfile() {
                 {/* Notification Settings */}
                 <Divider sx={{ my: 2 }} />
                 <Box>
-                  <Box display="flex" alignItems="center" gap={1} mb={2}>
-                    <NotificationsIcon color="primary" />
-                    <Typography variant="h6">
-                      Postavke Obaveštenja
-                    </Typography>
+                  <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <NotificationsIcon color="primary" />
+                      <Typography variant="h6">
+                        Postavke Obaveštenja
+                      </Typography>
+                    </Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<SettingsIcon />}
+                      onClick={() => navigate('/notification-settings')}
+                    >
+                      Upravljaj
+                    </Button>
                   </Box>
                   
                   {editing ? (
