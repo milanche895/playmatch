@@ -278,7 +278,7 @@ export default function PlayerProfile() {
   };
 
   return (
-    <Stack spacing={3}>
+    <Stack spacing={3} sx={{ px: { xs: 1, sm: 2, md: 3 } }}>
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center">
         <Typography variant="h4" component="h1">
@@ -307,7 +307,7 @@ export default function PlayerProfile() {
         </Alert>
       )}
 
-      <Grid container spacing={3}>
+      <Grid container spacing={1}>
         {/* Profile Information */}
         <Grid item xs={12} md={8}>
           <Card>
@@ -638,26 +638,30 @@ export default function PlayerProfile() {
                     </Typography>
                   </Paper>
 
-                  {/* Show-up Rate */}
+                  {/* Organizer Success Rate */}
                   <Paper
                     elevation={0}
                     sx={{
                       p: 2,
-                      bgcolor: 'primary.light',
+                      bgcolor: analytics.organizerSuccessRate >= 80 ? 'success.light' : analytics.organizerSuccessRate >= 60 ? 'warning.light' : 'error.light',
                       color: 'white'
                     }}
                   >
                     <Box display="flex" alignItems="center" gap={1} mb={1}>
-                      <PersonIcon />
+                      <EventIcon />
                       <Typography variant="subtitle2" fontWeight="bold">
-                        Stopa odaziva
+                        Pouzdanost Organizatora
                       </Typography>
                     </Box>
                     <Typography variant="h4" fontWeight="bold">
-                      {analytics.showUpRate}%
+                      {analytics.organizerSuccessRate}%
                     </Typography>
                     <Typography variant="caption">
-                      Prijavljeni mečevi / Odigrani mečevi
+                      {analytics.organizerSuccessRate >= 80
+                        ? 'Odličan organizator'
+                        : analytics.organizerSuccessRate >= 60
+                        ? 'Dobar organizator'
+                        : 'Treba poboljšanje'}
                     </Typography>
                   </Paper>
 
@@ -669,10 +673,20 @@ export default function PlayerProfile() {
                       <Box display="flex" justifyContent="space-between" alignItems="center">
                         <Box display="flex" alignItems="center" gap={1}>
                           <EventIcon color="primary" />
-                          <Typography variant="body2">Ukupno prijavljeno</Typography>
+                          <Typography variant="body2">Kreirani mečevi</Typography>
                         </Box>
                         <Typography variant="h6" fontWeight="bold">
                           {analytics.totalRegistered}
+                        </Typography>
+                      </Box>
+
+                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <PersonIcon color="info" />
+                          <Typography variant="body2">Prijavljeni mečevi</Typography>
+                        </Box>
+                        <Typography variant="h6" fontWeight="bold" color="info.main">
+                          {analytics.totalJoinMatch}
                         </Typography>
                       </Box>
 
@@ -682,16 +696,6 @@ export default function PlayerProfile() {
                           <Typography variant="body2">Odigrano</Typography>
                         </Box>
                         <Typography variant="h6" fontWeight="bold" color="success.main">
-                          {analytics.totalCompleted}
-                        </Typography>
-                      </Box>
-
-                      <Box display="flex" justifyContent="space-between" alignItems="center">
-                        <Box display="flex" alignItems="center" gap={1}>
-                          <SportsIcon color="info" />
-                          <Typography variant="body2">Rezervisano</Typography>
-                        </Box>
-                        <Typography variant="h6" fontWeight="bold" color="info.main">
                           {analytics.totalReserved}
                         </Typography>
                       </Box>
@@ -717,16 +721,6 @@ export default function PlayerProfile() {
                           </Typography>
                         </Box>
                       )}
-
-                      <Box display="flex" justifyContent="space-between" alignItems="center">
-                        <Box display="flex" alignItems="center" gap={1}>
-                          <SportsIcon color="secondary" />
-                          <Typography variant="body2">Kreirano</Typography>
-                        </Box>
-                        <Typography variant="h6" fontWeight="bold" color="secondary.main">
-                          {analytics.totalCreated}
-                        </Typography>
-                      </Box>
                     </Stack>
                   </Box>
                 </Stack>

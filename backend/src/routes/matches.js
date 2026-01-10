@@ -96,11 +96,16 @@ function matchesRoutesFactory(io) {
   router.get('/', async (req, res) => {
     // Check for failed matches before returning
     const now = new Date();
+    // Update failed matches - use minPlayers if available, otherwise playersNeeded
     await Match.updateMany(
       {
         status: { $in: ['open', 'full'] },
         registrationDeadline: { $lt: now },
-        $expr: { $lt: [{ $size: '$players' }, '$playersNeeded'] }
+        $expr: {
+          $or: [
+            { $lt: [{ $size: '$players' }, { $ifNull: ['$minPlayers', '$playersNeeded'] }] }
+          ]
+        }
       },
       { status: 'failed' }
     );
@@ -120,9 +125,28 @@ function matchesRoutesFactory(io) {
 
   router.post('/', auth(true), async (req, res) => {
     try {
-      const { sport, fieldId, dateTime, playersNeeded } = req.body;
-      if (!sport || !fieldId || !dateTime || !playersNeeded) {
+      const { sport, fieldId, dateTime, minPlayers, maxPlayers, playersNeeded } = req.body;
+      
+      // Support both old (playersNeeded) and new (minPlayers) format for backward compatibility
+      const minPlayersValue = minPlayers !== undefined ? minPlayers : playersNeeded;
+      
+      if (!sport || !fieldId || !dateTime || minPlayersValue === undefined) {
         return res.status(400).json({ message: 'Nedostaju polja' });
+      }
+      
+      // Validate minPlayers
+      if (typeof minPlayersValue !== 'number' || minPlayersValue < 1) {
+        return res.status(400).json({ message: 'Minimalni broj igrača mora biti najmanje 1' });
+      }
+      
+      // Validate maxPlayers if provided
+      if (maxPlayers !== undefined) {
+        if (typeof maxPlayers !== 'number' || maxPlayers < 1) {
+          return res.status(400).json({ message: 'Maksimalni broj igrača mora biti najmanje 1' });
+        }
+        if (maxPlayers < minPlayersValue) {
+          return res.status(400).json({ message: 'Maksimalni broj igrača mora biti veći ili jednak minimalnom broju igrača' });
+        }
       }
       
       // Parse dateTime - if it's in YYYY-MM-DDTHH:MM format (no timezone), treat as local time
@@ -147,13 +171,22 @@ function matchesRoutesFactory(io) {
       const field = await Field.findById(fieldId);
       if (!field) return res.status(404).json({ message: 'Teren nije pronađen' });
       
+      // Validate that match date is in the future
+      const now = new Date();
+      if (matchDate <= now) {
+        return res.status(400).json({ message: 'Meč mora biti u budućnosti. Molimo izaberite kasniji termin meča.' });
+      }
+      
       // Calculate registration deadline based on field's registrationDeadlineHours
-      const deadlineHours = field.registrationDeadlineHours || 24;
+      // Use ?? instead of || to allow 0 as a valid value
+      const deadlineHours = field.registrationDeadlineHours ?? 24;
       const deadlineDate = new Date(matchDate);
       deadlineDate.setHours(deadlineDate.getHours() - deadlineHours);
       
-      // Validate that deadline is in the future
-      if (deadlineDate <= new Date()) {
+      // Validate that deadline is in the future (with 1 minute buffer to account for timezone/precision issues)
+      const oneMinuteInMs = 60 * 1000;
+      // Only reject if deadline is more than 1 minute in the past (to account for timezone/precision issues)
+      if (deadlineDate.getTime() < now.getTime() - oneMinuteInMs) {
         return res.status(400).json({ message: 'Rok za prijavu bi bio u prošlosti. Molimo izaberite kasniji termin meča.' });
       }
       
@@ -248,7 +281,9 @@ function matchesRoutesFactory(io) {
         fieldId,
         dateTime: matchDate,
         registrationDeadline: deadlineDate, // Automatically calculated based on field's registrationDeadlineHours
-        playersNeeded,
+        minPlayers: minPlayersValue,
+        maxPlayers: maxPlayers || undefined,
+        playersNeeded: minPlayersValue, // Set to minPlayers for backward compatibility
         players: [req.user.id],
         createdBy: req.user.id,
         status: 'open',
@@ -318,7 +353,9 @@ function matchesRoutesFactory(io) {
         );
       }
     }
-    if (match.players.length >= match.playersNeeded) {
+    // Check if match is full based on maxPlayers (if set) or minPlayers
+    const maxPlayersValue = match.maxPlayers || match.playersNeeded || match.minPlayers;
+    if (match.players.length >= maxPlayersValue) {
       match.status = 'full';
       // Ako je meč pun, automatski postavi courtApproval na 'approved' (rezervisano) ako je bio 'pending'
       if (match.courtApproval === 'pending') {

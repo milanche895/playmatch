@@ -54,6 +54,18 @@ L.Icon.Default.mergeOptions({
 });
 
 
+// Helper function to format players count display
+function formatPlayersCount(match: Match): string {
+  const current = match.players.length;
+  const min = match.minPlayers ?? match.playersNeeded;
+  const max = match.maxPlayers;
+  
+  if (max) {
+    return `${current}/${min}-${max}`;
+  }
+  return `${current}/${min}`;
+}
+
 export default function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -435,7 +447,7 @@ export default function Home() {
                                     {formatDateTime(match.dateTime)}
                                   </Typography>
                                   <Typography variant="body2" fontSize="0.75rem" color="text.secondary">
-                                    {match.players.length}/{match.playersNeeded} igrača
+                                    {formatPlayersCount(match)} igrača
                                     {match.status === 'completed' && ' • Završeno'}
                                   </Typography>
                                   {match.description && (
@@ -484,7 +496,7 @@ export default function Home() {
                                   </Typography>
                                   <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
                                     <Chip 
-                                      label={`${match.players.length}/${match.playersNeeded}`}
+                                      label={formatPlayersCount(match)}
                                       size="small"
                                       sx={{ fontSize: '0.7rem', height: 20 }}
                                       color={match.status === 'full' ? 'warning' : match.status === 'failed' ? 'default' : 'primary'}
@@ -686,7 +698,7 @@ export default function Home() {
                             </Typography>
                             <Stack direction="row" spacing={1} alignItems="center">
                               <Chip 
-                                label={`${match.players.length}/${match.playersNeeded} igrača`}
+                                label={`${formatPlayersCount(match)} igrača`}
                                 size="small"
                                 color={match.status === 'full' ? 'warning' : match.status === 'failed' ? 'default' : 'primary'}
                               />

@@ -88,31 +88,34 @@ router.get('/analytics/:id', async (req, res) => {
       return res.status(400).json({ message: 'Korisnik nije igrač' });
     }
 
-    const now = new Date();
+    const userObjectId = user._id; // Use ObjectId from found user
 
-    // Get all matches where player is/was registered
-    const allPlayerMatches = await Match.find({
-      players: userId
+    // totalRegistered: Mečevi koje je igrač kreirao
+    const createdMatches = await Match.find({
+      createdBy: userObjectId
     });
+    const totalRegistered = createdMatches.length;
 
-    // Calculate statistics
-    const totalRegistered = allPlayerMatches.length;
-    
-    // Completed matches (successfully held)
-    const completedMatches = allPlayerMatches.filter(m => m.status === 'completed');
-    const totalCompleted = completedMatches.length;
+    // totalJoinMatch: Broj mečeva gde se igrač prijavio (bio u players array-u)
+    const joinedMatches = await Match.find({
+      players: userObjectId
+    });
+    const totalJoinMatch = joinedMatches.length;
 
-    // Get all matches where player cancelled attendance (with comments)
-    // Only count cancellations where player is NOT currently registered (not in players array)
+    // totalReserved: Mečevi koji su uspešno popunjeni i odigrani (status === 'completed')
+    const reservedMatches = joinedMatches.filter(m => m.status === 'completed');
+    const totalReserved = reservedMatches.length;
+
+    // Get all matches where player cancelled attendance
     const matchesWithCancellations = await Match.find({
       'playerCancellations.playerId': userId
-    }).populate('playerCancellations.playerId', 'name');
+    });
 
-    // Count only cancellations where player is not currently in the players array
-    // This means they cancelled and haven't rejoined
+    // totalCancelled: Mečevi gde se igrač prvo prijavio pa otkazao
+    // (ima cancellation record i nije trenutno u players array-u)
     const activeCancellations = matchesWithCancellations
       .filter(m => {
-        // Check if player is NOT currently in players array
+        // Check if player is NOT currently in players array (prvo se prijavio pa otkazao)
         const isCurrentlyRegistered = m.players.some(p => p.toString() === userId.toString());
         return !isCurrentlyRegistered;
       })
@@ -120,53 +123,31 @@ router.get('/analytics/:id', async (req, res) => {
       .filter(c => c.playerId && c.playerId.toString() === userId.toString());
 
     const totalCancelled = activeCancellations.length;
-    const totalCancelledWithComment = activeCancellations.length;
-    const cancellationsWithCommentText = activeCancellations.filter(c => c.comment && c.comment.trim()).length;
 
-    // Matches where player left (we need to track this - for now, we'll check if match is cancelled/failed and player was in it)
-    // This is a simplified version - ideally we'd track when a player leaves
-    const matchesPlayerLeft = allPlayerMatches.filter(m => {
-      // If match is cancelled/failed and player was registered, they likely didn't show up
-      return (m.status === 'otkazano' || m.status === 'failed') && 
-             m.players.includes(userId) &&
-             new Date(m.dateTime) < now; // Match time has passed
-    });
-
-    // Full/Reserved matches (matches that were successfully reserved)
-    const reservedMatches = allPlayerMatches.filter(m => 
-      m.status === 'full' || m.status === 'completed'
-    );
-    const totalReserved = reservedMatches.length;
+    // totalCancelledWithComment: Otkazivanja sa komentarom
+    const cancellationsWithComment = activeCancellations.filter(c => c.comment && c.comment.trim().length > 0);
+    const totalCancelledWithComment = cancellationsWithComment.length;
 
     // Reliability score calculation
-    // Reliability = (completed matches) / (total registered matches that have passed their deadline)
-    const pastMatches = allPlayerMatches.filter(m => 
-      new Date(m.registrationDeadline) < now
-    );
-    const reliabilityScore = pastMatches.length > 0 
-      ? ((totalCompleted / pastMatches.length) * 100).toFixed(1)
+    // Reliability = ((total join - cancelled) / total join) * 100
+    const reliabilityScore = totalJoinMatch > 0 
+      ? (((totalJoinMatch - totalCancelled) / totalJoinMatch) * 100).toFixed(1)
       : 100;
 
-    // Show-up rate (how many times they actually showed up vs registered)
-    const showUpRate = totalRegistered > 0
-      ? ((totalCompleted / totalRegistered) * 100).toFixed(1)
+    // Organizer success rate: percentage of successfully completed matches out of all created matches
+    const completedCreatedMatches = createdMatches.filter(m => m.status === 'completed');
+    const organizerSuccessRate = totalRegistered > 0
+      ? ((completedCreatedMatches.length / totalRegistered) * 100).toFixed(1)
       : 0;
 
-    // Matches created by this player
-    const matchesCreated = await Match.find({ createdBy: userId });
-    const totalCreated = matchesCreated.length;
-
     res.json({
-      totalRegistered,
-      totalCompleted,
-      totalCancelled,
-      totalReserved,
-      totalCreated,
+      totalRegistered: totalRegistered || 0,
+      totalJoinMatch: totalJoinMatch || 0,
+      totalReserved: totalReserved || 0,
+      totalCancelled: totalCancelled || 0,
+      totalCancelledWithComment: totalCancelledWithComment || 0,
       reliabilityScore: parseFloat(reliabilityScore),
-      showUpRate: parseFloat(showUpRate),
-      matchesPlayerLeft: matchesPlayerLeft.length,
-      totalCancelledWithComment,
-      cancellationsWithCommentText
+      organizerSuccessRate: parseFloat(organizerSuccessRate)
     });
   } catch (e) {
     console.error('Analytics error:', e);
@@ -186,82 +167,66 @@ router.get('/analytics', auth(true), async (req, res) => {
       return res.status(400).json({ message: 'Korisnik nije igrač' });
     }
 
-    const now = new Date();
+    const userObjectId = user._id; // Use ObjectId from found user
 
-    // Get all matches where player is/was registered
-    const allPlayerMatches = await Match.find({
-      players: userId
+    // totalRegistered: Mečevi koje je igrač kreirao
+    const createdMatches = await Match.find({
+      createdBy: userObjectId
+    });
+    const totalRegistered = createdMatches.length;
+
+    // totalJoinMatch: Broj mečeva gde se igrač prijavio (bio u players array-u)
+    const joinedMatches = await Match.find({
+      players: userObjectId
+    });
+    const totalJoinMatch = joinedMatches.length;
+
+    // totalReserved: Mečevi koji su uspešno popunjeni i odigrani (status === 'completed')
+    const reservedMatches = joinedMatches.filter(m => m.status === 'completed');
+    const totalReserved = reservedMatches.length;
+
+    // Get all matches where player cancelled attendance
+    const matchesWithCancellations = await Match.find({
+      'playerCancellations.playerId': userObjectId
     });
 
-    // Calculate statistics
-    const totalRegistered = allPlayerMatches.length;
-    
-    // Completed matches (successfully held)
-    const completedMatches = allPlayerMatches.filter(m => m.status === 'completed');
-    const totalCompleted = completedMatches.length;
-
-    // Get all matches where player cancelled attendance (with comments)
-    // Only count cancellations where player is NOT currently registered (not in players array)
-    const matchesWithCancellations = await Match.find({
-      'playerCancellations.playerId': userId
-    }).populate('playerCancellations.playerId', 'name');
-
-    // Count only cancellations where player is not currently in the players array
-    // This means they cancelled and haven't rejoined
+    // totalCancelled: Mečevi gde se igrač prvo prijavio pa otkazao
+    // (ima cancellation record i nije trenutno u players array-u)
     const activeCancellations = matchesWithCancellations
       .filter(m => {
-        // Check if player is NOT currently in players array
-        const isCurrentlyRegistered = m.players.some(p => p.toString() === userId.toString());
+        // Check if player is NOT currently in players array (prvo se prijavio pa otkazao)
+        const isCurrentlyRegistered = m.players.some(p => p.toString() === userObjectId.toString());
         return !isCurrentlyRegistered;
       })
       .flatMap(m => m.playerCancellations || [])
-      .filter(c => c.playerId && c.playerId.toString() === userId.toString());
+      .filter(c => c.playerId && c.playerId.toString() === userObjectId.toString());
 
     const totalCancelled = activeCancellations.length;
-    const totalCancelledWithComment = activeCancellations.length;
-    const cancellationsWithCommentText = activeCancellations.filter(c => c.comment && c.comment.trim()).length;
 
-    // Matches where player left
-    const matchesPlayerLeft = allPlayerMatches.filter(m => {
-      return (m.status === 'otkazano' || m.status === 'failed') && 
-             m.players.includes(userId) &&
-             new Date(m.dateTime) < now;
-    });
+    // totalCancelledWithComment: Otkazivanja sa komentarom
+    const cancellationsWithComment = activeCancellations.filter(c => c.comment && c.comment.trim().length > 0);
+    const totalCancelledWithComment = cancellationsWithComment.length;
 
-    // Full/Reserved matches
-    const reservedMatches = allPlayerMatches.filter(m => 
-      m.status === 'full' || m.status === 'completed'
-    );
-    const totalReserved = reservedMatches.length;
-
-    // Reliability score
-    const pastMatches = allPlayerMatches.filter(m => 
-      new Date(m.registrationDeadline) < now
-    );
-    const reliabilityScore = pastMatches.length > 0 
-      ? ((totalCompleted / pastMatches.length) * 100).toFixed(1)
+    // Reliability score calculation
+    // Reliability = ((total join - cancelled) / total join) * 100
+    const reliabilityScore = totalJoinMatch > 0 
+      ? (((totalJoinMatch - totalCancelled) / totalJoinMatch) * 100).toFixed(1)
       : 100;
 
-    // Show-up rate
-    const showUpRate = totalRegistered > 0
-      ? ((totalCompleted / totalRegistered) * 100).toFixed(1)
+    // Organizer success rate: percentage of successfully completed matches out of all created matches
+    const completedCreatedMatches = createdMatches.filter(m => m.status === 'completed');
+    const organizerSuccessRate = totalRegistered > 0
+      ? ((completedCreatedMatches.length / totalRegistered) * 100).toFixed(1)
       : 0;
 
-    // Matches created by this player
-    const matchesCreated = await Match.find({ createdBy: userId });
-    const totalCreated = matchesCreated.length;
-
     res.json({
-      totalRegistered,
-      totalCompleted,
-      totalCancelled,
-      totalReserved,
-      totalCreated,
+      totalRegistered: totalRegistered || 0,
+      totalJoinMatch: totalJoinMatch || 0,
+      totalReserved: totalReserved || 0,
+      totalCancelled: totalCancelled || 0,
+      totalCancelledWithComment: totalCancelledWithComment || 0,
       reliabilityScore: parseFloat(reliabilityScore),
-      showUpRate: parseFloat(showUpRate),
-      matchesPlayerLeft: matchesPlayerLeft.length,
-      totalCancelledWithComment,
-      cancellationsWithCommentText
+      organizerSuccessRate: parseFloat(organizerSuccessRate)
     });
   } catch (e) {
     console.error('Analytics error:', e);

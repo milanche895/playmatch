@@ -29,6 +29,11 @@ CLIENT_URL=http://localhost:5173
 
 # Session Secret (za OAuth sesije)
 SESSION_SECRET=your_random_session_secret
+
+# Cloudinary (za upload profilnih slika)
+CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
+CLOUDINARY_API_KEY=your_cloudinary_api_key
+CLOUDINARY_API_SECRET=your_cloudinary_api_secret
 ```
 
 ## Frontend Environment Variables
@@ -69,6 +74,20 @@ VITE_API_URL=http://localhost:5050
 
 Instagram OAuth trenutno nije dostupan jer zahteva HTTPS i Facebook SDK (`FB.login()` metoda). Korisnici mogu koristiti Facebook login umesto Instagram-a.
 
+### Cloudinary Setup
+
+Cloudinary se koristi za automatsko preuzimanje i čuvanje profilnih slika sa OAuth provajdera (Google, Facebook, Instagram).
+
+1. Idite na [Cloudinary](https://cloudinary.com/) i kreirajte besplatan nalog
+2. Nakon kreiranja naloga, idite na Dashboard
+3. Kopirajte sledeće vrednosti:
+   - **Cloud Name**: Vaš cloud name
+   - **API Key**: Vaš API key
+   - **API Secret**: Vaš API secret
+4. Dodajte ove vrednosti u vaš `.env` fajl u `backend` folderu
+
+**Napomena**: Ako Cloudinary nije konfigurisan, aplikacija će koristiti originalne URL-ove sa OAuth provajdera kao fallback.
+
 ## Funkcionalnosti
 
 - **Gmail (Google)**: Korisnici mogu da se prijave/registruju klikom na "Prijavi se sa Gmail-om" (koristi server-side OAuth redirect flow)
@@ -80,3 +99,4 @@ Instagram OAuth trenutno nije dostupan jer zahteva HTTPS i Facebook SDK (`FB.log
 - OAuth korisnici ne moraju da imaju lozinku
 - Ako korisnik već ima nalog sa istim email-om, OAuth će povezati nalog
 - OAuth korisnici ne mogu da se prijave sa email/lozinkom - moraju koristiti OAuth dugme
+- **Profilne slike**: Kada se korisnik registruje preko OAuth provajdera (Google, Facebook, Instagram), njihova profilna slika se automatski preuzima sa provajdera i uploaduje na Cloudinary. Slike se optimizuju (400x400px, auto quality) i čuvaju u `avatars` folderu na Cloudinary-u.

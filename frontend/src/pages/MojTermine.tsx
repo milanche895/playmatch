@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import {
   Stack,
   Typography,
@@ -22,12 +22,12 @@ import {
   MenuItem,
   Select,
   FormControl,
-  InputLabel
-} from '@mui/material';
-import { Link } from 'react-router-dom';
-import api from '../lib/api';
-import { Match, Field } from '../types';
-import { useAuth } from '../context/AuthContext';
+  InputLabel,
+} from "@mui/material";
+import { Link } from "react-router-dom";
+import api from "../lib/api";
+import { Match, Field } from "../types";
+import { useAuth } from "../context/AuthContext";
 
 type FreeSlot = {
   fieldId: {
@@ -79,6 +79,18 @@ type AppointmentsData = {
   fields: Array<{ _id: string; name: string; sport: string }>;
 };
 
+// Helper function to format players count display
+function formatPlayersCount(match: Match): string {
+  const current = match.players.length;
+  const min = match.minPlayers ?? match.playersNeeded;
+  const max = match.maxPlayers;
+
+  if (max) {
+    return `${current}/${min}-${max}`;
+  }
+  return `${current}/${min}`;
+}
+
 export default function MojTermine() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -92,29 +104,29 @@ export default function MojTermine() {
       stats: {
         completed: 0,
         paid: 0,
-        totalRevenue: 0
-      }
+        totalRevenue: 0,
+      },
     },
     completed: [],
     cancelled: [],
-    fields: []
+    fields: [],
   });
   const [activeTab, setActiveTab] = useState(0);
   const [reserveDialogOpen, setReserveDialogOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<FreeSlot | null>(null);
-  const [reservationDescription, setReservationDescription] = useState('');
+  const [reservationDescription, setReservationDescription] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1); // 1-12
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
-    if (user?.role === 'court') {
+    if (user?.role === "court") {
       loadAppointments();
     }
   }, [user]);
 
   // Reload appointments when month/year changes (for monthly tab)
   useEffect(() => {
-    if (user?.role === 'court' && activeTab === 4) {
+    if (user?.role === "court" && activeTab === 4) {
       loadAppointments();
     }
   }, [selectedMonth, selectedYear, activeTab]);
@@ -122,15 +134,16 @@ export default function MojTermine() {
   async function loadAppointments() {
     try {
       setLoading(true);
-      const res = await api.get('/api/courts/appointments', {
+      const res = await api.get("/api/courts/appointments", {
         params: {
           month: selectedMonth,
-          year: selectedYear
-        }
+          year: selectedYear,
+        },
       });
       // Sort free slots by dateTime
-      const sortedFree = [...(res.data.free || [])].sort((a, b) => 
-        new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime()
+      const sortedFree = [...(res.data.free || [])].sort(
+        (a, b) =>
+          new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime()
       );
       setAppointments({
         reserved: res.data.reserved || [],
@@ -141,8 +154,8 @@ export default function MojTermine() {
           stats: {
             completed: 0,
             paid: 0,
-            totalRevenue: 0
-          }
+            totalRevenue: 0,
+          },
         },
         monthly: res.data.monthly || {
           matches: [],
@@ -151,19 +164,19 @@ export default function MojTermine() {
             paid: 0,
             totalRevenue: 0,
             month: selectedMonth,
-            year: selectedYear
+            year: selectedYear,
           },
           month: selectedMonth,
-          year: selectedYear
+          year: selectedYear,
         },
         completed: res.data.completed || [],
         completedStats: res.data.completedStats || undefined,
         cancelled: res.data.cancelled || [],
-        fields: res.data.fields || []
+        fields: res.data.fields || [],
       });
       setError(null);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Greška pri učitavanju termina');
+      setError(err.response?.data?.message || "Greška pri učitavanju termina");
     } finally {
       setLoading(false);
     }
@@ -171,52 +184,62 @@ export default function MojTermine() {
 
   function handleReserveSlotClick(slot: FreeSlot) {
     setSelectedSlot(slot);
-    setReservationDescription('');
+    setReservationDescription("");
     setReserveDialogOpen(true);
   }
 
   function handleReserveDialogClose() {
     setReserveDialogOpen(false);
     setSelectedSlot(null);
-    setReservationDescription('');
+    setReservationDescription("");
   }
 
   async function handleConfirmReservation() {
     if (!selectedSlot) return;
 
     try {
-      await api.post('/api/courts/appointments/reserve', {
+      await api.post("/api/courts/appointments/reserve", {
         fieldId: selectedSlot.fieldId._id,
         dateTime: selectedSlot.dateTime,
-        description: reservationDescription.trim() || undefined
+        description: reservationDescription.trim() || undefined,
       });
-      
+
       // Reload appointments to reflect the change
       await loadAppointments();
-      
+
       handleReserveDialogClose();
-      alert('Termin je uspešno rezervisan!');
+      alert("Termin je uspešno rezervisan!");
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Greška pri rezervaciji termina');
+      alert(err.response?.data?.message || "Greška pri rezervaciji termina");
     }
   }
 
   async function handleCompleteMatch(matchId: string) {
-    if (!window.confirm('Da li ste sigurni da želite da potvrdite završetak ovog termina?')) {
+    if (
+      !window.confirm(
+        "Da li ste sigurni da želite da potvrdite završetak ovog termina?"
+      )
+    ) {
       return;
     }
 
     try {
       await api.post(`/api/courts/matches/${matchId}/complete`);
       await loadAppointments();
-      alert('Termin je uspešno označen kao završen!');
+      alert("Termin je uspešno označen kao završen!");
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Greška pri potvrdi završetka termina');
+      alert(
+        err.response?.data?.message || "Greška pri potvrdi završetka termina"
+      );
     }
   }
 
   async function handleCancelMatch(matchId: string) {
-    if (!window.confirm('Da li ste sigurni da želite da označite ovaj termin kao "Nije održan"?')) {
+    if (
+      !window.confirm(
+        'Da li ste sigurni da želite da označite ovaj termin kao "Nije održan"?'
+      )
+    ) {
       return;
     }
 
@@ -225,35 +248,35 @@ export default function MojTermine() {
       await loadAppointments();
       alert('Termin je uspešno označen kao "Nije održan"!');
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Greška pri označavanju termina');
+      alert(err.response?.data?.message || "Greška pri označavanju termina");
     }
   }
 
   function formatDateTime(dateTimeString: string): string {
     const date = new Date(dateTimeString);
-    return date.toLocaleString('sr-RS', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    return date.toLocaleString("sr-RS", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   }
 
   function formatDate(dateTimeString: string): string {
     const date = new Date(dateTimeString);
-    return date.toLocaleDateString('sr-RS', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
+    return date.toLocaleDateString("sr-RS", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
     });
   }
 
   function formatTime(dateTimeString: string): string {
     const date = new Date(dateTimeString);
-    return date.toLocaleTimeString('sr-RS', {
-      hour: '2-digit',
-      minute: '2-digit'
+    return date.toLocaleTimeString("sr-RS", {
+      hour: "2-digit",
+      minute: "2-digit",
     });
   }
 
@@ -273,25 +296,49 @@ export default function MojTermine() {
     );
   }
 
+  const selectSx = {
+    minWidth: 140,
+    bgcolor: "background.paper",
+    borderRadius: 2,
+    "& .MuiOutlinedInput-notchedOutline": {
+      borderColor: "divider",
+    },
+    "&:hover .MuiOutlinedInput-notchedOutline": {
+      borderColor: "primary.main",
+    },
+    "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+      borderWidth: 2,
+      borderColor: "primary.main",
+    },
+    "& .MuiSelect-select": {
+      py: 1,
+      fontWeight: 500,
+    },
+  };
+
   return (
     <Stack spacing={{ xs: 2, sm: 3 }}>
-      <Typography variant="h4" fontWeight={600} sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+      <Typography
+        variant="h4"
+        fontWeight={600}
+        sx={{ fontSize: { xs: "1.5rem", sm: "2rem" } }}
+      >
         Moji Termini
       </Typography>
 
-      <Paper sx={{ overflowX: 'auto' }}>
-        <Tabs 
-          value={activeTab} 
+      <Paper sx={{ overflowX: "auto" }}>
+        <Tabs
+          value={activeTab}
           onChange={(_, newValue) => setActiveTab(newValue)}
           variant="scrollable"
           scrollButtons="auto"
           sx={{
             minHeight: { xs: 40, sm: 48 },
-            '& .MuiTab-root': {
-              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+            "& .MuiTab-root": {
+              fontSize: { xs: "0.75rem", sm: "0.875rem" },
               minHeight: { xs: 40, sm: 48 },
-              px: { xs: 1, sm: 2 }
-            }
+              px: { xs: 1, sm: 2 },
+            },
           }}
         >
           <Tab label={`Rezervisano (${appointments.reserved.length})`} />
@@ -304,58 +351,131 @@ export default function MojTermine() {
 
       {activeTab === 0 && (
         <Stack spacing={2}>
-          <Alert severity="info">Rezervisani termini (svi termini kod kojih nije potvrđen završetak)</Alert>
+          <Alert severity="info">
+            Rezervisani termini (svi termini kod kojih nije potvrđen završetak)
+          </Alert>
           {appointments.reserved.length === 0 ? (
             <Alert severity="info">Nema rezervisanih termina.</Alert>
           ) : (
             appointments.reserved.map((match) => (
-              <Card key={match._id} variant="outlined" sx={{ borderRadius: { xs: 2, sm: 3 } }}>
+              <Card
+                key={match._id}
+                variant="outlined"
+                sx={{ borderRadius: { xs: 2, sm: 3 } }}
+              >
                 <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                   <Stack spacing={{ xs: 1.5, sm: 2 }}>
-                    <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" sx={{ gap: { xs: 0.5, sm: 1 } }}>
-                      <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, width: { xs: '100%', sm: 'auto' } }}>
-                        {typeof match.fieldId === 'object' ? match.fieldId.name : 'Nepoznat teren'}
+                    <Stack
+                      direction="row"
+                      spacing={0.5}
+                      alignItems="center"
+                      flexWrap="wrap"
+                      sx={{ gap: { xs: 0.5, sm: 1 } }}
+                    >
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          fontSize: { xs: "1rem", sm: "1.25rem" },
+                          width: { xs: "100%", sm: "auto" },
+                        }}
+                      >
+                        {typeof match.fieldId === "object"
+                          ? match.fieldId.name
+                          : "Nepoznat teren"}
                       </Typography>
                       <Chip
-                        label={typeof match.fieldId === 'object' ? match.fieldId.sport : 'Nepoznat sport'}
+                        label={
+                          typeof match.fieldId === "object"
+                            ? match.fieldId.sport
+                            : "Nepoznat sport"
+                        }
                         size="small"
                         color="primary"
-                        sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                        sx={{
+                          fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                          height: { xs: 20, sm: 24 },
+                        }}
                       />
                       <Chip
-                        label={match.status === 'full' ? 'Pun' : match.status === 'completed' ? 'Završen' : match.status === 'open' ? 'Otvoren' : match.status}
+                        label={
+                          match.status === "full"
+                            ? "Pun"
+                            : match.status === "completed"
+                            ? "Završen"
+                            : match.status === "open"
+                            ? "Otvoren"
+                            : match.status
+                        }
                         size="small"
-                        color={match.status === 'full' ? 'warning' : match.status === 'completed' ? 'success' : match.status === 'open' ? 'info' : 'default'}
-                        sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                        color={
+                          match.status === "full"
+                            ? "warning"
+                            : match.status === "completed"
+                            ? "success"
+                            : match.status === "open"
+                            ? "info"
+                            : "default"
+                        }
+                        sx={{
+                          fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                          height: { xs: 20, sm: 24 },
+                        }}
                       />
                     </Stack>
 
                     <Divider />
 
                     <Stack spacing={0.75}>
-                      <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-                        <strong>Datum i vreme:</strong> {formatDateTime(match.dateTime)}
+                      <Typography
+                        variant="body1"
+                        sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                      >
+                        <strong>Datum i vreme:</strong>{" "}
+                        {formatDateTime(match.dateTime)}
                       </Typography>
-                      <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-                        <strong>Igrači:</strong> {match.players.length}/{match.playersNeeded}
+                      <Typography
+                        variant="body1"
+                        sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                      >
+                        <strong>Igrači:</strong> {formatPlayersCount(match)}
                       </Typography>
                       {match.players.length > 0 && (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                          <strong>Igrači:</strong>{' '}
-                          {match.players.map((p) => p.name).join(', ')}
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: { xs: "0.75rem", sm: "0.875rem" } }}
+                        >
+                          <strong>Igrači:</strong>{" "}
+                          {match.players.map((p) => p.name).join(", ")}
                         </Typography>
                       )}
-                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ fontSize: { xs: "0.75rem", sm: "0.875rem" } }}
+                      >
                         <strong>Kreirao:</strong> {match.createdBy.name}
                       </Typography>
                       {match.description && (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 0.5, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{
+                            fontStyle: "italic",
+                            mt: 0.5,
+                            fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                          }}
+                        >
                           <strong>Opis:</strong> {match.description}
                         </Typography>
                       )}
                     </Stack>
 
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ gap: 1 }}>
+                    <Stack
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={1}
+                      sx={{ gap: 1 }}
+                    >
                       <Chip
                         component={Link}
                         to={`/matches/${match._id}`}
@@ -363,19 +483,23 @@ export default function MojTermine() {
                         clickable
                         color="primary"
                         variant="outlined"
-                        sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 28, sm: 32 }, width: { xs: '100%', sm: 'auto' } }}
+                        sx={{
+                          fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                          height: { xs: 28, sm: 32 },
+                          width: { xs: "100%", sm: "auto" },
+                        }}
                       />
-                      {match.status === 'full' && (
+                      {match.status === "full" && (
                         <>
                           <Button
                             variant="contained"
                             color="success"
                             size="small"
                             onClick={() => handleCompleteMatch(match._id)}
-                            sx={{ 
-                              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                            sx={{
+                              fontSize: { xs: "0.75rem", sm: "0.875rem" },
                               py: { xs: 0.5, sm: 0.75 },
-                              flex: { xs: 1, sm: 'none' }
+                              flex: { xs: 1, sm: "none" },
                             }}
                           >
                             Potvrdi Završetak
@@ -385,10 +509,10 @@ export default function MojTermine() {
                             color="error"
                             size="small"
                             onClick={() => handleCancelMatch(match._id)}
-                            sx={{ 
-                              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                            sx={{
+                              fontSize: { xs: "0.75rem", sm: "0.875rem" },
                               py: { xs: 0.5, sm: 0.75 },
-                              flex: { xs: 1, sm: 'none' }
+                              flex: { xs: 1, sm: "none" },
                             }}
                           >
                             Nije održan
@@ -406,58 +530,115 @@ export default function MojTermine() {
 
       {activeTab === 1 && (
         <Stack spacing={2}>
-          <Alert severity="info">Termini na čekanju za danas (čekaju odobrenje)</Alert>
+          <Alert severity="info">
+            Termini na čekanju za danas (čekaju odobrenje)
+          </Alert>
           {appointments.pending.length === 0 ? (
             <Alert severity="info">Nema termina na čekanju za danas.</Alert>
           ) : (
             appointments.pending.map((match) => (
-              <Card key={match._id} variant="outlined" sx={{ borderRadius: { xs: 2, sm: 3 } }}>
+              <Card
+                key={match._id}
+                variant="outlined"
+                sx={{ borderRadius: { xs: 2, sm: 3 } }}
+              >
                 <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                   <Stack spacing={{ xs: 1.5, sm: 2 }}>
-                    <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" sx={{ gap: { xs: 0.5, sm: 1 } }}>
-                      <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, width: { xs: '100%', sm: 'auto' } }}>
-                        {typeof match.fieldId === 'object' ? match.fieldId.name : 'Nepoznat teren'}
+                    <Stack
+                      direction="row"
+                      spacing={0.5}
+                      alignItems="center"
+                      flexWrap="wrap"
+                      sx={{ gap: { xs: 0.5, sm: 1 } }}
+                    >
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          fontSize: { xs: "1rem", sm: "1.25rem" },
+                          width: { xs: "100%", sm: "auto" },
+                        }}
+                      >
+                        {typeof match.fieldId === "object"
+                          ? match.fieldId.name
+                          : "Nepoznat teren"}
                       </Typography>
                       <Chip
-                        label={typeof match.fieldId === 'object' ? match.fieldId.sport : 'Nepoznat sport'}
+                        label={
+                          typeof match.fieldId === "object"
+                            ? match.fieldId.sport
+                            : "Nepoznat sport"
+                        }
                         size="small"
                         color="primary"
-                        sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                        sx={{
+                          fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                          height: { xs: 20, sm: 24 },
+                        }}
                       />
                       <Chip
                         label="Na čekanju"
                         size="small"
                         color="warning"
-                        sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                        sx={{
+                          fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                          height: { xs: 20, sm: 24 },
+                        }}
                       />
                     </Stack>
 
                     <Divider />
 
                     <Stack spacing={0.75}>
-                      <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-                        <strong>Datum i vreme:</strong> {formatDateTime(match.dateTime)}
+                      <Typography
+                        variant="body1"
+                        sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                      >
+                        <strong>Datum i vreme:</strong>{" "}
+                        {formatDateTime(match.dateTime)}
                       </Typography>
-                      <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-                        <strong>Igrači:</strong> {match.players.length}/{match.playersNeeded}
+                      <Typography
+                        variant="body1"
+                        sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                      >
+                        <strong>Igrači:</strong> {formatPlayersCount(match)}
                       </Typography>
                       {match.players.length > 0 && (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                          <strong>Igrači:</strong>{' '}
-                          {match.players.map((p) => p.name).join(', ')}
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: { xs: "0.75rem", sm: "0.875rem" } }}
+                        >
+                          <strong>Igrači:</strong>{" "}
+                          {match.players.map((p) => p.name).join(", ")}
                         </Typography>
                       )}
-                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ fontSize: { xs: "0.75rem", sm: "0.875rem" } }}
+                      >
                         <strong>Kreirao:</strong> {match.createdBy.name}
                       </Typography>
                       {match.description && (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 0.5, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{
+                            fontStyle: "italic",
+                            mt: 0.5,
+                            fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                          }}
+                        >
                           <strong>Opis:</strong> {match.description}
                         </Typography>
                       )}
                     </Stack>
 
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ gap: 1 }}>
+                    <Stack
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={1}
+                      sx={{ gap: 1 }}
+                    >
                       <Chip
                         component={Link}
                         to={`/matches/${match._id}`}
@@ -465,7 +646,11 @@ export default function MojTermine() {
                         clickable
                         color="primary"
                         variant="outlined"
-                        sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 28, sm: 32 }, width: { xs: '100%', sm: 'auto' } }}
+                        sx={{
+                          fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                          height: { xs: 28, sm: 32 },
+                          width: { xs: "100%", sm: "auto" },
+                        }}
                       />
                     </Stack>
                   </Stack>
@@ -478,34 +663,61 @@ export default function MojTermine() {
 
       {activeTab === 2 && (
         <Stack spacing={2}>
-          <Alert severity="info">Slobodni termini za danas (ne uključuje termine na čekanju)</Alert>
+          <Alert severity="info">
+            Slobodni termini za danas (ne uključuje termine na čekanju)
+          </Alert>
           {appointments.free.length === 0 ? (
             <Alert severity="info">Nema slobodnih termina za danas.</Alert>
           ) : (
             <Stack spacing={2}>
               {appointments.free.map((slot, index) => (
-                <Card key={index} variant="outlined" sx={{ borderRadius: { xs: 2, sm: 3 } }}>
+                <Card
+                  key={index}
+                  variant="outlined"
+                  sx={{ borderRadius: { xs: 2, sm: 3 } }}
+                >
                   <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                     <Stack spacing={{ xs: 1.5, sm: 2 }}>
-                      <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" sx={{ gap: { xs: 0.5, sm: 1 } }}>
-                        <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, width: { xs: '100%', sm: 'auto' } }}>
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        alignItems="center"
+                        flexWrap="wrap"
+                        sx={{ gap: { xs: 0.5, sm: 1 } }}
+                      >
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            fontSize: { xs: "1rem", sm: "1.25rem" },
+                            width: { xs: "100%", sm: "auto" },
+                          }}
+                        >
                           {slot.fieldId.name}
                         </Typography>
-                        <Chip 
-                          label={slot.fieldId.sport} 
-                          size="small" 
+                        <Chip
+                          label={slot.fieldId.sport}
+                          size="small"
                           color="primary"
-                          sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                          sx={{
+                            fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                            height: { xs: 20, sm: 24 },
+                          }}
                         />
-                        <Chip 
-                          label="Slobodan" 
-                          size="small" 
+                        <Chip
+                          label="Slobodan"
+                          size="small"
                           color="success"
-                          sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                          sx={{
+                            fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                            height: { xs: 20, sm: 24 },
+                          }}
                         />
                       </Stack>
                       <Divider />
-                      <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+                      <Typography
+                        variant="body1"
+                        sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                      >
                         <strong>Vreme:</strong> {formatTime(slot.dateTime)}
                       </Typography>
                       <Button
@@ -513,10 +725,10 @@ export default function MojTermine() {
                         color="primary"
                         onClick={() => handleReserveSlotClick(slot)}
                         fullWidth
-                        sx={{ 
-                          fontSize: { xs: '0.875rem', sm: '1rem' },
+                        sx={{
+                          fontSize: { xs: "0.875rem", sm: "1rem" },
                           py: { xs: 1, sm: 1.25 },
-                          fontWeight: 600
+                          fontWeight: 600,
                         }}
                       >
                         Rezerviši Termin
@@ -534,38 +746,78 @@ export default function MojTermine() {
         <Stack spacing={3}>
           {/* Statistics */}
           {appointments.weekly && (
-            <Paper sx={{ 
-              p: { xs: 2, sm: 3 }, 
-              bgcolor: 'primary.light', 
-              color: 'primary.contrastText',
-              borderRadius: { xs: 2, sm: 3 }
-            }}>
-              <Typography variant="h6" gutterBottom fontWeight={600} sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+            <Paper
+              sx={{
+                p: { xs: 2, sm: 3 },
+                bgcolor: "primary.light",
+                color: "primary.contrastText",
+                borderRadius: { xs: 2, sm: 3 },
+              }}
+            >
+              <Typography
+                variant="h6"
+                gutterBottom
+                fontWeight={600}
+                sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}
+              >
                 Nedeljna Statistika
               </Typography>
               <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ mt: 1 }}>
                 <Grid item xs={12} sm={4}>
-                  <Typography variant="body2" sx={{ opacity: 0.9, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      opacity: 0.9,
+                      fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                    }}
+                  >
                     Završeni Termini
                   </Typography>
-                  <Typography variant="h4" fontWeight={600} sx={{ fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
+                  <Typography
+                    variant="h4"
+                    fontWeight={600}
+                    sx={{ fontSize: { xs: "1.75rem", sm: "2.125rem" } }}
+                  >
                     {appointments.weekly.stats.completed}
                   </Typography>
                 </Grid>
                 <Grid item xs={12} sm={4}>
-                  <Typography variant="body2" sx={{ opacity: 0.9, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      opacity: 0.9,
+                      fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                    }}
+                  >
                     Naplaćeni Termini
                   </Typography>
-                  <Typography variant="h4" fontWeight={600} sx={{ fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
+                  <Typography
+                    variant="h4"
+                    fontWeight={600}
+                    sx={{ fontSize: { xs: "1.75rem", sm: "2.125rem" } }}
+                  >
                     {appointments.weekly.stats.paid}
                   </Typography>
                 </Grid>
                 <Grid item xs={12} sm={4}>
-                  <Typography variant="body2" sx={{ opacity: 0.9, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      opacity: 0.9,
+                      fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                    }}
+                  >
                     Ukupna Suma
                   </Typography>
-                  <Typography variant="h4" fontWeight={600} sx={{ fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
-                    {appointments.weekly.stats.totalRevenue.toLocaleString('sr-RS')} RSD
+                  <Typography
+                    variant="h4"
+                    fontWeight={600}
+                    sx={{ fontSize: { xs: "1.75rem", sm: "2.125rem" } }}
+                  >
+                    {appointments.weekly.stats.totalRevenue.toLocaleString(
+                      "sr-RS"
+                    )}{" "}
+                    RSD
                   </Typography>
                 </Grid>
               </Grid>
@@ -578,60 +830,126 @@ export default function MojTermine() {
           ) : (
             <Stack spacing={2}>
               {appointments.weekly?.matches.map((match) => (
-                <Card key={match._id} variant="outlined" sx={{ borderRadius: { xs: 2, sm: 3 } }}>
+                <Card
+                  key={match._id}
+                  variant="outlined"
+                  sx={{ borderRadius: { xs: 2, sm: 3 } }}
+                >
                   <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                     <Stack spacing={{ xs: 1.5, sm: 2 }}>
-                      <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" sx={{ gap: { xs: 0.5, sm: 1 } }}>
-                        <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, width: { xs: '100%', sm: 'auto' } }}>
-                          {typeof match.fieldId === 'object' ? match.fieldId.name : 'Nepoznat teren'}
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        alignItems="center"
+                        flexWrap="wrap"
+                        sx={{ gap: { xs: 0.5, sm: 1 } }}
+                      >
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            fontSize: { xs: "1rem", sm: "1.25rem" },
+                            width: { xs: "100%", sm: "auto" },
+                          }}
+                        >
+                          {typeof match.fieldId === "object"
+                            ? match.fieldId.name
+                            : "Nepoznat teren"}
                         </Typography>
                         <Chip
-                          label={typeof match.fieldId === 'object' ? match.fieldId.sport : 'Nepoznat sport'}
+                          label={
+                            typeof match.fieldId === "object"
+                              ? match.fieldId.sport
+                              : "Nepoznat sport"
+                          }
                           size="small"
                           color="primary"
-                          sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                          sx={{
+                            fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                            height: { xs: 20, sm: 24 },
+                          }}
                         />
                         <Chip
-                          label={match.status === 'full' ? 'Pun' : match.status === 'completed' ? 'Završen' : match.status === 'open' ? 'Otvoren' : match.status}
+                          label={
+                            match.status === "full"
+                              ? "Pun"
+                              : match.status === "completed"
+                              ? "Završen"
+                              : match.status === "open"
+                              ? "Otvoren"
+                              : match.status
+                          }
                           size="small"
                           color={
-                            match.status === 'completed' ? 'success' :
-                            match.status === 'full' ? 'warning' :
-                            match.status === 'open' ? 'info' :
-                            'default'
+                            match.status === "completed"
+                              ? "success"
+                              : match.status === "full"
+                              ? "warning"
+                              : match.status === "open"
+                              ? "info"
+                              : "default"
                           }
-                          sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                          sx={{
+                            fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                            height: { xs: 20, sm: 24 },
+                          }}
                         />
-                        {typeof match.fieldId === 'object' && match.fieldId.price && (
-                          <Chip
-                            label={`${match.fieldId.price} RSD`}
-                            size="small"
-                            color="secondary"
-                            sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
-                          />
-                        )}
+                        {typeof match.fieldId === "object" &&
+                          match.fieldId.price && (
+                            <Chip
+                              label={`${match.fieldId.price} RSD`}
+                              size="small"
+                              color="secondary"
+                              sx={{
+                                fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                                height: { xs: 20, sm: 24 },
+                              }}
+                            />
+                          )}
                       </Stack>
 
                       <Divider />
 
                       <Stack spacing={0.75}>
-                        <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-                          <strong>Datum i vreme:</strong> {formatDateTime(match.dateTime)}
+                        <Typography
+                          variant="body1"
+                          sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                        >
+                          <strong>Datum i vreme:</strong>{" "}
+                          {formatDateTime(match.dateTime)}
                         </Typography>
-                        <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-                          <strong>Igrači:</strong> {match.players.length}/{match.playersNeeded}
+                        <Typography
+                          variant="body1"
+                          sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                        >
+                          <strong>Igrači:</strong> {formatPlayersCount(match)}
                         </Typography>
                         {match.players.length > 0 && (
-                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                            <strong>Igrači:</strong>{' '}
-                            {match.players.map((p) => p.name).join(', ')}
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ fontSize: { xs: "0.75rem", sm: "0.875rem" } }}
+                          >
+                            <strong>Igrači:</strong>{" "}
+                            {match.players.map((p) => p.name).join(", ")}
                           </Typography>
                         )}
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: { xs: "0.75rem", sm: "0.875rem" } }}
+                        >
                           <strong>Kreirao:</strong> {match.createdBy.name}
                         </Typography>
                         {match.description && (
-                          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 0.5, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{
+                              fontStyle: "italic",
+                              mt: 0.5,
+                              fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                            }}
+                          >
                             <strong>Opis:</strong> {match.description}
                           </Typography>
                         )}
@@ -645,7 +963,10 @@ export default function MojTermine() {
                           clickable
                           color="primary"
                           variant="outlined"
-                          sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 28, sm: 32 } }}
+                          sx={{
+                            fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                            height: { xs: 28, sm: 32 },
+                          }}
                         />
                       </Box>
                     </Stack>
@@ -661,47 +982,66 @@ export default function MojTermine() {
         <Stack spacing={3}>
           {/* Month/Year Selector and Statistics */}
           {appointments.monthly && (
-            <Paper sx={{ 
-              p: { xs: 2, sm: 3 }, 
-              bgcolor: 'primary.light', 
-              color: 'primary.contrastText',
-              borderRadius: { xs: 2, sm: 3 }
-            }}>
+            <Paper
+              sx={{
+                p: { xs: 2, sm: 3 },
+                bgcolor: "primary.light",
+                color: "primary.contrastText",
+                borderRadius: { xs: 2, sm: 3 },
+              }}
+            >
               <Stack spacing={2}>
                 {/* Month/Year Selector */}
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-                  <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600 }}>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={2}
+                  alignItems="center"
+                >
+                  <Typography
+                    variant="h6"
+                    sx={{
+                      fontSize: { xs: "1rem", sm: "1.25rem" },
+                      fontWeight: 600,
+                    }}
+                  >
                     Odaberi Mesec:
                   </Typography>
-                  <FormControl size="small" sx={{ minWidth: 150, bgcolor: 'background.paper' }}>
-                    <InputLabel>Mesec</InputLabel>
+                  <FormControl size="small" sx={selectSx}>
                     <Select
                       value={selectedMonth}
                       label="Mesec"
                       onChange={(e) => setSelectedMonth(Number(e.target.value))}
                     >
                       {[
-                        { value: 1, label: 'Januar' },
-                        { value: 2, label: 'Februar' },
-                        { value: 3, label: 'Mart' },
-                        { value: 4, label: 'April' },
-                        { value: 5, label: 'Maj' },
-                        { value: 6, label: 'Jun' },
-                        { value: 7, label: 'Jul' },
-                        { value: 8, label: 'Avgust' },
-                        { value: 9, label: 'Septembar' },
-                        { value: 10, label: 'Oktobar' },
-                        { value: 11, label: 'Novembar' },
-                        { value: 12, label: 'Decembar' }
+                        { value: 1, label: "Januar" },
+                        { value: 2, label: "Februar" },
+                        { value: 3, label: "Mart" },
+                        { value: 4, label: "April" },
+                        { value: 5, label: "Maj" },
+                        { value: 6, label: "Jun" },
+                        { value: 7, label: "Jul" },
+                        { value: 8, label: "Avgust" },
+                        { value: 9, label: "Septembar" },
+                        { value: 10, label: "Oktobar" },
+                        { value: 11, label: "Novembar" },
+                        { value: 12, label: "Decembar" },
                       ].map((m) => (
-                        <MenuItem key={m.value} value={m.value}>
+                        <MenuItem
+                          key={m.value}
+                          value={m.value}
+                          sx={{
+                            borderRadius: 1,
+                            mx: 0.5,
+                            my: 0.25,
+                          }}
+                        >
                           {m.label}
                         </MenuItem>
                       ))}
                     </Select>
                   </FormControl>
-                  <FormControl size="small" sx={{ minWidth: 120, bgcolor: 'background.paper' }}>
-                    <InputLabel>Godina</InputLabel>
+
+                  <FormControl size="small" sx={{ ...selectSx, minWidth: 110 }}>
                     <Select
                       value={selectedYear}
                       label="Godina"
@@ -710,7 +1050,15 @@ export default function MojTermine() {
                       {Array.from({ length: 5 }, (_, i) => {
                         const year = new Date().getFullYear() - 2 + i;
                         return (
-                          <MenuItem key={year} value={year}>
+                          <MenuItem
+                            key={year}
+                            value={year}
+                            sx={{
+                              borderRadius: 1,
+                              mx: 0.5,
+                              my: 0.25,
+                            }}
+                          >
                             {year}
                           </MenuItem>
                         );
@@ -720,36 +1068,88 @@ export default function MojTermine() {
                 </Stack>
 
                 {/* Monthly Statistics */}
-                <Divider sx={{ bgcolor: 'rgba(255,255,255,0.2)' }} />
-                <Typography variant="h6" gutterBottom fontWeight={600} sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-                  Mesečna Statistika - {[
-                    'Januar', 'Februar', 'Mart', 'April', 'Maj', 'Jun',
-                    'Jul', 'Avgust', 'Septembar', 'Oktobar', 'Novembar', 'Decembar'
-                  ][selectedMonth - 1]} {selectedYear}
+                <Divider sx={{ bgcolor: "rgba(255,255,255,0.2)" }} />
+                <Typography
+                  variant="h6"
+                  gutterBottom
+                  fontWeight={600}
+                  sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}
+                >
+                  Mesečna Statistika -{" "}
+                  {
+                    [
+                      "Januar",
+                      "Februar",
+                      "Mart",
+                      "April",
+                      "Maj",
+                      "Jun",
+                      "Jul",
+                      "Avgust",
+                      "Septembar",
+                      "Oktobar",
+                      "Novembar",
+                      "Decembar",
+                    ][selectedMonth - 1]
+                  }{" "}
+                  {selectedYear}
                 </Typography>
                 <Grid container spacing={{ xs: 2, sm: 3 }} sx={{ mt: 1 }}>
                   <Grid item xs={12} sm={4}>
-                    <Typography variant="body2" sx={{ opacity: 0.9, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        opacity: 0.9,
+                        fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                      }}
+                    >
                       Završeni Termini
                     </Typography>
-                    <Typography variant="h4" fontWeight={600} sx={{ fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
+                    <Typography
+                      variant="h4"
+                      fontWeight={600}
+                      sx={{ fontSize: { xs: "1.75rem", sm: "2.125rem" } }}
+                    >
                       {appointments.monthly.stats.completed}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} sm={4}>
-                    <Typography variant="body2" sx={{ opacity: 0.9, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        opacity: 0.9,
+                        fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                      }}
+                    >
                       Naplaćeni Termini
                     </Typography>
-                    <Typography variant="h4" fontWeight={600} sx={{ fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
+                    <Typography
+                      variant="h4"
+                      fontWeight={600}
+                      sx={{ fontSize: { xs: "1.75rem", sm: "2.125rem" } }}
+                    >
                       {appointments.monthly.stats.paid}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} sm={4}>
-                    <Typography variant="body2" sx={{ opacity: 0.9, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        opacity: 0.9,
+                        fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                      }}
+                    >
                       Ukupna Suma
                     </Typography>
-                    <Typography variant="h4" fontWeight={600} sx={{ fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
-                      {appointments.monthly.stats.totalRevenue.toLocaleString('sr-RS')} RSD
+                    <Typography
+                      variant="h4"
+                      fontWeight={600}
+                      sx={{ fontSize: { xs: "1.75rem", sm: "2.125rem" } }}
+                    >
+                      {appointments.monthly.stats.totalRevenue.toLocaleString(
+                        "sr-RS"
+                      )}{" "}
+                      RSD
                     </Typography>
                   </Grid>
                 </Grid>
@@ -758,65 +1158,132 @@ export default function MojTermine() {
           )}
 
           {/* Monthly matches */}
-          {!appointments.monthly || appointments.monthly.matches.length === 0 ? (
+          {!appointments.monthly ||
+          appointments.monthly.matches.length === 0 ? (
             <Alert severity="info">Nema termina za izabrani mesec.</Alert>
           ) : (
             <Stack spacing={2}>
               {appointments.monthly.matches.map((match) => (
-                <Card key={match._id} variant="outlined" sx={{ borderRadius: { xs: 2, sm: 3 } }}>
+                <Card
+                  key={match._id}
+                  variant="outlined"
+                  sx={{ borderRadius: { xs: 2, sm: 3 } }}
+                >
                   <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                     <Stack spacing={{ xs: 1.5, sm: 2 }}>
-                      <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" sx={{ gap: { xs: 0.5, sm: 1 } }}>
-                        <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, width: { xs: '100%', sm: 'auto' } }}>
-                          {typeof match.fieldId === 'object' ? match.fieldId.name : 'Nepoznat teren'}
+                      <Stack
+                        direction="row"
+                        spacing={0.5}
+                        alignItems="center"
+                        flexWrap="wrap"
+                        sx={{ gap: { xs: 0.5, sm: 1 } }}
+                      >
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            fontSize: { xs: "1rem", sm: "1.25rem" },
+                            width: { xs: "100%", sm: "auto" },
+                          }}
+                        >
+                          {typeof match.fieldId === "object"
+                            ? match.fieldId.name
+                            : "Nepoznat teren"}
                         </Typography>
                         <Chip
-                          label={typeof match.fieldId === 'object' ? match.fieldId.sport : 'Nepoznat sport'}
+                          label={
+                            typeof match.fieldId === "object"
+                              ? match.fieldId.sport
+                              : "Nepoznat sport"
+                          }
                           size="small"
                           color="primary"
-                          sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                          sx={{
+                            fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                            height: { xs: 20, sm: 24 },
+                          }}
                         />
                         <Chip
-                          label={match.status === 'full' ? 'Pun' : match.status === 'completed' ? 'Završen' : match.status === 'open' ? 'Otvoren' : match.status}
+                          label={
+                            match.status === "full"
+                              ? "Pun"
+                              : match.status === "completed"
+                              ? "Završen"
+                              : match.status === "open"
+                              ? "Otvoren"
+                              : match.status
+                          }
                           size="small"
                           color={
-                            match.status === 'completed' ? 'success' :
-                            match.status === 'full' ? 'warning' :
-                            match.status === 'open' ? 'info' :
-                            'default'
+                            match.status === "completed"
+                              ? "success"
+                              : match.status === "full"
+                              ? "warning"
+                              : match.status === "open"
+                              ? "info"
+                              : "default"
                           }
-                          sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
+                          sx={{
+                            fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                            height: { xs: 20, sm: 24 },
+                          }}
                         />
-                        {typeof match.fieldId === 'object' && match.fieldId.price && (
-                          <Chip
-                            label={`${match.fieldId.price} RSD`}
-                            size="small"
-                            color="secondary"
-                            sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 20, sm: 24 } }}
-                          />
-                        )}
+                        {typeof match.fieldId === "object" &&
+                          match.fieldId.price && (
+                            <Chip
+                              label={`${match.fieldId.price} RSD`}
+                              size="small"
+                              color="secondary"
+                              sx={{
+                                fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                                height: { xs: 20, sm: 24 },
+                              }}
+                            />
+                          )}
                       </Stack>
 
                       <Divider />
 
                       <Stack spacing={0.75}>
-                        <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-                          <strong>Datum i vreme:</strong> {formatDateTime(match.dateTime)}
+                        <Typography
+                          variant="body1"
+                          sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                        >
+                          <strong>Datum i vreme:</strong>{" "}
+                          {formatDateTime(match.dateTime)}
                         </Typography>
-                        <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-                          <strong>Igrači:</strong> {match.players.length}/{match.playersNeeded}
+                        <Typography
+                          variant="body1"
+                          sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                        >
+                          <strong>Igrači:</strong> {formatPlayersCount(match)}
                         </Typography>
                         {match.players.length > 0 && (
-                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
-                            <strong>Igrači:</strong>{' '}
-                            {match.players.map((p) => p.name).join(', ')}
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{ fontSize: { xs: "0.75rem", sm: "0.875rem" } }}
+                          >
+                            <strong>Igrači:</strong>{" "}
+                            {match.players.map((p) => p.name).join(", ")}
                           </Typography>
                         )}
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontSize: { xs: "0.75rem", sm: "0.875rem" } }}
+                        >
                           <strong>Kreirao:</strong> {match.createdBy.name}
                         </Typography>
                         {match.description && (
-                          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mt: 0.5, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{
+                              fontStyle: "italic",
+                              mt: 0.5,
+                              fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                            }}
+                          >
                             <strong>Opis:</strong> {match.description}
                           </Typography>
                         )}
@@ -830,7 +1297,10 @@ export default function MojTermine() {
                           clickable
                           color="primary"
                           variant="outlined"
-                          sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, height: { xs: 28, sm: 32 } }}
+                          sx={{
+                            fontSize: { xs: "0.7rem", sm: "0.75rem" },
+                            height: { xs: 28, sm: 32 },
+                          }}
                         />
                       </Box>
                     </Stack>
@@ -843,32 +1313,41 @@ export default function MojTermine() {
       )}
 
       {/* Reservation Dialog */}
-      <Dialog 
-        open={reserveDialogOpen} 
-        onClose={handleReserveDialogClose} 
-        maxWidth="sm" 
+      <Dialog
+        open={reserveDialogOpen}
+        onClose={handleReserveDialogClose}
+        maxWidth="sm"
         fullWidth
         fullScreen={false}
         PaperProps={{
           sx: {
             m: { xs: 1, sm: 2 },
             borderRadius: { xs: 2, sm: 3 },
-            maxWidth: { xs: 'calc(100% - 16px)', sm: '600px' }
-          }
+            maxWidth: { xs: "calc(100% - 16px)", sm: "600px" },
+          },
         }}
       >
-        <DialogTitle sx={{ fontSize: { xs: '1.125rem', sm: '1.25rem' }, fontWeight: 600 }}>
+        <DialogTitle
+          sx={{ fontSize: { xs: "1.125rem", sm: "1.25rem" }, fontWeight: 600 }}
+        >
           Rezerviši Termin
         </DialogTitle>
         <DialogContent sx={{ pt: { xs: 2, sm: 3 } }}>
           <Stack spacing={2}>
             {selectedSlot && (
               <>
-                <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                >
                   <strong>Teren:</strong> {selectedSlot.fieldId.name}
                 </Typography>
-                <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-                  <strong>Datum i vreme:</strong> {formatDateTime(selectedSlot.dateTime)}
+                <Typography
+                  variant="body1"
+                  sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
+                >
+                  <strong>Datum i vreme:</strong>{" "}
+                  {formatDateTime(selectedSlot.dateTime)}
                 </Typography>
                 <TextField
                   label="Opis rezervacije (opciono)"
@@ -880,33 +1359,35 @@ export default function MojTermine() {
                   onChange={(e) => setReservationDescription(e.target.value)}
                   helperText="Možete uneti opis rezervacije, npr. za koga je termin rezervisan"
                   sx={{
-                    '& .MuiInputBase-root': {
-                      fontSize: { xs: '0.875rem', sm: '1rem' }
+                    "& .MuiInputBase-root": {
+                      fontSize: { xs: "0.875rem", sm: "1rem" },
                     },
-                    '& .MuiInputLabel-root': {
-                      fontSize: { xs: '0.875rem', sm: '1rem' }
+                    "& .MuiInputLabel-root": {
+                      fontSize: { xs: "0.875rem", sm: "1rem" },
                     },
-                    '& .MuiFormHelperText-root': {
-                      fontSize: { xs: '0.75rem', sm: '0.875rem' }
-                    }
+                    "& .MuiFormHelperText-root": {
+                      fontSize: { xs: "0.75rem", sm: "0.875rem" },
+                    },
                   }}
                 />
               </>
             )}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: { xs: 2, sm: 3 }, pb: { xs: 2, sm: 3 }, gap: 1 }}>
-          <Button 
+        <DialogActions
+          sx={{ px: { xs: 2, sm: 3 }, pb: { xs: 2, sm: 3 }, gap: 1 }}
+        >
+          <Button
             onClick={handleReserveDialogClose}
-            sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}
+            sx={{ fontSize: { xs: "0.875rem", sm: "1rem" } }}
           >
             Otkaži
           </Button>
-          <Button 
-            onClick={handleConfirmReservation} 
-            variant="contained" 
+          <Button
+            onClick={handleConfirmReservation}
+            variant="contained"
             color="primary"
-            sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, fontWeight: 600 }}
+            sx={{ fontSize: { xs: "0.875rem", sm: "1rem" }, fontWeight: 600 }}
           >
             Rezerviši
           </Button>
@@ -915,4 +1396,3 @@ export default function MojTermine() {
     </Stack>
   );
 }
-

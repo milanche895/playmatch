@@ -38,15 +38,12 @@ export type User = {
 
 export type PlayerAnalytics = {
   totalRegistered: number;
-  totalCompleted: number;
-  totalCancelled: number;
+  totalJoinMatch: number;
   totalReserved: number;
-  totalCreated: number;
-  reliabilityScore: number;
-  showUpRate: number;
-  matchesPlayerLeft: number;
+  totalCancelled: number;
   totalCancelledWithComment: number;
-  cancellationsWithCommentText: number;
+  reliabilityScore: number;
+  organizerSuccessRate: number;
 };
 
 export type Field = {
@@ -75,7 +72,9 @@ export type Match = {
   fieldId: Field;
   dateTime: string;
   registrationDeadline: string;
-  playersNeeded: number;
+  minPlayers: number;
+  maxPlayers?: number;
+  playersNeeded: number; // Keep for backward compatibility
   players: Pick<User, '_id' | 'name'>[];
   createdBy: Pick<User, '_id' | 'name'>;
   status: 'open' | 'full' | 'completed' | 'failed' | 'otkazano';

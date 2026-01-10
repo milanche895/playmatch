@@ -150,8 +150,51 @@ console.log(`Attempting to connect to MongoDB...`);
 mongoose.connect(MONGO_URI, {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
-}).then(() => {
+}).then(async () => {
   console.log('✅ MongoDB connected successfully');
+  
+  // Fix user index if needed (recreate with correct partialFilterExpression)
+  try {
+    const collection = mongoose.connection.db.collection('users');
+    const indexes = await collection.indexes();
+    const providerIndex = indexes.find(idx => idx.name === 'provider_1_providerId_1');
+    
+    if (providerIndex) {
+      // Check if index has correct partialFilterExpression
+      const hasCorrectFilter = providerIndex.partialFilterExpression && 
+                                providerIndex.partialFilterExpression.provider && 
+                                providerIndex.partialFilterExpression.provider.$ne === 'local';
+      
+      if (!hasCorrectFilter) {
+        console.log('🔧 Recreating user index with correct partialFilterExpression...');
+        try {
+          await collection.dropIndex('provider_1_providerId_1');
+          console.log('✅ Dropped old index');
+        } catch (err) {
+          if (err.code !== 27) { // 27 = IndexNotFound
+            console.error('⚠️  Error dropping index:', err.message);
+          }
+        }
+        
+        await collection.createIndex(
+          { provider: 1, providerId: 1 },
+          {
+            unique: true,
+            sparse: true,
+            partialFilterExpression: {
+              providerId: { $exists: true, $ne: null },
+              provider: { $ne: 'local' }
+            },
+            name: 'provider_1_providerId_1'
+          }
+        );
+        console.log('✅ Created new index with correct partialFilterExpression');
+      }
+    }
+  } catch (err) {
+    console.error('⚠️  Warning: Could not fix user index:', err.message);
+    console.error('   You may need to run: npm run fix-index');
+  }
   
   // Check cancelled matches on startup
   checkCancelledMatches();

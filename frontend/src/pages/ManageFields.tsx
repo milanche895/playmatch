@@ -67,6 +67,18 @@ type Appointments = {
   free: any[]; // Slobodni termini (može biti prazan array za sada)
 };
 
+// Helper function to format players count display
+function formatPlayersCount(match: Match): string {
+  const current = match.players.length;
+  const min = match.minPlayers ?? match.playersNeeded;
+  const max = match.maxPlayers;
+  
+  if (max) {
+    return `${current}/${min}-${max}`;
+  }
+  return `${current}/${min}`;
+}
+
 export default function ManageFields() {
   const { user } = useAuth();
   const [fields, setFields] = useState<Field[]>([]);
@@ -234,7 +246,7 @@ export default function ManageFields() {
     setLat(field.lat.toString());
     setLng(field.lng.toString());
     setPrice(field.price || 0);
-    setRegistrationDeadlineHours(field.registrationDeadlineHours || 24);
+    setRegistrationDeadlineHours(field.registrationDeadlineHours ?? 24);
     setMarkerPosition([field.lat, field.lng]);
     setError(null);
     setOpenDialog(true);
@@ -302,13 +314,18 @@ export default function ManageFields() {
       setError(null);
       if (editingField) {
         // Update existing field (name, sport, location, price, registrationDeadlineHours)
+        // Ensure all numeric values are properly converted
+        const deadlineHours = typeof registrationDeadlineHours === 'number' && !isNaN(registrationDeadlineHours) 
+          ? registrationDeadlineHours 
+          : parseInt(String(registrationDeadlineHours ?? 24));
+        
         await api.put(`/api/courts/fields/${editingField._id}`, {
           name,
           sport,
           lat: parseFloat(lat),
           lng: parseFloat(lng),
-          price,
-          registrationDeadlineHours
+          price: typeof price === 'number' ? price : parseFloat(String(price || 0)),
+          registrationDeadlineHours: deadlineHours
         });
         await loadFields();
       } else {
@@ -527,7 +544,7 @@ export default function ManageFields() {
                                             color="text.secondary"
                                             sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
                                           >
-                                            Igrači: <strong>{match.players.length}/{match.playersNeeded}</strong>
+                                            Igrači: <strong>{formatPlayersCount(match)}</strong>
                                           </Typography>
                                         </Stack>
                                         <Stack 
@@ -619,7 +636,7 @@ export default function ManageFields() {
                                             color="text.secondary"
                                             sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
                                           >
-                                            Igrači: <strong>{match.players.length}/{match.playersNeeded}</strong>
+                                            Igrači: <strong>{formatPlayersCount(match)}</strong>
                                           </Typography>
                                           <Typography 
                                             variant="body2" 
@@ -685,7 +702,7 @@ export default function ManageFields() {
                                             color="text.secondary"
                                             sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
                                           >
-                                            Igrači: <strong>{match.players.length}/{match.playersNeeded}</strong>
+                                            Igrači: <strong>{formatPlayersCount(match)}</strong>
                                           </Typography>
                                           <Typography 
                                             variant="body2" 
@@ -814,11 +831,16 @@ export default function ManageFields() {
               type="number"
               label="Rok za prijavu (sati pre meča)"
               value={registrationDeadlineHours}
-              onChange={(e) => setRegistrationDeadlineHours(parseInt(e.target.value))}
+              onChange={(e) => {
+                const value = parseInt(e.target.value);
+                if (!isNaN(value) && value >= 0 && value <= 168) {
+                  setRegistrationDeadlineHours(value);
+                }
+              }}
               required
               fullWidth
-              inputProps={{ min: 1, max: 168 }}
-              helperText="Koliko sati pre meča se zatvara prijava (npr. 24 = 24 sata pre meča)"
+              inputProps={{ min: 0, max: 168 }}
+              helperText="Koliko sati pre meča se zatvara prijava (0 = zatvara se u vreme meča, npr. 24 = 24 sata pre meča)"
             />
             <Box>
               <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>

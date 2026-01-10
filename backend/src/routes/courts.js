@@ -139,19 +139,27 @@ router.post('/matches/:id/complete', auth(true), requireCourt, async (req, res) 
   try {
     const match = await Match.findById(req.params.id);
     if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
-    
     const field = await Field.findById(match.fieldId);
     if (!field || field.courtOwner?.toString() !== req.user.id) {
       return res.status(403).json({ message: 'Ne posedujete ovaj teren' });
     }
     
+    // Ensure minPlayers exists for backward compatibility with old matches
+    if (!match.minPlayers && match.playersNeeded) {
+      match.minPlayers = match.playersNeeded;
+    }
+    // Ensure playersNeeded exists for backward compatibility
+    if (!match.playersNeeded && match.minPlayers) {
+      match.playersNeeded = match.minPlayers;
+    }
+    
     match.status = 'completed';
     await match.save();
-    
     const populated = await Match.findById(match._id)
       .populate('fieldId')
       .populate('players', 'name')
-      .populate('createdBy', 'name');
+      .populate('createdBy', 'name')
+      .populate('playerCancellations.playerId', 'name');
     
     const io = req.app.get('io');
     if (io) {
@@ -160,7 +168,8 @@ router.post('/matches/:id/complete', auth(true), requireCourt, async (req, res) 
     
     res.json(populated);
   } catch (e) {
-    res.status(500).json({ message: 'Greška servera' });
+    console.error('Error completing match:', e);
+    res.status(500).json({ message: 'Greška servera', error: e.message });
   }
 });
 
@@ -540,7 +549,7 @@ router.get('/fields/:fieldId/appointments', auth(true), requireCourt, async (req
       onRequest: matches.filter(m => 
         m.courtApproval === 'approved' && 
         m.status === 'open' &&
-        m.players.length < m.playersNeeded
+        m.players.length < (m.minPlayers ?? m.playersNeeded)
       ),
       
       // Otkazani termini
@@ -584,8 +593,14 @@ router.put('/fields/:fieldId', auth(true), requireCourt, async (req, res) => {
     if (typeof lat === 'number') field.lat = lat;
     if (typeof lng === 'number') field.lng = lng;
     if (typeof price === 'number' && price >= 0) field.price = price;
-    if (typeof registrationDeadlineHours === 'number' && registrationDeadlineHours >= 0) {
-      field.registrationDeadlineHours = registrationDeadlineHours;
+    if (registrationDeadlineHours !== undefined) {
+      // Accept both number and string, parse if needed
+      const deadlineHours = typeof registrationDeadlineHours === 'number' 
+        ? registrationDeadlineHours 
+        : parseFloat(registrationDeadlineHours);
+      if (!isNaN(deadlineHours) && deadlineHours >= 0) {
+        field.registrationDeadlineHours = deadlineHours;
+      }
     }
     
     await field.save();

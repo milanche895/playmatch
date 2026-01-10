@@ -6,6 +6,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const FacebookStrategy = require('passport-facebook').Strategy;
 const axios = require('axios');
 const User = require('../models/User');
+const { uploadImageFromUrl } = require('../utils/cloudinary');
 
 const router = express.Router();
 
@@ -50,7 +51,22 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         }
         // Update avatar if not set or if new one is available
         if (!user.avatarUrl && profile.photos && profile.photos[0]) {
-          user.avatarUrl = profile.photos[0].value;
+          // Upload to Cloudinary if Cloudinary is configured
+          if (process.env.CLOUDINARY_CLOUD_NAME) {
+            try {
+              const cloudinaryUrl = await uploadImageFromUrl(
+                profile.photos[0].value,
+                'avatars',
+                `user-${user._id}`
+              );
+              user.avatarUrl = cloudinaryUrl;
+            } catch (error) {
+              console.error('Error uploading avatar to Cloudinary:', error);
+              user.avatarUrl = profile.photos[0].value; // Fallback to original URL
+            }
+          } else {
+            user.avatarUrl = profile.photos[0].value;
+          }
         }
         // Update name if not set
         if (!user.name || user.name.trim() === '') {
@@ -62,6 +78,25 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
       // Create new user with all available profile data
       // Role will be set in callback from session
+      let avatarUrl = null;
+      if (profile.photos && profile.photos[0]) {
+        // Upload to Cloudinary if Cloudinary is configured
+        if (process.env.CLOUDINARY_CLOUD_NAME) {
+          try {
+            avatarUrl = await uploadImageFromUrl(
+              profile.photos[0].value,
+              'avatars',
+              `user-google-${profile.id}`
+            );
+          } catch (error) {
+            console.error('Error uploading avatar to Cloudinary:', error);
+            avatarUrl = profile.photos[0].value; // Fallback to original URL
+          }
+        } else {
+          avatarUrl = profile.photos[0].value;
+        }
+      }
+
       user = await User.create({
         name: profile.displayName || (profile.name ? profile.name.givenName + ' ' + profile.name.familyName : 'User'),
         email: profile.emails && profile.emails[0] ? profile.emails[0].value : null,
@@ -74,7 +109,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
           name: profile.name,
           emails: profile.emails
         },
-        avatarUrl: profile.photos && profile.photos[0] ? profile.photos[0].value : null,
+        avatarUrl: avatarUrl,
         role: 'player' // Default, will be updated in callback if session has role
       });
       return done(null, user);
@@ -141,7 +176,22 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
         }
         // Update avatar if not set
         if (!user.avatarUrl && profile.photos && profile.photos[0]) {
-          user.avatarUrl = profile.photos[0].value;
+          // Upload to Cloudinary if Cloudinary is configured
+          if (process.env.CLOUDINARY_CLOUD_NAME) {
+            try {
+              const cloudinaryUrl = await uploadImageFromUrl(
+                profile.photos[0].value,
+                'avatars',
+                `user-${user._id}`
+              );
+              user.avatarUrl = cloudinaryUrl;
+            } catch (error) {
+              console.error('Error uploading avatar to Cloudinary:', error);
+              user.avatarUrl = profile.photos[0].value; // Fallback to original URL
+            }
+          } else {
+            user.avatarUrl = profile.photos[0].value;
+          }
         }
         // Update name if not set
         if (!user.name || user.name.trim() === '') {
@@ -152,6 +202,25 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
       }
 
       // Create new user with all available profile data
+      let avatarUrl = null;
+      if (profile.photos && profile.photos[0]) {
+        // Upload to Cloudinary if Cloudinary is configured
+        if (process.env.CLOUDINARY_CLOUD_NAME) {
+          try {
+            avatarUrl = await uploadImageFromUrl(
+              profile.photos[0].value,
+              'avatars',
+              `user-facebook-${profile.id}`
+            );
+          } catch (error) {
+            console.error('Error uploading avatar to Cloudinary:', error);
+            avatarUrl = profile.photos[0].value; // Fallback to original URL
+          }
+        } else {
+          avatarUrl = profile.photos[0].value;
+        }
+      }
+
       user = await User.create({
         name: profile.displayName || (profile.name ? profile.name.givenName + ' ' + profile.name.familyName : 'User'),
         email: userEmail,
@@ -163,7 +232,7 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
           displayName: profile.displayName,
           name: profile.name
         },
-        avatarUrl: profile.photos && profile.photos[0] ? profile.photos[0].value : null,
+        avatarUrl: avatarUrl,
         role: 'player' // Default, will be updated in callback if session has role
       });
 
@@ -214,7 +283,7 @@ router.post('/register', async (req, res) => {
     const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
     
     // Set cookie before sending response
-    setTokenCookie(res, user._id.toString(), req);
+    setTokenCookie(res, user._id.toString());
     
     res.json({ 
       _id: user._id, 
@@ -250,7 +319,7 @@ router.post('/login', async (req, res) => {
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ message: 'Neispravni podaci za prijavu' });
     const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
-    setTokenCookie(res, user._id.toString(), req);
+    setTokenCookie(res, user._id.toString());
     res.json({ 
       _id: user._id, 
       name: user.name, 
@@ -330,7 +399,7 @@ router.get('/google/callback',
       // If role doesn't exist in session or user is not new, keep existing role (login)
       
       const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
-      setTokenCookie(res, user._id.toString(), req);
+      setTokenCookie(res, user._id.toString());
       // Redirect to frontend with token
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
       res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
@@ -377,6 +446,7 @@ router.get('/facebook/callback',
   async (req, res) => {
     try {
       const user = req.user;
+      
       // Get role from session if available (only set during registration)
       const role = req.session?.oauthRole;
       delete req.session?.oauthRole;
@@ -394,7 +464,7 @@ router.get('/facebook/callback',
       // If role doesn't exist in session or user is not new, keep existing role (login)
       
       const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
-      setTokenCookie(res, user._id.toString(), req);
+      setTokenCookie(res, user._id.toString());
       
       // Redirect to frontend with token
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
@@ -466,7 +536,22 @@ router.post('/instagram', async (req, res) => {
       }
       // Update avatar if not set
       if (!user.avatarUrl && fbProfile.picture && fbProfile.picture.data) {
-        user.avatarUrl = fbProfile.picture.data.url;
+        // Upload to Cloudinary if Cloudinary is configured
+        if (process.env.CLOUDINARY_CLOUD_NAME) {
+          try {
+            const cloudinaryUrl = await uploadImageFromUrl(
+              fbProfile.picture.data.url,
+              'avatars',
+              `user-${user._id}`
+            );
+            user.avatarUrl = cloudinaryUrl;
+          } catch (error) {
+            console.error('Error uploading avatar to Cloudinary:', error);
+            user.avatarUrl = fbProfile.picture.data.url; // Fallback to original URL
+          }
+        } else {
+          user.avatarUrl = fbProfile.picture.data.url;
+        }
       }
       // Update name if not set
       if (!user.name || user.name.trim() === '') {
@@ -475,6 +560,25 @@ router.post('/instagram', async (req, res) => {
       await user.save();
     } else {
       // New user - registration (use role from request)
+      let avatarUrl = null;
+      if (fbProfile.picture && fbProfile.picture.data) {
+        // Upload to Cloudinary if Cloudinary is configured
+        if (process.env.CLOUDINARY_CLOUD_NAME) {
+          try {
+            avatarUrl = await uploadImageFromUrl(
+              fbProfile.picture.data.url,
+              'avatars',
+              `user-instagram-${igProfile.id}`
+            );
+          } catch (error) {
+            console.error('Error uploading avatar to Cloudinary:', error);
+            avatarUrl = fbProfile.picture.data.url; // Fallback to original URL
+          }
+        } else {
+          avatarUrl = fbProfile.picture.data.url;
+        }
+      }
+
       user = await User.create({
         name: fbProfile.name || igProfile.username || `${fbProfile.first_name || ''} ${fbProfile.last_name || ''}`.trim() || 'User',
         email: fbProfile.email || `${igProfile.id}@instagram.com`,
@@ -488,13 +592,13 @@ router.post('/instagram', async (req, res) => {
           first_name: fbProfile.first_name,
           last_name: fbProfile.last_name
         },
-        avatarUrl: fbProfile.picture && fbProfile.picture.data ? fbProfile.picture.data.url : null,
+        avatarUrl: avatarUrl,
         role: selectedRole // Use role from request (only sent during registration)
       });
     }
 
     const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
-    setTokenCookie(res, user._id.toString(), req);
+    setTokenCookie(res, user._id.toString());
     
     res.json({ 
       _id: user._id, 

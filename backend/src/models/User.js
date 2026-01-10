@@ -52,13 +52,16 @@ const userSchema = new mongoose.Schema(
 );
 
 // Add index for OAuth provider lookups
-// Partial index: only unique when providerId exists (for OAuth users)
+// Partial index: only unique when providerId exists and provider is not 'local' (for OAuth users only)
 userSchema.index(
   { provider: 1, providerId: 1 }, 
   { 
     unique: true, 
     sparse: true,
-    partialFilterExpression: { providerId: { $exists: true, $ne: null } }
+    partialFilterExpression: { 
+      providerId: { $exists: true, $ne: null },
+      provider: { $ne: 'local' }
+    }
   }
 );
 

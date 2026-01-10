@@ -32,6 +32,18 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
 });
 
+// Helper function to format players count display
+function formatPlayersCount(match: Match): string {
+  const current = match.players.length;
+  const min = match.minPlayers ?? match.playersNeeded;
+  const max = match.maxPlayers;
+  
+  if (max) {
+    return `${current}/${min}-${max}`;
+  }
+  return `${current}/${min}`;
+}
+
 export default function MatchDetails() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -152,7 +164,7 @@ export default function MatchDetails() {
         />
         <Chip 
           color="primary" 
-          label={`Igrači: ${match.players.length}/${match.playersNeeded}`}
+          label={`Igrači: ${formatPlayersCount(match)}`}
           sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 24, sm: 32 } }}
         />
       </Stack>
