@@ -30,16 +30,28 @@ export async function initOneSignal(): Promise<boolean> {
         return;
       }
 
-      // Check if already loaded
+      // Check if already loaded and initialized
       if ((window as any).OneSignal) {
         OneSignal = (window as any).OneSignal;
+        // Check if already initialized
+        if (OneSignal.User && OneSignal.User.PushSubscription) {
+          console.log('✅ OneSignal already initialized');
+          resolve(true);
+          return;
+        }
+        
+        // Initialize if not already initialized
         OneSignal.init({
           appId: ONESIGNAL_APP_ID,
           notifyButton: { enable: false },
           allowLocalhostAsSecureOrigin: true
+        }).then(() => {
+          console.log('✅ OneSignal initialized (already loaded)');
+          resolve(true);
+        }).catch((err: any) => {
+          console.error('❌ Error initializing OneSignal:', err);
+          resolve(false);
         });
-        console.log('✅ OneSignal initialized (already loaded)');
-        resolve(true);
         return;
       }
 
@@ -49,13 +61,23 @@ export async function initOneSignal(): Promise<boolean> {
       script.async = true;
       script.onload = () => {
         OneSignal = (window as any).OneSignal;
+        if (!OneSignal) {
+          console.error('❌ OneSignal SDK loaded but window.OneSignal is not available');
+          resolve(false);
+          return;
+        }
+        
         OneSignal.init({
           appId: ONESIGNAL_APP_ID,
           notifyButton: { enable: false },
           allowLocalhostAsSecureOrigin: true
+        }).then(() => {
+          console.log('✅ OneSignal initialized');
+          resolve(true);
+        }).catch((err: any) => {
+          console.error('❌ Error initializing OneSignal:', err);
+          resolve(false);
         });
-        console.log('✅ OneSignal initialized');
-        resolve(true);
       };
       script.onerror = () => {
         console.error('❌ Failed to load OneSignal SDK');
@@ -158,28 +180,60 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
  * Subscribe to OneSignal notifications
  */
 export async function subscribeOneSignal(): Promise<string | null> {
-  if (!OneSignal) {
-    const initialized = await initOneSignal();
-    if (!initialized) {
-      throw new Error('OneSignal not initialized');
-    }
+  // Always re-initialize to ensure SDK is ready
+  const initialized = await initOneSignal();
+  if (!initialized || !OneSignal) {
+    throw new Error('OneSignal not initialized');
   }
 
   try {
+    // Wait a bit to ensure SDK is fully ready
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     // Get current user ID from backend
     const profileRes = await api.get('/api/players/profile');
     const userId = profileRes.data._id;
 
-    // Set external user ID (maps to our internal userId)
-    await OneSignal.setExternalUserId(userId.toString());
+    // OneSignal SDK v16 uses login() method instead of setExternalUserId
+    // Check for different API versions
+    if (typeof OneSignal.login === 'function') {
+      // New v16+ API
+      await OneSignal.login(userId.toString());
+    } else if (typeof OneSignal.setExternalUserId === 'function') {
+      // Older API
+      await OneSignal.setExternalUserId(userId.toString());
+    } else if (OneSignal.User && typeof OneSignal.User.setExternalId === 'function') {
+      // Alternative v16 API
+      await OneSignal.User.setExternalId(userId.toString());
+    } else {
+      console.warn('⚠️  login/setExternalUserId methods not available, continuing without setting external ID');
+    }
 
-    // Get OneSignal player ID (may need to wait a bit)
-    let playerId = await OneSignal.getPlayerId();
-    
+    // Opt in to push notifications (if needed)
+    if (OneSignal.User && OneSignal.User.PushSubscription) {
+      if (typeof OneSignal.User.PushSubscription.optIn === 'function') {
+        await OneSignal.User.PushSubscription.optIn();
+      }
+    }
+
+    // Get OneSignal player ID
+    let playerId: string | null = null;
+    if (typeof OneSignal.getPlayerId === 'function') {
+      playerId = await OneSignal.getPlayerId();
+    } else if (OneSignal.User && OneSignal.User.PushSubscription) {
+      if (typeof OneSignal.User.PushSubscription.getId === 'function') {
+        playerId = await OneSignal.User.PushSubscription.getId();
+      }
+    }
+
     // If player ID not available immediately, wait a bit
     if (!playerId) {
       await new Promise(resolve => setTimeout(resolve, 1000));
-      playerId = await OneSignal.getPlayerId();
+      if (typeof OneSignal.getPlayerId === 'function') {
+        playerId = await OneSignal.getPlayerId();
+      } else if (OneSignal.User && OneSignal.User.PushSubscription && typeof OneSignal.User.PushSubscription.getId === 'function') {
+        playerId = await OneSignal.User.PushSubscription.getId();
+      }
     }
 
     // Send subscription to backend
@@ -194,6 +248,7 @@ export async function subscribeOneSignal(): Promise<string | null> {
     return playerId || userId.toString();
   } catch (error: any) {
     console.error('❌ Error subscribing to OneSignal:', error);
+    console.error('OneSignal object:', OneSignal);
     throw error;
   }
 }
@@ -284,8 +339,18 @@ export async function unsubscribeFromPushNotifications(provider?: string, fcmTok
     });
 
     if (providerToUse === 'onesignal' && OneSignal) {
-      await OneSignal.setExternalUserId(null);
-      await OneSignal.logout();
+      // Logout (this clears external user ID in v16+)
+      if (typeof OneSignal.logout === 'function') {
+        await OneSignal.logout();
+      } else if (typeof OneSignal.setExternalUserId === 'function') {
+        // Older API
+        await OneSignal.setExternalUserId(null);
+        if (typeof OneSignal.logout === 'function') {
+          await OneSignal.logout();
+        }
+      } else if (OneSignal.User && typeof OneSignal.User.logout === 'function') {
+        await OneSignal.User.logout();
+      }
     }
 
     console.log('✅ Unsubscribed from push notifications');

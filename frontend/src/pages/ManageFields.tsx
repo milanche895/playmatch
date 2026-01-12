@@ -440,7 +440,7 @@ export default function ManageFields() {
                               fontWeight: 500
                             }}
                           >
-                            Cena: <strong>{field.price || 0} RSD</strong>
+                            Cena: <strong>{field.price || 0} EUR</strong>
                           </Typography>
                         </Stack>
                         
@@ -821,7 +821,7 @@ export default function ManageFields() {
             </TextField>
             <TextField
               type="number"
-              label="Cena (RSDs)"
+              label="Cena (EUR)"
               value={price}
               onChange={(e) => setPrice(parseFloat(e.target.value))}
               required

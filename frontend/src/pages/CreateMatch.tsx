@@ -727,7 +727,7 @@ export default function CreateMatch() {
             </TextField>
             <TextField
               type="number"
-              label="Cena (RSD)"
+              label="Cena (EUR)"
               value={newFieldPrice}
               onChange={(e) =>
                 setNewFieldPrice(parseFloat(e.target.value) || 0)

@@ -418,7 +418,7 @@ export default function Home() {
                       </Typography>
                       {field.price && field.price > 0 && (
                         <Typography variant="body2" color="primary">
-                          <strong>Cena:</strong> {field.price} RSD
+                          <strong>Cena:</strong> {field.price} EUR
                         </Typography>
                       )}
                       {userLocation && (

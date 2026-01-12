@@ -34,8 +34,10 @@ async function notifyNearbyPlayers(match, field) {
     // Get all players with notifications enabled and valid location
     const players = await User.find(playersQuery);
 
+    console.log(`[Push Notifications] Found ${players.length} players with notifications enabled (provider: ${provider})`);
+
     if (players.length === 0) {
-      console.log('No players to notify');
+      console.log('[Push Notifications] No players to notify - check if players have notifications enabled and are subscribed');
       return;
     }
 
@@ -66,8 +68,10 @@ async function notifyNearbyPlayers(match, field) {
       }
     }
 
+    console.log(`[Push Notifications] Found ${nearbyPlayers.length} nearby players within radius`);
+
     if (nearbyPlayers.length === 0) {
-      console.log('No nearby players to notify');
+      console.log('[Push Notifications] No nearby players to notify - players are outside notification radius');
       return;
     }
 
@@ -108,12 +112,15 @@ async function notifyNearbyPlayers(match, field) {
       });
     }
 
+    console.log(`[Push Notifications] Prepared ${subscriptions.length} subscriptions to send`);
+
     if (subscriptions.length === 0) {
-      console.log('No valid subscriptions to send notifications to');
+      console.log('[Push Notifications] No valid subscriptions to send notifications to');
       return;
     }
 
     // Send notifications
+    console.log(`[Push Notifications] Sending notifications to ${subscriptions.length} subscriptions...`);
     const result = await sendPushNotifications(subscriptions, payload);
 
     // Remove expired subscriptions (FCM only)

@@ -817,7 +817,7 @@ export default function MojTermine() {
                     {appointments.weekly.stats.totalRevenue.toLocaleString(
                       "sr-RS"
                     )}{" "}
-                    RSD
+                    EUR
                   </Typography>
                 </Grid>
               </Grid>
@@ -896,7 +896,7 @@ export default function MojTermine() {
                         {typeof match.fieldId === "object" &&
                           match.fieldId.price && (
                             <Chip
-                              label={`${match.fieldId.price} RSD`}
+                              label={`${match.fieldId.price} EUR`}
                               size="small"
                               color="secondary"
                               sx={{
@@ -1149,7 +1149,7 @@ export default function MojTermine() {
                       {appointments.monthly.stats.totalRevenue.toLocaleString(
                         "sr-RS"
                       )}{" "}
-                      RSD
+                      EUR
                     </Typography>
                   </Grid>
                 </Grid>
@@ -1230,7 +1230,7 @@ export default function MojTermine() {
                         {typeof match.fieldId === "object" &&
                           match.fieldId.price && (
                             <Chip
-                              label={`${match.fieldId.price} RSD`}
+                              label={`${match.fieldId.price} EUR`}
                               size="small"
                               color="secondary"
                               sx={{
