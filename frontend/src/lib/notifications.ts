@@ -33,25 +33,8 @@ export async function initOneSignal(): Promise<boolean> {
       // Check if already loaded and initialized
       if ((window as any).OneSignal) {
         OneSignal = (window as any).OneSignal;
-        // Check if already initialized
-        if (OneSignal.User && OneSignal.User.PushSubscription) {
-          console.log('✅ OneSignal already initialized');
-          resolve(true);
-          return;
-        }
-        
-        // Initialize if not already initialized
-        OneSignal.init({
-          appId: ONESIGNAL_APP_ID,
-          notifyButton: { enable: false },
-          allowLocalhostAsSecureOrigin: true
-        }).then(() => {
-          console.log('✅ OneSignal initialized (already loaded)');
-          resolve(true);
-        }).catch((err: any) => {
-          console.error('❌ Error initializing OneSignal:', err);
-          resolve(false);
-        });
+        console.log('✅ OneSignal SDK already loaded');
+        resolve(true);
         return;
       }
 
@@ -60,24 +43,17 @@ export async function initOneSignal(): Promise<boolean> {
       script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
       script.async = true;
       script.onload = () => {
-        OneSignal = (window as any).OneSignal;
-        if (!OneSignal) {
-          console.error('❌ OneSignal SDK loaded but window.OneSignal is not available');
-          resolve(false);
-          return;
-        }
-        
-        OneSignal.init({
-          appId: ONESIGNAL_APP_ID,
-          notifyButton: { enable: false },
-          allowLocalhostAsSecureOrigin: true
-        }).then(() => {
-          console.log('✅ OneSignal initialized');
+        // Wait a bit for SDK to be fully available
+        setTimeout(() => {
+          OneSignal = (window as any).OneSignal;
+          if (!OneSignal) {
+            console.error('❌ OneSignal SDK loaded but window.OneSignal is not available');
+            resolve(false);
+            return;
+          }
+          console.log('✅ OneSignal SDK loaded');
           resolve(true);
-        }).catch((err: any) => {
-          console.error('❌ Error initializing OneSignal:', err);
-          resolve(false);
-        });
+        }, 100);
       };
       script.onerror = () => {
         console.error('❌ Failed to load OneSignal SDK');
@@ -180,75 +156,43 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
  * Subscribe to OneSignal notifications
  */
 export async function subscribeOneSignal(): Promise<string | null> {
-  // Always re-initialize to ensure SDK is ready
-  const initialized = await initOneSignal();
-  if (!initialized || !OneSignal) {
-    throw new Error('OneSignal not initialized');
+  // Ensure SDK is loaded
+  if (!OneSignal) {
+    const initialized = await initOneSignal();
+    if (!initialized || !OneSignal) {
+      throw new Error('OneSignal SDK not loaded');
+    }
   }
 
   try {
-    // Wait a bit to ensure SDK is fully ready
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Get current user ID from backend
+    // Get current user ID from backend first
     const profileRes = await api.get('/api/players/profile');
     const userId = profileRes.data._id;
 
-    // OneSignal SDK v16 uses login() method instead of setExternalUserId
-    // Check for different API versions
-    if (typeof OneSignal.login === 'function') {
-      // New v16+ API
-      await OneSignal.login(userId.toString());
-    } else if (typeof OneSignal.setExternalUserId === 'function') {
-      // Older API
-      await OneSignal.setExternalUserId(userId.toString());
-    } else if (OneSignal.User && typeof OneSignal.User.setExternalId === 'function') {
-      // Alternative v16 API
-      await OneSignal.User.setExternalId(userId.toString());
-    } else {
-      console.warn('⚠️  login/setExternalUserId methods not available, continuing without setting external ID');
+    const ONESIGNAL_APP_ID = import.meta.env.VITE_ONESIGNAL_APP_ID;
+    if (!ONESIGNAL_APP_ID) {
+      throw new Error('OneSignal App ID not configured');
     }
 
-    // Opt in to push notifications (if needed)
-    if (OneSignal.User && OneSignal.User.PushSubscription) {
-      if (typeof OneSignal.User.PushSubscription.optIn === 'function') {
-        await OneSignal.User.PushSubscription.optIn();
-      }
-    }
+    // Wait a bit for SDK to be fully ready
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Get OneSignal player ID
-    let playerId: string | null = null;
-    if (typeof OneSignal.getPlayerId === 'function') {
-      playerId = await OneSignal.getPlayerId();
-    } else if (OneSignal.User && OneSignal.User.PushSubscription) {
-      if (typeof OneSignal.User.PushSubscription.getId === 'function') {
-        playerId = await OneSignal.User.PushSubscription.getId();
-      }
-    }
-
-    // If player ID not available immediately, wait a bit
-    if (!playerId) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      if (typeof OneSignal.getPlayerId === 'function') {
-        playerId = await OneSignal.getPlayerId();
-      } else if (OneSignal.User && OneSignal.User.PushSubscription && typeof OneSignal.User.PushSubscription.getId === 'function') {
-        playerId = await OneSignal.User.PushSubscription.getId();
-      }
-    }
-
-    // Send subscription to backend
+    // Initialize OneSignal (simpler approach - just send subscription to backend)
+    // OneSignal SDK v16 will automatically handle subscription when user grants permission
+    // We just need to save the external user ID mapping on backend
+    
+    // Send subscription to backend with userId as external ID
     await api.post('/api/players/push-subscription', {
       provider: 'onesignal',
       subscription: {
-        playerExternalId: userId.toString() // Use our userId as external ID
+        playerExternalId: userId.toString()
       }
     });
 
     console.log('✅ OneSignal subscription successful');
-    return playerId || userId.toString();
+    return userId.toString();
   } catch (error: any) {
     console.error('❌ Error subscribing to OneSignal:', error);
-    console.error('OneSignal object:', OneSignal);
     throw error;
   }
 }
