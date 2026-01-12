@@ -13,6 +13,7 @@ let messaging: any = null;
 
 /**
  * Initialize OneSignal SDK
+ * OneSignal SDK v16 uses OneSignalDeferred array for async loading
  */
 export async function initOneSignal(): Promise<boolean> {
   const ONESIGNAL_APP_ID = import.meta.env.VITE_ONESIGNAL_APP_ID;
@@ -23,43 +24,69 @@ export async function initOneSignal(): Promise<boolean> {
   }
 
   try {
-    // Load OneSignal Web SDK via script tag (recommended approach)
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    // Check if already loaded
+    if ((window as any).OneSignal) {
+      OneSignal = (window as any).OneSignal;
+      console.log('✅ OneSignal SDK already loaded');
+      return true;
+    }
+
+    // Initialize OneSignalDeferred array if it doesn't exist
+    (window as any).OneSignalDeferred = (window as any).OneSignalDeferred || [];
+
+    // Check if script is already being loaded
+    const existingScript = document.querySelector('script[src*="OneSignalSDK"]');
+    if (existingScript) {
+      // Script is loading, wait for it using OneSignalDeferred
+      return new Promise((resolve) => {
+        (window as any).OneSignalDeferred.push(async function(OneSignalInstance: any) {
+          OneSignal = OneSignalInstance;
+          console.log('✅ OneSignal SDK loaded (was loading)');
+          resolve(true);
+        });
+
+        // Timeout after 10 seconds
+        setTimeout(() => {
+          if (!OneSignal) {
+            console.error('❌ OneSignal SDK loading timeout');
+            resolve(false);
+          }
+        }, 10000);
+      });
+    }
+
+    // Load OneSignal SDK dynamically
     return new Promise((resolve) => {
-      if (typeof window === 'undefined') {
-        resolve(false);
-        return;
-      }
-
-      // Check if already loaded and initialized
-      if ((window as any).OneSignal) {
-        OneSignal = (window as any).OneSignal;
-        console.log('✅ OneSignal SDK already loaded');
-        resolve(true);
-        return;
-      }
-
-      // Load OneSignal SDK dynamically
       const script = document.createElement('script');
       script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
-      script.async = true;
-      script.onload = () => {
-        // Wait a bit for SDK to be fully available
-        setTimeout(() => {
-          OneSignal = (window as any).OneSignal;
-          if (!OneSignal) {
-            console.error('❌ OneSignal SDK loaded but window.OneSignal is not available');
-            resolve(false);
-            return;
-          }
-          console.log('✅ OneSignal SDK loaded');
-          resolve(true);
-        }, 100);
-      };
+      script.defer = true; // Use defer instead of async for better compatibility
+      
+      // Use OneSignalDeferred to wait for SDK
+      (window as any).OneSignalDeferred.push(async function(OneSignalInstance: any) {
+        OneSignal = OneSignalInstance;
+        console.log('✅ OneSignal SDK loaded and available');
+        resolve(true);
+      });
+
       script.onerror = () => {
-        console.error('❌ Failed to load OneSignal SDK');
+        console.error('❌ Failed to load OneSignal SDK script');
         resolve(false);
       };
+      
       document.head.appendChild(script);
+
+      // Fallback: also check window.OneSignal directly after a delay
+      setTimeout(() => {
+        if (!OneSignal && (window as any).OneSignal) {
+          OneSignal = (window as any).OneSignal;
+          console.log('✅ OneSignal SDK loaded (fallback check)');
+          resolve(true);
+        }
+      }, 2000);
     });
   } catch (error) {
     console.error('❌ Error initializing OneSignal:', error);
