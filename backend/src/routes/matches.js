@@ -9,32 +9,19 @@ const { sendPushNotifications } = require('../utils/pushNotifications');
 // Helper function to notify nearby players about a new match
 async function notifyNearbyPlayers(match, field) {
   try {
-    const { getProvider } = require('../utils/pushNotifications');
-    const provider = getProvider();
-
-    // Build query based on provider
-    let playersQuery = {
+    // Build query for players with PWA push subscriptions
+    const playersQuery = {
       role: 'player',
       notificationEnabled: true,
       'lastKnownLocation.lat': { $exists: true, $ne: null },
-      'lastKnownLocation.lng': { $exists: true, $ne: null }
+      'lastKnownLocation.lng': { $exists: true, $ne: null },
+      'pushSubscription': { $exists: true, $ne: null }
     };
-
-    if (provider === 'onesignal') {
-      playersQuery.notificationProvider = 'onesignal';
-      playersQuery.oneSignalUserId = { $exists: true, $ne: null };
-    } else if (provider === 'fcm') {
-      playersQuery.notificationProvider = 'fcm';
-      playersQuery.fcmTokens = { $exists: true, $ne: null, $not: { $size: 0 } };
-    } else {
-      console.warn('⚠️  Unknown push notification provider:', provider);
-      return;
-    }
 
     // Get all players with notifications enabled and valid location
     const players = await User.find(playersQuery);
 
-    console.log(`[Push Notifications] Found ${players.length} players with notifications enabled (provider: ${provider})`);
+    console.log(`[Push Notifications] Found ${players.length} players with notifications enabled`);
 
     if (players.length === 0) {
       console.log('[Push Notifications] No players to notify - check if players have notifications enabled and are subscribed');
@@ -58,13 +45,8 @@ async function notifyNearbyPlayers(match, field) {
 
       const distance = calculateDistance(fieldLat, fieldLng, playerLat, playerLng);
 
-      if (distance <= radius) {
-        // Check if player has valid subscription
-        if (provider === 'onesignal' && player.oneSignalUserId) {
-          nearbyPlayers.push(player);
-        } else if (provider === 'fcm' && player.fcmTokens && player.fcmTokens.length > 0) {
-          nearbyPlayers.push(player);
-        }
+      if (distance <= radius && player.pushSubscription) {
+        nearbyPlayers.push(player);
       }
     }
 
@@ -94,23 +76,10 @@ async function notifyNearbyPlayers(match, field) {
       image: '/icons/icon-192.png'
     };
 
-    // Build subscriptions based on provider
-    const subscriptions = [];
-    if (provider === 'onesignal') {
-      nearbyPlayers.forEach(player => {
-        if (player.oneSignalUserId) {
-          subscriptions.push({ playerExternalId: player.oneSignalUserId });
-        }
-      });
-    } else if (provider === 'fcm') {
-      nearbyPlayers.forEach(player => {
-        if (player.fcmTokens && player.fcmTokens.length > 0) {
-          player.fcmTokens.forEach(tokenEntry => {
-            subscriptions.push({ fcmToken: tokenEntry.token });
-          });
-        }
-      });
-    }
+    // Build subscriptions array
+    const subscriptions = nearbyPlayers
+      .filter(player => player.pushSubscription && player.pushSubscription.endpoint)
+      .map(player => player.pushSubscription);
 
     console.log(`[Push Notifications] Prepared ${subscriptions.length} subscriptions to send`);
 
@@ -123,13 +92,13 @@ async function notifyNearbyPlayers(match, field) {
     console.log(`[Push Notifications] Sending notifications to ${subscriptions.length} subscriptions...`);
     const result = await sendPushNotifications(subscriptions, payload);
 
-    // Remove expired subscriptions (FCM only)
-    if (provider === 'fcm' && result.expiredSubscriptions && result.expiredSubscriptions.length > 0) {
+    // Remove expired subscriptions
+    if (result.expiredSubscriptions && result.expiredSubscriptions.length > 0) {
       for (const expiredSub of result.expiredSubscriptions) {
-        if (expiredSub.fcmToken) {
+        if (expiredSub.endpoint) {
           await User.updateMany(
-            { 'fcmTokens.token': expiredSub.fcmToken },
-            { $pull: { fcmTokens: { token: expiredSub.fcmToken } } }
+            { 'pushSubscription.endpoint': expiredSub.endpoint },
+            { $unset: { pushSubscription: 1 } }
           );
         }
       }

@@ -1,162 +1,7 @@
-// Frontend Push Notification Service
-// Supports OneSignal and FCM with feature flag
+// Frontend PWA Push Notification Service
+// Uses native browser Push API with VAPID keys
 
 import api from './api';
-
-const PUSH_PROVIDER = import.meta.env.VITE_PUSH_NOTIFICATION_PROVIDER || 'onesignal';
-
-// OneSignal SDK
-let OneSignal: any = null;
-
-// Firebase SDK
-let messaging: any = null;
-
-/**
- * Initialize OneSignal SDK
- * OneSignal SDK v16 uses OneSignalDeferred array for async loading
- */
-export async function initOneSignal(): Promise<boolean> {
-  const ONESIGNAL_APP_ID = import.meta.env.VITE_ONESIGNAL_APP_ID;
-
-  if (!ONESIGNAL_APP_ID) {
-    console.warn('⚠️  OneSignal App ID not configured');
-    return false;
-  }
-
-  try {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-
-    // Check if already loaded
-    if ((window as any).OneSignal) {
-      OneSignal = (window as any).OneSignal;
-      console.log('✅ OneSignal SDK already loaded');
-      return true;
-    }
-
-    // Initialize OneSignalDeferred array if it doesn't exist
-    (window as any).OneSignalDeferred = (window as any).OneSignalDeferred || [];
-
-    // Check if script is already being loaded
-    const existingScript = document.querySelector('script[src*="OneSignalSDK"]');
-    if (existingScript) {
-      // Script is loading, wait for it using OneSignalDeferred
-      return new Promise((resolve) => {
-        (window as any).OneSignalDeferred.push(async function(OneSignalInstance: any) {
-          OneSignal = OneSignalInstance;
-          console.log('✅ OneSignal SDK loaded (was loading)');
-          resolve(true);
-        });
-
-        // Timeout after 10 seconds
-        setTimeout(() => {
-          if (!OneSignal) {
-            console.error('❌ OneSignal SDK loading timeout');
-            resolve(false);
-          }
-        }, 10000);
-      });
-    }
-
-    // Load OneSignal SDK dynamically
-    return new Promise((resolve) => {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
-      script.defer = true; // Use defer instead of async for better compatibility
-      
-      // Use OneSignalDeferred to wait for SDK
-      (window as any).OneSignalDeferred.push(async function(OneSignalInstance: any) {
-        OneSignal = OneSignalInstance;
-        console.log('✅ OneSignal SDK loaded and available');
-        resolve(true);
-      });
-
-      script.onerror = () => {
-        console.error('❌ Failed to load OneSignal SDK script');
-        resolve(false);
-      };
-      
-      document.head.appendChild(script);
-
-      // Fallback: also check window.OneSignal directly after a delay
-      setTimeout(() => {
-        if (!OneSignal && (window as any).OneSignal) {
-          OneSignal = (window as any).OneSignal;
-          console.log('✅ OneSignal SDK loaded (fallback check)');
-          resolve(true);
-        }
-      }, 2000);
-    });
-  } catch (error) {
-    console.error('❌ Error initializing OneSignal:', error);
-    return false;
-  }
-}
-
-/**
- * Initialize Firebase Cloud Messaging
- */
-export async function initFCM(): Promise<boolean> {
-  const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID,
-    vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
-  };
-
-  if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-    console.warn('⚠️  Firebase config not set');
-    return false;
-  }
-
-  try {
-    // Dynamic import with error handling
-    let firebaseApp, firebaseMessaging;
-    try {
-      firebaseApp = await import('firebase/app');
-      firebaseMessaging = await import('firebase/messaging');
-    } catch (importError) {
-      console.error('❌ Failed to import Firebase modules. Make sure firebase package is installed:', importError);
-      return false;
-    }
-
-    const { initializeApp, getApps } = firebaseApp;
-    const { getMessaging } = firebaseMessaging;
-
-    // Check if messaging is supported (if available)
-    if ('isSupported' in firebaseMessaging && typeof (firebaseMessaging as any).isSupported === 'function') {
-      try {
-        const isSupported = (firebaseMessaging as any).isSupported;
-        const supported = await isSupported();
-        if (!supported) {
-          console.warn('⚠️  Firebase Messaging not supported in this browser');
-          return false;
-        }
-      } catch (supportError) {
-        // If isSupported check fails, continue anyway (might work)
-        console.warn('⚠️  Could not check Firebase Messaging support:', supportError);
-      }
-    }
-
-    let app;
-    if (getApps().length === 0) {
-      app = initializeApp(firebaseConfig);
-    } else {
-      app = getApps()[0];
-    }
-
-    messaging = getMessaging(app);
-    console.log('✅ Firebase Messaging initialized');
-    return true;
-  } catch (error) {
-    console.error('❌ Error initializing Firebase:', error);
-    return false;
-  }
-}
 
 /**
  * Request notification permission (user-friendly wrapper)
@@ -180,103 +25,31 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 }
 
 /**
- * Subscribe to OneSignal notifications
+ * Get service worker registration
  */
-export async function subscribeOneSignal(): Promise<string | null> {
-  // Ensure SDK is loaded
-  if (!OneSignal) {
-    const initialized = await initOneSignal();
-    if (!initialized || !OneSignal) {
-      throw new Error('OneSignal SDK not loaded');
-    }
+async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
+  if (!('serviceWorker' in navigator)) {
+    throw new Error('Service Workers are not supported in this browser');
   }
 
-  try {
-    // Get current user ID from backend first
-    const profileRes = await api.get('/api/players/profile');
-    const userId = profileRes.data._id;
-
-    const ONESIGNAL_APP_ID = import.meta.env.VITE_ONESIGNAL_APP_ID;
-    if (!ONESIGNAL_APP_ID) {
-      throw new Error('OneSignal App ID not configured');
-    }
-
-    // Wait a bit for SDK to be fully ready
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Initialize OneSignal (simpler approach - just send subscription to backend)
-    // OneSignal SDK v16 will automatically handle subscription when user grants permission
-    // We just need to save the external user ID mapping on backend
-    
-    // Send subscription to backend with userId as external ID
-    await api.post('/api/players/push-subscription', {
-      provider: 'onesignal',
-      subscription: {
-        playerExternalId: userId.toString()
-      }
-    });
-
-    console.log('✅ OneSignal subscription successful');
-    return userId.toString();
-  } catch (error: any) {
-    console.error('❌ Error subscribing to OneSignal:', error);
-    throw error;
+  const registration = await navigator.serviceWorker.ready;
+  if (!registration) {
+    throw new Error('Service Worker is not registered');
   }
+
+  return registration;
 }
 
 /**
- * Subscribe to FCM notifications
+ * Get VAPID public key from backend
  */
-export async function subscribeFCM(): Promise<string | null> {
-  if (!messaging) {
-    const initialized = await initFCM();
-    if (!initialized) {
-      throw new Error('FCM not initialized');
-    }
-  }
-
-  try {
-    const firebaseMessaging = await import('firebase/messaging');
-    const { getToken } = firebaseMessaging;
-
-    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
-    if (!vapidKey) {
-      throw new Error('Firebase VAPID key not configured');
-    }
-
-    // Get FCM token
-    const token = await getToken(messaging, { vapidKey });
-
-    if (!token) {
-      throw new Error('No FCM token available');
-    }
-
-    // Get device info
-    const deviceInfo = {
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-      language: navigator.language
-    };
-
-    // Send subscription to backend
-    await api.post('/api/players/push-subscription', {
-      provider: 'fcm',
-      subscription: {
-        fcmToken: token,
-        deviceInfo
-      }
-    });
-
-    console.log('✅ FCM subscription successful');
-    return token;
-  } catch (error: any) {
-    console.error('❌ Error subscribing to FCM:', error);
-    throw error;
-  }
+async function getVapidPublicKey(): Promise<string> {
+  const res = await api.get('/api/players/vapid-public-key');
+  return res.data.publicKey;
 }
 
 /**
- * Subscribe to push notifications (uses configured provider)
+ * Subscribe to PWA push notifications
  */
 export async function subscribeToPushNotifications(): Promise<string | null> {
   // First request browser permission
@@ -286,44 +59,57 @@ export async function subscribeToPushNotifications(): Promise<string | null> {
     throw new Error('Notification permission denied');
   }
 
-  if (PUSH_PROVIDER === 'onesignal') {
-    return await subscribeOneSignal();
-  } else if (PUSH_PROVIDER === 'fcm') {
-    return await subscribeFCM();
-  } else {
-    throw new Error(`Unknown push notification provider: ${PUSH_PROVIDER}`);
+  try {
+    // Get service worker registration
+    const registration = await getServiceWorkerRegistration();
+
+    // Get VAPID public key from backend
+    const vapidPublicKey = await getVapidPublicKey();
+
+    // Check if already subscribed
+    let subscription = await registration.pushManager.getSubscription();
+    
+    if (subscription) {
+      // Already subscribed, send to backend to verify
+      await api.post('/api/players/push-subscription', {
+        subscription: subscription.toJSON()
+      });
+      console.log('✅ Already subscribed to push notifications');
+      return subscription.endpoint;
+    }
+
+    // Subscribe to push notifications
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
+    });
+
+    // Send subscription to backend
+    await api.post('/api/players/push-subscription', {
+      subscription: subscription.toJSON()
+    });
+
+    console.log('✅ PWA push subscription successful');
+    return subscription.endpoint;
+  } catch (error: any) {
+    console.error('❌ Error subscribing to push notifications:', error);
+    throw error;
   }
 }
 
 /**
  * Unsubscribe from push notifications
  */
-export async function unsubscribeFromPushNotifications(provider?: string, fcmToken?: string): Promise<void> {
-  const providerToUse = provider || PUSH_PROVIDER;
-  
+export async function unsubscribeFromPushNotifications(): Promise<void> {
   try {
-    await api.delete('/api/players/push-subscription', {
-      data: {
-        provider: providerToUse,
-        fcmToken
-      }
-    });
+    const registration = await getServiceWorkerRegistration();
+    const subscription = await registration.pushManager.getSubscription();
 
-    if (providerToUse === 'onesignal' && OneSignal) {
-      // Logout (this clears external user ID in v16+)
-      if (typeof OneSignal.logout === 'function') {
-        await OneSignal.logout();
-      } else if (typeof OneSignal.setExternalUserId === 'function') {
-        // Older API
-        await OneSignal.setExternalUserId(null);
-        if (typeof OneSignal.logout === 'function') {
-          await OneSignal.logout();
-        }
-      } else if (OneSignal.User && typeof OneSignal.User.logout === 'function') {
-        await OneSignal.User.logout();
-      }
+    if (subscription) {
+      await subscription.unsubscribe();
     }
 
+    await api.delete('/api/players/push-subscription');
     console.log('✅ Unsubscribed from push notifications');
   } catch (error: any) {
     console.error('❌ Error unsubscribing:', error);
@@ -335,24 +121,38 @@ export async function unsubscribeFromPushNotifications(provider?: string, fcmTok
  * Get notification subscription status
  */
 export async function getNotificationStatus(): Promise<{
-  provider: string | null;
-  activeProvider: string;
+  subscribed: boolean;
   enabled: boolean;
   permission: NotificationPermission;
+  endpoint?: string;
 }> {
   const permission = Notification.permission;
 
   try {
+    // Check if service worker is registered
+    if (!('serviceWorker' in navigator)) {
+      return {
+        subscribed: false,
+        enabled: false,
+        permission
+      };
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+
     const res = await api.get('/api/players/push-subscription/status');
+    
     return {
-      ...res.data,
-      permission
+      subscribed: subscription !== null && res.data.subscribed,
+      enabled: res.data.enabled !== false,
+      permission,
+      endpoint: subscription?.endpoint
     };
   } catch (error: any) {
     console.error('❌ Error getting notification status:', error);
     return {
-      provider: null,
-      activeProvider: PUSH_PROVIDER,
+      subscribed: false,
       enabled: false,
       permission
     };
@@ -360,39 +160,30 @@ export async function getNotificationStatus(): Promise<{
 }
 
 /**
- * Initialize push notification service (called on app startup)
+ * Convert VAPID public key from URL-safe base64 to Uint8Array
  */
-export async function initPushNotifications(): Promise<void> {
-  if (PUSH_PROVIDER === 'onesignal') {
-    await initOneSignal();
-    
-    // Set up message handler
-    if (OneSignal && typeof window !== 'undefined') {
-      OneSignal.on('notificationDisplay', (event: any) => {
-        console.log('OneSignal notification displayed:', event);
-      });
-    }
-  } else if (PUSH_PROVIDER === 'fcm') {
-    await initFCM();
-    
-    // Set up foreground message handler
-    if (messaging) {
-      const firebaseMessaging = await import('firebase/messaging');
-      const { onMessage } = firebaseMessaging;
-      onMessage(messaging, (payload: any) => {
-        console.log('FCM message received in foreground:', payload);
-        
-        // Show notification manually if needed
-        if (payload.notification) {
-          new Notification(payload.notification.title || 'PlayMatch', {
-            body: payload.notification.body,
-            icon: payload.notification.icon || '/icons/icon-192.png',
-            data: payload.data
-          });
-        }
-      });
-    }
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
   }
+  return outputArray;
 }
 
-export { PUSH_PROVIDER };
+/**
+ * Initialize push notification service (called on app startup)
+ * This function is kept for compatibility but doesn't do anything
+ * as PWA notifications don't require external SDK initialization
+ */
+export async function initPushNotifications(): Promise<void> {
+  // PWA push notifications don't require initialization
+  // Service worker is registered by VitePWA plugin
+  console.log('✅ PWA push notifications ready');
+}

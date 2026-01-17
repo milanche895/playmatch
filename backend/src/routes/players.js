@@ -276,7 +276,7 @@ router.post('/location', auth(true), async (req, res) => {
   }
 });
 
-// Subscribe to push notifications (OneSignal or FCM)
+// Subscribe to push notifications (PWA Web Push)
 router.post('/push-subscription', auth(true), async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -287,71 +287,20 @@ router.post('/push-subscription', auth(true), async (req, res) => {
       return res.status(403).json({ message: 'Samo igrači mogu se pretplatiti na notifikacije' });
     }
 
-    const { provider, subscription } = req.body;
+    const { subscription } = req.body;
     
-    if (!provider || !['onesignal', 'fcm'].includes(provider)) {
-      return res.status(400).json({ message: 'Provider mora biti "onesignal" ili "fcm"' });
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ message: 'Push subscription zahteva endpoint' });
     }
 
-    const updateData = {
-      notificationProvider: provider
-    };
-
-    if (provider === 'onesignal') {
-      // OneSignal: subscription should contain playerExternalId
-      if (!subscription || !subscription.playerExternalId) {
-        return res.status(400).json({ message: 'OneSignal subscription zahteva playerExternalId' });
-      }
-      updateData.oneSignalUserId = subscription.playerExternalId;
-      // Clear FCM tokens when switching to OneSignal
-      updateData.fcmTokens = [];
-    } else if (provider === 'fcm') {
-      // FCM: subscription should contain fcmToken
-      if (!subscription || !subscription.fcmToken) {
-        return res.status(400).json({ message: 'FCM subscription zahteva fcmToken' });
-      }
-
-      const deviceInfo = subscription.deviceInfo || {};
-      const fcmTokenEntry = {
-        token: subscription.fcmToken,
-        deviceInfo: {
-          userAgent: deviceInfo.userAgent || req.headers['user-agent'] || '',
-          platform: deviceInfo.platform || 'web',
-          language: deviceInfo.language || req.headers['accept-language'] || 'en'
-        },
-        createdAt: new Date(),
-        lastSeenAt: new Date()
-      };
-
-      // Add or update FCM token (avoid duplicates)
-      const existingTokens = user.fcmTokens || [];
-      const tokenIndex = existingTokens.findIndex(t => t.token === subscription.fcmToken);
-      
-      if (tokenIndex >= 0) {
-        // Update existing token using $set operator
-        updateData[`fcmTokens.${tokenIndex}.lastSeenAt`] = new Date();
-        if (deviceInfo.userAgent) {
-          updateData[`fcmTokens.${tokenIndex}.deviceInfo`] = fcmTokenEntry.deviceInfo;
-        }
-      } else {
-        // Add new token
-        updateData.$push = { fcmTokens: fcmTokenEntry };
-      }
-
-      // Clear OneSignal userId when switching to FCM
-      updateData.oneSignalUserId = null;
-    }
-
-    // Use findByIdAndUpdate to avoid triggering unique index validation issues
-    const updateQuery = { $set: updateData };
-    if (updateData.$push) {
-      updateQuery.$push = updateData.$push;
-      delete updateData.$push;
-    }
-
+    // Save PWA push subscription
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
-      updateQuery,
+      {
+        $set: {
+          pushSubscription: subscription
+        }
+      },
       { new: true, runValidators: false }
     );
 
@@ -360,8 +309,7 @@ router.post('/push-subscription', auth(true), async (req, res) => {
     }
 
     res.json({ 
-      message: 'Push subscription sačuvana',
-      provider: provider
+      message: 'Push subscription sačuvana'
     });
   } catch (e) {
     console.error('Push subscription error:', e);
@@ -377,31 +325,16 @@ router.delete('/push-subscription', auth(true), async (req, res) => {
       return res.status(404).json({ message: 'Korisnik nije pronađen' });
     }
 
-    const { provider, fcmToken } = req.body;
-
-    if (provider === 'fcm' && fcmToken) {
-      // Remove specific FCM token
-      await User.findByIdAndUpdate(
-        req.user.id,
-        { $pull: { fcmTokens: { token: fcmToken } } },
-        { new: true }
-      );
-    } else {
-      // Remove all notification subscriptions
-      await User.findByIdAndUpdate(
-        req.user.id,
-        {
-          $set: {
-            notificationProvider: null,
-            oneSignalUserId: null
-          },
-          $unset: {
-            fcmTokens: 1
-          }
-        },
-        { new: true }
-      );
-    }
+    // Remove push subscription
+    await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        $unset: {
+          pushSubscription: 1
+        }
+      },
+      { new: true }
+    );
 
     res.json({ message: 'Push subscription uklonjena' });
   } catch (e) {
@@ -410,23 +343,17 @@ router.delete('/push-subscription', auth(true), async (req, res) => {
   }
 });
 
-// Get push notification provider and status
+// Get push notification status
 router.get('/push-subscription/status', auth(true), async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('notificationProvider oneSignalUserId fcmTokens notificationEnabled');
+    const user = await User.findById(req.user.id).select('pushSubscription notificationEnabled');
     if (!user) {
       return res.status(404).json({ message: 'Korisnik nije pronađen' });
     }
 
-    const { getProvider } = require('../utils/pushNotifications');
-    const activeProvider = getProvider();
-
     res.json({
-      provider: user.notificationProvider,
-      activeProvider: activeProvider,
-      enabled: user.notificationEnabled !== false,
-      oneSignalUserId: user.oneSignalUserId,
-      fcmTokenCount: user.fcmTokens ? user.fcmTokens.length : 0
+      subscribed: user.pushSubscription !== null && user.pushSubscription !== undefined,
+      enabled: user.notificationEnabled !== false
     });
   } catch (e) {
     console.error('Push subscription status error:', e);
@@ -434,13 +361,19 @@ router.get('/push-subscription/status', auth(true), async (req, res) => {
   }
 });
 
-// DEPRECATED: Get VAPID public key (kept for backward compatibility, returns null)
+// Get VAPID public key for PWA push notifications
 router.get('/vapid-public-key', (req, res) => {
-  console.warn('⚠️  /vapid-public-key endpoint is deprecated. VAPID is no longer supported.');
-  res.status(410).json({ 
-    message: 'VAPID is deprecated. Please use OneSignal or FCM.',
-    deprecated: true
-  });
+  try {
+    const { getVapidPublicKey } = require('../utils/pushNotifications');
+    const publicKey = getVapidPublicKey();
+    res.json({ publicKey });
+  } catch (error) {
+    console.error('Error getting VAPID public key:', error);
+    res.status(500).json({ 
+      message: 'VAPID public key nije konfigurisan',
+      error: error.message 
+    });
+  }
 });
 
 // Test push notification endpoint (for testing purposes)
@@ -451,31 +384,13 @@ router.post('/test-push', auth(true), async (req, res) => {
       return res.status(404).json({ message: 'Korisnik nije pronađen' });
     }
     
-    const { getProvider } = require('../utils/pushNotifications');
-    const provider = getProvider();
-    const { sendPushNotification } = require('../utils/pushNotifications');
-
-    let subscription = null;
-
-    if (provider === 'onesignal') {
-      if (!user.oneSignalUserId) {
-        return res.status(400).json({ 
-          message: 'Nema OneSignal subscription. Otvori Notification Settings da se pretplatiš.' 
-        });
-      }
-      subscription = { playerExternalId: user.oneSignalUserId };
-    } else if (provider === 'fcm') {
-      if (!user.fcmTokens || user.fcmTokens.length === 0) {
-        return res.status(400).json({ 
-          message: 'Nema FCM subscription. Otvori Notification Settings da se pretplatiš.' 
-        });
-      }
-      subscription = { fcmToken: user.fcmTokens[0].token };
-    } else {
-      return res.status(500).json({ 
-        message: 'Push notification provider nije konfigurisan' 
+    if (!user.pushSubscription) {
+      return res.status(400).json({ 
+        message: 'Nema push subscription. Otvori Notification Settings da se pretplatiš.' 
       });
     }
+
+    const { sendPushNotification } = require('../utils/pushNotifications');
 
     const testPayload = {
       title: 'Test Push Notifikacija 🧪',
@@ -484,12 +399,11 @@ router.post('/test-push', auth(true), async (req, res) => {
       image: '/icons/icon-192.png'
     };
 
-    await sendPushNotification(subscription, testPayload);
+    await sendPushNotification(user.pushSubscription, testPayload);
     
     res.json({ 
       message: 'Test push notifikacija je poslata!',
-      success: true,
-      provider: provider
+      success: true
     });
   } catch (error) {
     console.error('Error sending test push:', error);

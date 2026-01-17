@@ -25,8 +25,7 @@ import {
   subscribeToPushNotifications,
   unsubscribeFromPushNotifications,
   getNotificationStatus,
-  requestNotificationPermission,
-  PUSH_PROVIDER
+  requestNotificationPermission
 } from '../lib/notifications';
 
 export default function NotificationSettings() {
@@ -34,12 +33,10 @@ export default function NotificationSettings() {
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
   const [status, setStatus] = useState<{
-    provider: string | null;
-    activeProvider: string;
+    subscribed: boolean;
     enabled: boolean;
     permission: NotificationPermission;
-    fcmTokenCount?: number;
-    oneSignalUserId?: string;
+    endpoint?: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -98,7 +95,7 @@ export default function NotificationSettings() {
       setError(null);
       setSuccess(null);
 
-      await unsubscribeFromPushNotifications(status?.provider || undefined);
+      await unsubscribeFromPushNotifications();
       setSuccess('Obaveštenja su onemogućena.');
 
       // Reload status
@@ -164,8 +161,8 @@ export default function NotificationSettings() {
     );
   }
 
-  const isSubscribed = status.provider !== null;
-  const permissionGranted = status.permission === 'granted';
+  const isSubscribed = status?.subscribed ?? false;
+  const permissionGranted = status?.permission === 'granted';
 
   return (
     <Stack spacing={3} sx={{ px: { xs: 1, sm: 2, md: 3 } }}>
@@ -210,39 +207,10 @@ export default function NotificationSettings() {
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="body1">Dozvola pretraživača:</Typography>
                   <Chip
-                    label={getPermissionLabel(status.permission)}
-                    color={getPermissionColor(status.permission) as any}
+                    label={getPermissionLabel(status?.permission || 'default')}
+                    color={getPermissionColor(status?.permission || 'default') as any}
                   />
                 </Box>
-
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body1">Provider:</Typography>
-                  <Chip
-                    label={status.activeProvider.toUpperCase()}
-                    color="primary"
-                    variant="outlined"
-                  />
-                </Box>
-
-                {status.provider && (
-                  <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Typography variant="body1">Aktivni provider:</Typography>
-                    <Chip
-                      label={status.provider.toUpperCase()}
-                      color="secondary"
-                      variant="outlined"
-                    />
-                  </Box>
-                )}
-
-                {status.fcmTokenCount && status.fcmTokenCount > 0 && (
-                  <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Typography variant="body1">Broj uređaja:</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {status.fcmTokenCount}
-                    </Typography>
-                  </Box>
-                )}
               </Stack>
             </Box>
 
@@ -292,7 +260,7 @@ export default function NotificationSettings() {
 
                 {!permissionGranted && (
                   <Alert severity="warning">
-                    {status.permission === 'denied' 
+                    {status?.permission === 'denied' 
                       ? 'Dozvola za obaveštenja je odbijena. Molimo omogućite je u postavkama pretraživača.'
                       : 'Prvo morate dozvoliti obaveštenja u vašem pretraživaču.'}
                   </Alert>
