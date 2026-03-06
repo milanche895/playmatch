@@ -5,13 +5,15 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  FormControl,
-  FormLabel,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
-  Typography
+  Typography,
+  Box,
+  Stack,
+  Paper,
 } from '@mui/material';
+import SportsIcon from '@mui/icons-material/Sports';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import PersonIcon from '@mui/icons-material/Person';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 type RoleSelectionModalProps = {
   open: boolean;
@@ -24,7 +26,7 @@ export default function RoleSelectionModal({ open, onClose, onSelect, provider }
   const [role, setRole] = useState<'player' | 'court'>('player');
 
   const providerNames = {
-    google: 'Gmail',
+    google: 'Google',
     facebook: 'Facebook',
     instagram: 'Instagram'
   };
@@ -34,39 +36,146 @@ export default function RoleSelectionModal({ open, onClose, onSelect, provider }
     onClose();
   }
 
+  const roleOptions = [
+    {
+      value: 'player' as const,
+      icon: <SportsIcon sx={{ fontSize: 28 }} />,
+      title: 'Igrač',
+      description: 'Tražim terene i mečeve',
+    },
+    {
+      value: 'court' as const,
+      icon: <LocationOnIcon sx={{ fontSize: 28 }} />,
+      title: 'Vlasnik terena',
+      description: 'Upravljam terenima i rezervacijama',
+    },
+  ];
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        Izaberite tip naloga
-      </DialogTitle>
-      <DialogContent>
-        <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-          Pre nego što nastavite sa prijavom preko {providerNames[provider]}, molimo izaberite tip vašeg naloga:
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: 4,
+          p: 1,
+        },
+      }}
+    >
+      <DialogTitle sx={{ textAlign: 'center', pt: 2 }}>
+        <Box
+          sx={{
+            width: 56,
+            height: 56,
+            borderRadius: 3,
+            bgcolor: 'primary.main',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mx: 'auto',
+            mb: 2,
+          }}
+        >
+          <PersonIcon sx={{ color: 'white', fontSize: 28 }} />
+        </Box>
+        <Typography variant="h5" fontWeight={700}>
+          Izaberite tip naloga
         </Typography>
-        <FormControl component="fieldset" fullWidth>
-          <FormLabel component="legend" sx={{ mb: 1 }}>
-            Ja sam:
-          </FormLabel>
-          <RadioGroup
-            value={role}
-            onChange={(e) => setRole(e.target.value as 'player' | 'court')}
-          >
-            <FormControlLabel 
-              value="player" 
-              control={<Radio />} 
-              label="Igrač - Tražim terene i mečeve"
-            />
-            <FormControlLabel 
-              value="court" 
-              control={<Radio />} 
-              label="Teren - Upravljam terenima i rezervacijama"
-            />
-          </RadioGroup>
-        </FormControl>
+      </DialogTitle>
+
+      <DialogContent>
+        <Typography
+          variant="body2"
+          sx={{
+            mb: 3,
+            color: 'text.secondary',
+            textAlign: 'center',
+          }}
+        >
+          Pre nego što nastavite sa {providerNames[provider]}, molimo izaberite kako ćete koristiti PlayMatch
+        </Typography>
+
+        <Stack spacing={2}>
+          {roleOptions.map((option) => (
+            <Paper
+              key={option.value}
+              onClick={() => setRole(option.value)}
+              elevation={0}
+              sx={{
+                p: 3,
+                borderRadius: 3,
+                border: '2px solid',
+                borderColor: role === option.value ? 'primary.main' : 'divider',
+                bgcolor: role === option.value ? 'primary.main' : 'background.paper',
+                color: role === option.value ? 'primary.contrastText' : 'text.primary',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                position: 'relative',
+                '&:hover': {
+                  borderColor: 'primary.main',
+                  transform: 'translateY(-2px)',
+                },
+              }}
+            >
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Box
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 2,
+                    bgcolor: role === option.value ? 'rgba(255,255,255,0.2)' : 'action.hover',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {option.icon}
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    {option.title}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: role === option.value ? 'rgba(255,255,255,0.8)' : 'text.secondary',
+                    }}
+                  >
+                    {option.description}
+                  </Typography>
+                </Box>
+                {role === option.value && (
+                  <CheckCircleIcon sx={{ color: 'white' }} />
+                )}
+              </Stack>
+            </Paper>
+          ))}
+        </Stack>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Otkaži</Button>
-        <Button onClick={handleConfirm} variant="contained" color="primary">
+
+      <DialogActions sx={{ px: 3, pb: 3, pt: 1 }}>
+        <Button
+          onClick={onClose}
+          variant="outlined"
+          fullWidth
+          size="large"
+          sx={{
+            borderRadius: 3,
+          }}
+        >
+          Otkaži
+        </Button>
+        <Button
+          onClick={handleConfirm}
+          variant="contained"
+          fullWidth
+          size="large"
+          sx={{
+            borderRadius: 3,
+          }}
+        >
           Nastavi
         </Button>
       </DialogActions>

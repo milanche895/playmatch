@@ -1,7 +1,25 @@
 import { useState, useEffect } from 'react';
-import { Stack, Typography, TextField, Button, Alert, Divider, Box } from '@mui/material';
+import { 
+  Stack, 
+  Typography, 
+  TextField, 
+  Button, 
+  Alert, 
+  Divider, 
+  Box,
+  Paper,
+  InputAdornment,
+  IconButton,
+} from '@mui/material';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import EmailIcon from '@mui/icons-material/Email';
+import LockIcon from '@mui/icons-material/Lock';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import GoogleIcon from '@mui/icons-material/Google';
+import FacebookIcon from '@mui/icons-material/Facebook';
+import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
 
 export default function Login() {
   const { login, loginWithGoogle, loginWithFacebook } = useAuth();
@@ -9,11 +27,11 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Check for error in URL params
     const errorParam = searchParams.get('error');
     if (errorParam) {
       setError(decodeURIComponent(errorParam));
@@ -35,91 +53,167 @@ export default function Login() {
   }
 
   function handleGoogleLogin() {
-    // For login, don't ask for role - just redirect
     loginWithGoogle();
   }
 
   function handleFacebookLogin() {
-    // For login, don't ask for role - just redirect
     loginWithFacebook();
   }
 
   return (
-    <form onSubmit={onSubmit}>
-      <Stack 
-        spacing={{ xs: 2, sm: 2.5 }} 
-        maxWidth={420}
-        sx={{ width: '100%', mx: 'auto' }}
+    <Box
+      sx={{
+        minHeight: 'calc(100vh - 200px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        py: 4,
+      }}
+    >
+      <Paper
+        elevation={0}
+        sx={{
+          width: '100%',
+          maxWidth: 440,
+          p: { xs: 3, sm: 5 },
+          borderRadius: 4,
+          border: '1px solid',
+          borderColor: 'divider',
+        }}
       >
-        <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.5rem', sm: '1.75rem' } }}>
-          Prijava
-        </Typography>
-        {error && <Alert severity="error" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>{error}</Alert>}
-        <TextField 
-          label="Email" 
-          type="email" 
-          value={email} 
-          onChange={(e) => setEmail(e.target.value)} 
-          required
-          fullWidth
-          sx={{
-            '& .MuiInputBase-root': {
-              fontSize: { xs: '0.875rem', sm: '1rem' }
-            }
-          }}
-        />
-        <TextField 
-          label="Lozinka" 
-          type="password" 
-          value={password} 
-          onChange={(e) => setPassword(e.target.value)} 
-          required
-          fullWidth
-          sx={{
-            '& .MuiInputBase-root': {
-              fontSize: { xs: '0.875rem', sm: '1rem' }
-            }
-          }}
-        />
-        <Button 
-          type="submit" 
-          variant="contained" 
-          fullWidth
-          size="large"
-          disabled={loading}
-          sx={{ 
-            fontSize: { xs: '1rem', sm: '1.125rem' },
-            py: { xs: 1.25, sm: 1.5 },
-            fontWeight: 600
-          }}
-        >
-          Prijavi se
-        </Button>
-
-        <Divider sx={{ my: 2 }}>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            ili
+        {/* Header */}
+        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <Box
+            sx={{
+              width: 64,
+              height: 64,
+              borderRadius: 3,
+              bgcolor: 'primary.main',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              mx: 'auto',
+              mb: 2,
+            }}
+          >
+            <SportsSoccerIcon sx={{ color: 'white', fontSize: 32 }} />
+          </Box>
+          <Typography variant="h4" fontWeight={700} sx={{ mb: 1 }}>
+            Dobrodošli nazad
           </Typography>
-        </Divider>
+          <Typography variant="body1" color="text.secondary">
+            Prijavite se da biste nastavili
+          </Typography>
+        </Box>
 
-        <Stack spacing={1.5}>
+        {error && (
+          <Alert 
+            severity="error" 
+            sx={{ mb: 3, borderRadius: 2 }}
+          >
+            {error}
+          </Alert>
+        )}
+
+        <form onSubmit={onSubmit}>
+          <Stack spacing={3}>
+            {/* Email Field */}
+            <TextField
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              fullWidth
+              placeholder="unesite@email.com"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <EmailIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+
+            {/* Password Field */}
+            <TextField
+              label="Lozinka"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              fullWidth
+              placeholder="••••••••"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LockIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      onClick={() => setShowPassword(!showPassword)}
+                      edge="end"
+                      size="small"
+                    >
+                      {showPassword ? (
+                        <VisibilityOffIcon sx={{ fontSize: 20 }} />
+                      ) : (
+                        <VisibilityIcon sx={{ fontSize: 20 }} />
+                      )}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              variant="contained"
+              fullWidth
+              size="large"
+              disabled={loading}
+              sx={{
+                py: 1.5,
+                fontSize: '1rem',
+              }}
+            >
+              {loading ? 'Prijava...' : 'Prijavi se'}
+            </Button>
+          </Stack>
+        </form>
+
+        {/* Divider */}
+        <Box sx={{ my: 4, position: 'relative' }}>
+          <Divider>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: 'text.secondary',
+                px: 2,
+              }}
+            >
+              ili nastavite sa
+            </Typography>
+          </Divider>
+        </Box>
+
+        {/* Social Login Buttons */}
+        <Stack spacing={2}>
           <Button
             variant="outlined"
             fullWidth
             onClick={handleGoogleLogin}
             disabled={loading}
+            startIcon={<GoogleIcon />}
             sx={{
               py: 1.25,
-              borderColor: '#db4437',
-              color: '#db4437',
-              '&:hover': {
-                borderColor: '#c23321',
-                backgroundColor: 'rgba(219, 68, 55, 0.04)'
-              }
+              justifyContent: 'center',
             }}
           >
-            <Box component="span" sx={{ mr: 1, fontSize: '1.2rem' }}>🔴</Box>
-            Prijavi se sa Gmail-om
+            Google
           </Button>
 
           <Button
@@ -127,50 +221,41 @@ export default function Login() {
             fullWidth
             onClick={handleFacebookLogin}
             disabled={loading}
+            startIcon={<FacebookIcon />}
             sx={{
               py: 1.25,
-              borderColor: '#1877f2',
-              color: '#1877f2',
-              '&:hover': {
-                borderColor: '#166fe5',
-                backgroundColor: 'rgba(24, 119, 242, 0.04)'
-              }
+              justifyContent: 'center',
             }}
           >
-            <Box component="span" sx={{ mr: 1, fontSize: '1.2rem' }}>📘</Box>
-            Prijavi se sa Facebook-om
+            Facebook
           </Button>
-
-          {/* Instagram login disabled - requires HTTPS and Facebook SDK */}
-          {/* <Button
-            variant="outlined"
-            fullWidth
-            onClick={handleInstagramLogin}
-            disabled={loading}
-            sx={{
-              py: 1.25,
-              borderColor: '#E4405F',
-              color: '#E4405F',
-              '&:hover': {
-                borderColor: '#C13584',
-                backgroundColor: 'rgba(228, 64, 95, 0.04)'
-              }
-            }}
-          >
-            <Box component="span" sx={{ mr: 1, fontSize: '1.2rem' }}>📷</Box>
-            Prijavi se sa Instagram-om
-          </Button> */}
         </Stack>
 
-        <Typography 
-          variant="body2" 
-          sx={{ fontSize: { xs: '0.875rem', sm: '1rem' }, textAlign: 'center', mt: 2 }}
-        >
-          Nemate nalog? <Link to="/register" style={{ color: '#2e7d32', fontWeight: 600 }}>Registrujte se</Link>
-        </Typography>
-      </Stack>
-    </form>
+        {/* Sign up link */}
+        <Box sx={{ mt: 4, textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary">
+            Nemate nalog?{' '}
+            <Link 
+              to="/register" 
+              style={{ 
+                color: 'inherit', 
+                fontWeight: 600,
+                textDecoration: 'none',
+              }}
+            >
+              <Box 
+                component="span" 
+                sx={{ 
+                  color: 'primary.main',
+                  '&:hover': { textDecoration: 'underline' }
+                }}
+              >
+                Registrujte se
+              </Box>
+            </Link>
+          </Typography>
+        </Box>
+      </Paper>
+    </Box>
   );
 }
-
-

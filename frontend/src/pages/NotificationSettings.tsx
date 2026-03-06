@@ -10,15 +10,16 @@ import {
   CircularProgress,
   Divider,
   Chip,
-  Switch,
-  FormControlLabel
+  Paper,
 } from '@mui/material';
 import {
   Notifications as NotificationsIcon,
   NotificationsActive as NotificationsActiveIcon,
   NotificationsOff as NotificationsOffIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
 import {
@@ -30,6 +31,7 @@ import {
 
 export default function NotificationSettings() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
   const [status, setStatus] = useState<{
@@ -63,7 +65,6 @@ export default function NotificationSettings() {
       setError(null);
       setSuccess(null);
 
-      // Request permission first
       const permission = await requestNotificationPermission();
       
       if (permission !== 'granted') {
@@ -75,11 +76,8 @@ export default function NotificationSettings() {
         return;
       }
 
-      // Subscribe to push notifications
       await subscribeToPushNotifications();
       setSuccess('Obaveštenja su uspešno omogućena!');
-      
-      // Reload status
       await loadStatus();
     } catch (err: any) {
       console.error('Error enabling notifications:', err);
@@ -97,8 +95,6 @@ export default function NotificationSettings() {
 
       await unsubscribeFromPushNotifications();
       setSuccess('Obaveštenja su onemogućena.');
-
-      // Reload status
       await loadStatus();
     } catch (err: any) {
       console.error('Error disabling notifications:', err);
@@ -123,27 +119,18 @@ export default function NotificationSettings() {
 
   function getPermissionLabel(permission: NotificationPermission) {
     switch (permission) {
-      case 'granted':
-        return 'Dozvoljeno';
-      case 'denied':
-        return 'Odbijeno';
-      case 'default':
-        return 'Nije postavljeno';
-      default:
-        return 'Nepoznato';
+      case 'granted': return 'Dozvoljeno';
+      case 'denied': return 'Odbijeno';
+      case 'default': return 'Nije postavljeno';
+      default: return 'Nepoznato';
     }
   }
 
-  function getPermissionColor(permission: NotificationPermission) {
+  function getPermissionColor(permission: NotificationPermission): 'success' | 'error' | 'default' {
     switch (permission) {
-      case 'granted':
-        return 'success';
-      case 'denied':
-        return 'error';
-      case 'default':
-        return 'default';
-      default:
-        return 'default';
+      case 'granted': return 'success';
+      case 'denied': return 'error';
+      default: return 'default';
     }
   }
 
@@ -156,128 +143,154 @@ export default function NotificationSettings() {
   }
 
   if (!status) {
-    return (
-      <Alert severity="error">Greška pri učitavanju postavki obaveštenja</Alert>
-    );
+    return <Alert severity="error" sx={{ borderRadius: 2 }}>Greška pri učitavanju postavki obaveštenja</Alert>;
   }
 
   const isSubscribed = status?.subscribed ?? false;
   const permissionGranted = status?.permission === 'granted';
 
   return (
-    <Stack spacing={3} sx={{ px: { xs: 1, sm: 2, md: 3 } }}>
-      <Box display="flex" alignItems="center" gap={2}>
-        <SettingsIcon fontSize="large" color="primary" />
-        <Typography variant="h4" component="h1">
+    <Box sx={{ maxWidth: 600, mx: 'auto' }}>
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Button
+          startIcon={<ArrowBackIcon />}
+          onClick={() => navigate(-1)}
+          sx={{ mb: 2, color: 'text.secondary' }}
+        >
+          Nazad
+        </Button>
+        <Typography variant="h4" fontWeight={700}>
           Postavke Obaveštenja
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          Upravljajte obaveštenjima o mečevima
         </Typography>
       </Box>
 
       {error && (
-        <Alert severity="error" onClose={() => setError(null)}>
+        <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
 
       {success && (
-        <Alert severity="success" onClose={() => setSuccess(null)}>
+        <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setSuccess(null)}>
           {success}
         </Alert>
       )}
 
-      <Card>
-        <CardContent>
+      {/* Status Card */}
+      <Card elevation={0} sx={{ mb: 3, borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
+        <CardContent sx={{ p: 4 }}>
+          <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
+            <SettingsIcon sx={{ mr: 1, verticalAlign: 'middle', color: 'primary.main' }} />
+            Trenutno Stanje
+          </Typography>
+          
           <Stack spacing={3}>
-            {/* Status Overview */}
-            <Box>
-              <Typography variant="h6" gutterBottom>
-                Trenutno Stanje
-              </Typography>
-              <Divider sx={{ my: 2 }} />
-              <Stack spacing={2}>
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body1">Status pretplate:</Typography>
-                  <Chip
-                    label={isSubscribed ? 'Omogućeno' : 'Onemogućeno'}
-                    color={isSubscribed ? 'success' : 'default'}
-                    icon={isSubscribed ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
-                  />
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 3, bgcolor: 'action.hover' }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography variant="body1" fontWeight={600}>Status pretplate</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {isSubscribed ? 'Aktivna pretplata na obaveštenja' : 'Nema aktivne pretplate'}
+                  </Typography>
                 </Box>
+                <Chip
+                  label={isSubscribed ? 'Aktivno' : 'Neaktivno'}
+                  color={isSubscribed ? 'success' : 'default'}
+                  icon={isSubscribed ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
+                  sx={{ fontWeight: 600 }}
+                />
+              </Stack>
+            </Paper>
 
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body1">Dozvola pretraživača:</Typography>
-                  <Chip
-                    label={getPermissionLabel(status?.permission || 'default')}
-                    color={getPermissionColor(status?.permission || 'default') as any}
-                  />
+            <Paper elevation={0} sx={{ p: 3, borderRadius: 3, bgcolor: 'action.hover' }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography variant="body1" fontWeight={600}>Dozvola pretraživača</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {getPermissionLabel(status?.permission || 'default')}
+                  </Typography>
                 </Box>
+                <Chip
+                  label={getPermissionLabel(status?.permission || 'default')}
+                  color={getPermissionColor(status?.permission || 'default')}
+                  sx={{ fontWeight: 600 }}
+                />
               </Stack>
-            </Box>
-
-            <Divider />
-
-            {/* Actions */}
-            <Box>
-              <Typography variant="h6" gutterBottom>
-                Akcije
-              </Typography>
-              <Stack spacing={2} sx={{ mt: 2 }}>
-                {!isSubscribed ? (
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    startIcon={<NotificationsIcon />}
-                    onClick={handleEnableNotifications}
-                    disabled={subscribing || !permissionGranted}
-                    fullWidth
-                  >
-                    {subscribing ? 'Omogućavanje...' : 'Omogući Obaveštenja'}
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      startIcon={<NotificationsOffIcon />}
-                      onClick={handleDisableNotifications}
-                      disabled={subscribing}
-                      fullWidth
-                    >
-                      {subscribing ? 'Onemogućavanje...' : 'Onemogući Obaveštenja'}
-                    </Button>
-
-                    <Button
-                      variant="outlined"
-                      color="primary"
-                      startIcon={<NotificationsActiveIcon />}
-                      onClick={handleTestNotification}
-                      fullWidth
-                    >
-                      Pošalji Test Notifikaciju
-                    </Button>
-                  </>
-                )}
-
-                {!permissionGranted && (
-                  <Alert severity="warning">
-                    {status?.permission === 'denied' 
-                      ? 'Dozvola za obaveštenja je odbijena. Molimo omogućite je u postavkama pretraživača.'
-                      : 'Prvo morate dozvoliti obaveštenja u vašem pretraživaču.'}
-                  </Alert>
-                )}
-              </Stack>
-            </Box>
-
-            {/* Info */}
-            <Box>
-              <Typography variant="body2" color="text.secondary">
-                Obaveštenja će vas obavestiti o novim mečevima u blizini vaše lokacije.
-                Postavke radijusa možete izmeniti na stranici profila.
-              </Typography>
-            </Box>
+            </Paper>
           </Stack>
         </CardContent>
       </Card>
-    </Stack>
+
+      {/* Actions Card */}
+      <Card elevation={0} sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
+        <CardContent sx={{ p: 4 }}>
+          <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
+            Akcije
+          </Typography>
+          
+          <Stack spacing={2}>
+            {!isSubscribed ? (
+              <Button
+                variant="contained"
+                startIcon={<NotificationsIcon />}
+                onClick={handleEnableNotifications}
+                disabled={subscribing || !permissionGranted}
+                fullWidth
+                size="large"
+                sx={{ py: 1.5, borderRadius: 3 }}
+              >
+                {subscribing ? 'Omogućavanje...' : 'Omogući Obaveštenja'}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<NotificationsOffIcon />}
+                  onClick={handleDisableNotifications}
+                  disabled={subscribing}
+                  fullWidth
+                  size="large"
+                  sx={{ py: 1.5, borderRadius: 3 }}
+                >
+                  {subscribing ? 'Onemogućavanje...' : 'Onemogući Obaveštenja'}
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<NotificationsActiveIcon />}
+                  onClick={handleTestNotification}
+                  fullWidth
+                  size="large"
+                  sx={{ py: 1.5, borderRadius: 3 }}
+                >
+                  Pošalji Test Notifikaciju
+                </Button>
+              </>
+            )}
+
+            {!permissionGranted && (
+              <Alert severity="warning" sx={{ mt: 2, borderRadius: 2 }}>
+                {status?.permission === 'denied' 
+                  ? 'Dozvola za obaveštenja je odbijena. Molimo omogućite je u postavkama pretraživača.'
+                  : 'Prvo morate dozvoliti obaveštenja u vašem pretraživaču.'}
+              </Alert>
+            )}
+          </Stack>
+
+          <Divider sx={{ my: 3 }} />
+
+          <Typography variant="body2" color="text.secondary">
+            Obaveštenja će vas obavestiti o novim mečevima u blizini vaše lokacije.
+            Postavke radijusa možete izmeniti na stranici profila.
+          </Typography>
+        </CardContent>
+      </Card>
+    </Box>
   );
 }

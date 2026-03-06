@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, Snackbar, Alert, useMediaQuery, useTheme } from '@mui/material';
+import { IconButton, Snackbar, Alert, useMediaQuery, useTheme, Tooltip } from '@mui/material';
 import GetAppIcon from '@mui/icons-material/GetApp';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -11,15 +11,15 @@ export default function InstallButton() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
   const [showSuccessSnackbar, setShowSuccessSnackbar] = useState(false);
-  
+
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   useEffect(() => {
     // Check if already installed (standalone mode)
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches 
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
       || (window.navigator as any).standalone === true;
-    
+
     if (isStandalone) {
       // Already installed, don't show button
       return;
@@ -77,36 +77,30 @@ export default function InstallButton() {
 
   return (
     <>
-      <Button
-        variant="contained"
-        color="warning"
-        size="small"
-        startIcon={<GetAppIcon />}
-        onClick={handleInstallClick}
-        sx={{
-          fontWeight: 600,
-          textTransform: 'none',
-          borderRadius: 2,
-          px: 2,
-          py: 0.5,
-          bgcolor: '#ff9800',
-          '&:hover': {
-            bgcolor: '#f57c00',
-          },
-          boxShadow: '0 2px 8px rgba(255, 152, 0, 0.4)',
-        }}
-      >
-        Instaliraj
-      </Button>
-      
+      <Tooltip title="Instaliraj aplikaciju">
+        <IconButton
+          onClick={handleInstallClick}
+          sx={{
+            bgcolor: 'primary.main',
+            '&:hover': {
+              bgcolor: 'primary.dark',
+            },
+            width: 36,
+            height: 36,
+          }}
+        >
+          <GetAppIcon sx={{ color: 'white' }} fontSize="small" />
+        </IconButton>
+      </Tooltip>
+
       <Snackbar
         open={showSuccessSnackbar}
         autoHideDuration={4000}
         onClose={() => setShowSuccessSnackbar(false)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={() => setShowSuccessSnackbar(false)} 
+        <Alert
+          onClose={() => setShowSuccessSnackbar(false)}
           severity="success"
           sx={{ width: '100%' }}
         >

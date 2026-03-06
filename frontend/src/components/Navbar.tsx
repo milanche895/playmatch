@@ -14,10 +14,26 @@ import {
   Box,
   useTheme,
   useMediaQuery,
+  Avatar,
+  Tooltip,
+  Badge,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
-import { Link as RouterLink, useNavigate } from "react-router-dom";
+import HomeIcon from "@mui/icons-material/Home";
+import AddCircleIcon from "@mui/icons-material/AddCircle";
+import SportsIcon from "@mui/icons-material/Sports";
+import PersonIcon from "@mui/icons-material/Person";
+import PeopleIcon from "@mui/icons-material/People";
+import SettingsIcon from "@mui/icons-material/Settings";
+import LogoutIcon from "@mui/icons-material/Logout";
+import LoginIcon from "@mui/icons-material/Login";
+import AppRegistrationIcon from "@mui/icons-material/AppRegistration";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import { Link as RouterLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useThemeMode } from "../context/ThemeContext";
 import InstallButton from "./InstallButton";
 
 // Import logo
@@ -25,7 +41,9 @@ import playmatchLogo from "../assets/logo2.png";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
+  const { mode, toggleColorMode } = useThemeMode();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const theme = useTheme();
@@ -41,70 +59,203 @@ export default function Navbar() {
     setMobileOpen(false);
   };
 
-  const navItems = [
-    { label: "Početna", path: "/", show: true },
+  const isActive = (path: string) => location.pathname === path;
+
+  // Navigation items with icons
+  const getNavItems = () => [
+    { 
+      label: "Početna", 
+      path: "/", 
+      show: true,
+      icon: <HomeIcon fontSize="small" />
+    },
     {
       label: user?.role === "court" ? "Moji Tereni" : "Kreiraj Meč",
       path: user?.role === "court" ? "/manage-fields" : "/create",
       show: !!user,
+      icon: user?.role === "court" ? <SportsIcon fontSize="small" /> : <AddCircleIcon fontSize="small" />
     },
     {
       label: "Moji Termini",
       path: "/moji-termini",
       show: !!user && user?.role === "court",
+      icon: <SettingsIcon fontSize="small" />
+    },
+    {
+      label: "Moji Mečevi",
+      path: "/moji-mecevi",
+      show: !!user && user?.role === "player",
+      icon: <EventAvailableIcon fontSize="small" />
+    },
+    {
+      label: "Moji Igrači",
+      path: "/moji-igraci",
+      show: !!user && user?.role === "player",
+      icon: <PeopleIcon fontSize="small" />
     },
     {
       label: "Moj Profil",
       path: "/profil",
       show: !!user && user?.role === "player",
+      icon: <PersonIcon fontSize="small" />
     },
-    { label: "Prijava", path: "/login", show: !user },
-    { label: "Registracija", path: "/register", show: !user },
+    { 
+      label: "Prijava", 
+      path: "/login", 
+      show: !user,
+      icon: <LoginIcon fontSize="small" />
+    },
+    { 
+      label: "Registracija", 
+      path: "/register", 
+      show: !user,
+      icon: <AppRegistrationIcon fontSize="small" />
+    },
   ];
 
+  const navItems = getNavItems().filter(item => item.show);
+
   const drawer = (
-    <Box sx={{ textAlign: "center", pt: 2 }}>
-      <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-        PlayMatch Global
-      </Typography>
-      <List onClick={handleDrawerToggle}>
-        {navItems
-          .filter((item) => item.show)
-          .map((item) => (
-            <ListItem key={item.label} disablePadding>
-              <ListItemButton
-                component={RouterLink}
-                to={item.path}
-                sx={{ textAlign: "center" }}
-              >
-                <ListItemText primary={item.label} />
-              </ListItemButton>
-            </ListItem>
-          ))}
+    <Box sx={{ textAlign: "left", pt: 2, px: 2 }}>
+      {/* Logo in drawer */}
+      <Box
+        component={RouterLink}
+        to="/"
+        onClick={() => setMobileOpen(false)}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          textDecoration: "none",
+          mb: 3,
+          px: 1,
+        }}
+      >
+        <Box
+          component="img"
+          src={playmatchLogo}
+          alt="PlayMatch logo"
+          sx={{
+            height: 50,
+            width: "auto",
+          }}
+        />
+      </Box>
+
+      {/* User info if logged in */}
+      {user && (
+        <Box sx={{ mb: 3, px: 1 }}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Avatar 
+              sx={{ 
+                width: 40, 
+                height: 40,
+                bgcolor: 'primary.main',
+                fontWeight: 600,
+              }}
+            >
+              {user.name?.charAt(0).toUpperCase() || 'U'}
+            </Avatar>
+            <Box>
+              <Typography variant="subtitle2" fontWeight={600} noWrap>
+                {user.name}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {user.role === 'court' ? 'Vlasnik terena' : 'Igrač'}
+              </Typography>
+            </Box>
+          </Stack>
+        </Box>
+      )}
+
+      <List sx={{ px: 0 }}>
+        {navItems.map((item) => (
+          <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
+            <ListItemButton
+              component={RouterLink}
+              to={item.path}
+              selected={isActive(item.path)}
+              onClick={() => setMobileOpen(false)}
+              sx={{
+                borderRadius: 2,
+                py: 1.5,
+              }}
+            >
+              <Box sx={{ mr: 2, color: isActive(item.path) ? 'primary.main' : 'text.secondary' }}>
+                {item.icon}
+              </Box>
+              <ListItemText 
+                primary={item.label}
+                primaryTypographyProps={{
+                  fontWeight: isActive(item.path) ? 600 : 500,
+                  color: isActive(item.path) ? 'primary.main' : 'text.primary',
+                }}
+              />
+            </ListItemButton>
+          </ListItem>
+        ))}
         {user && (
-          <ListItem disablePadding>
-            <ListItemButton onClick={handleLogout} sx={{ textAlign: "center" }}>
-              <ListItemText primary="Odjavi se" />
+          <ListItem disablePadding sx={{ mb: 0.5 }}>
+            <ListItemButton 
+              onClick={handleLogout}
+              sx={{
+                borderRadius: 2,
+                py: 1.5,
+              }}
+            >
+              <Box sx={{ mr: 2, color: 'text.secondary' }}>
+                <LogoutIcon fontSize="small" />
+              </Box>
+              <ListItemText 
+                primary="Odjavi se"
+                primaryTypographyProps={{
+                  fontWeight: 500,
+                }}
+              />
             </ListItemButton>
           </ListItem>
         )}
       </List>
+
+      {/* Dark mode toggle in drawer */}
+      <Box sx={{ mt: 2, px: 1 }}>
+        <ListItemButton
+          onClick={toggleColorMode}
+          sx={{
+            borderRadius: 2,
+            py: 1.5,
+          }}
+        >
+          <Box sx={{ mr: 2, color: 'text.secondary' }}>
+            {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+          </Box>
+          <ListItemText 
+            primary={mode === 'dark' ? 'Svetla tema' : 'Tamna tema'}
+            primaryTypographyProps={{
+              fontWeight: 500,
+            }}
+          />
+        </ListItemButton>
+      </Box>
     </Box>
   );
 
   return (
     <>
-      <AppBar position="static" sx={{ bgcolor: "#2e7d32" }}>
+      <AppBar 
+        position="sticky" 
+        elevation={0}
+        sx={{ 
+          bgcolor: 'background.paper',
+          color: 'text.primary',
+        }}
+      >
         <Toolbar
           sx={{
-            minHeight: { xs: 48, sm: 64 },
-            px: { xs: 1, sm: 2 },
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
+            minHeight: { xs: 56, sm: 64 },
+            px: { xs: 2, sm: 3 },
           }}
         >
-          {/* LOGO LEVO */}
+          {/* Logo - Left */}
           <Box
             component={RouterLink}
             to="/"
@@ -112,6 +263,7 @@ export default function Navbar() {
               display: "flex",
               alignItems: "center",
               textDecoration: "none",
+              mr: 'auto',
             }}
           >
             <Box
@@ -119,72 +271,84 @@ export default function Navbar() {
               src={playmatchLogo}
               alt="PlayMatch logo"
               sx={{
-                height: 80,
+                height: { xs: 44, sm: 50 },
                 width: "auto",
-                cursor: "pointer",
-                mr: 1,
               }}
             />
           </Box>
 
-          {/* Desktop navigacija */}
+          {/* Desktop Navigation */}
           <Stack
             direction="row"
-            spacing={2}
+            spacing={1}
             sx={{
               display: { xs: "none", md: "flex" },
               alignItems: "center",
             }}
           >
-            <Button color="inherit" component={RouterLink} to="/">
-              Početna
-            </Button>
+            {navItems.map((item) => (
+              <Button
+                key={item.label}
+                component={RouterLink}
+                to={item.path}
+                startIcon={item.icon}
+                sx={{
+                  color: isActive(item.path) ? 'primary.main' : 'text.secondary',
+                  fontWeight: isActive(item.path) ? 600 : 500,
+                  px: 2,
+                  py: 1,
+                  borderRadius: 2,
+                  '&:hover': {
+                    bgcolor: 'action.hover',
+                    color: 'text.primary',
+                  },
+                }}
+              >
+                {item.label}
+              </Button>
+            ))}
 
-            {user?.role === "court" ? (
-              <>
-                <Button
-                  color="inherit"
-                  component={RouterLink}
-                  to="/manage-fields"
-                >
-                  Moji Tereni
-                </Button>
-                <Button
-                  color="inherit"
-                  component={RouterLink}
-                  to="/moji-termini"
-                >
-                  Moji Termini
-                </Button>
-              </>
-            ) : user ? (
-              <>
-                <Button color="inherit" component={RouterLink} to="/create">
-                  Kreiraj Meč
-                </Button>
-                <Button color="inherit" component={RouterLink} to="/profil">
-                  Moj Profil
-                </Button>
-              </>
-            ) : null}
-
-            {user ? (
-              <Button color="inherit" onClick={handleLogout}>
+            {user && (
+              <Button
+                onClick={handleLogout}
+                startIcon={<LogoutIcon fontSize="small" />}
+                sx={{
+                  color: 'text.secondary',
+                  fontWeight: 500,
+                  px: 2,
+                  py: 1,
+                  borderRadius: 2,
+                  '&:hover': {
+                    bgcolor: 'action.hover',
+                    color: 'text.primary',
+                  },
+                }}
+              >
                 Odjavi se
               </Button>
-            ) : (
-              <>
-                <Button color="inherit" component={RouterLink} to="/login">
-                  Prijava
-                </Button>
-                <Button color="inherit" component={RouterLink} to="/register">
-                  Registracija
-                </Button>
-              </>
             )}
+
+            {/* Dark mode toggle - desktop */}
+            <Tooltip title={mode === 'dark' ? 'Svetla tema' : 'Tamna tema'}>
+              <IconButton
+                onClick={toggleColorMode}
+                sx={{
+                  ml: 1,
+                  color: 'text.secondary',
+                  '&:hover': {
+                    color: 'text.primary',
+                    bgcolor: 'action.hover',
+                  },
+                }}
+              >
+                {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+              </IconButton>
+            </Tooltip>
+
+            <InstallButton />
           </Stack>
 
-          {/* Install dugme i hamburger meni na mobilnom */}
+          {/* Mobile Controls */}
           <Stack
             direction="row"
             spacing={1}
@@ -195,20 +359,18 @@ export default function Navbar() {
             <IconButton
               color="inherit"
               aria-label="open drawer"
-              edge="end"
               onClick={handleDrawerToggle}
               sx={{
-                pr: 2,
-                mr: 1,
+                color: 'text.primary',
               }}
             >
-              <MenuIcon sx={{ fontSize: 32 }} />
+              <MenuIcon />
             </IconButton>
           </Stack>
         </Toolbar>
       </AppBar>
 
-      {/* DRAWER */}
+      {/* Mobile Drawer */}
       <Drawer
         variant="temporary"
         open={mobileOpen}
@@ -216,7 +378,11 @@ export default function Navbar() {
         ModalProps={{ keepMounted: true }}
         sx={{
           display: { xs: "block", md: "none" },
-          "& .MuiDrawer-paper": { boxSizing: "border-box", width: 280 },
+          "& .MuiDrawer-paper": { 
+            boxSizing: "border-box", 
+            width: 280,
+            bgcolor: 'background.paper',
+          },
         }}
       >
         {drawer}

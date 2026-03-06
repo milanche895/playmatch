@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
-import { 
-  Stack, 
-  Typography, 
-  Button, 
-  Alert, 
-  Box, 
-  Card, 
-  CardContent, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
+import {
+  Stack,
+  Typography,
+  Button,
+  Alert,
+  Box,
+  Card,
+  CardContent,
+  Dialog,
+  DialogTitle,
+  DialogContent,
   DialogActions,
   TextField,
   MenuItem,
@@ -19,15 +19,24 @@ import {
   Divider,
   CircularProgress,
   Checkbox,
-  FormControlLabel
+  FormControlLabel,
+  Paper,
+  Grid,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import MyLocationIcon from '@mui/icons-material/MyLocation';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { Field, Match } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -50,7 +59,6 @@ function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number
   return null;
 }
 
-// Component to center map dynamically
 function MapCenter({ position }: { position: [number, number] }) {
   const map = useMap();
   useEffect(() => {
@@ -62,17 +70,15 @@ function MapCenter({ position }: { position: [number, number] }) {
 type Appointments = {
   pending: Match[];
   reserved: Match[];
-  onRequest: Match[]; // Termini na upit (open - počelo je brojanje igrača)
+  onRequest: Match[];
   cancelled: Match[];
-  free: any[]; // Slobodni termini (može biti prazan array za sada)
+  free: any[];
 };
 
-// Helper function to format players count display
 function formatPlayersCount(match: Match): string {
   const current = match.players.length;
   const min = match.minPlayers ?? match.playersNeeded;
   const max = match.maxPlayers;
-  
   if (max) {
     return `${current}/${min}-${max}`;
   }
@@ -81,6 +87,7 @@ function formatPlayersCount(match: Match): string {
 
 export default function ManageFields() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [fields, setFields] = useState<Field[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,13 +100,25 @@ export default function ManageFields() {
   const [loadingAppointments, setLoadingAppointments] = useState<Record<string, boolean>>({});
   const [workingHours, setWorkingHours] = useState<Record<string, { start: string; end: string; closed: boolean }>>({});
   
-  // Form state
   const [name, setName] = useState('');
-  const [sport, setSport] = useState('football');
+  const [sports, setSports] = useState<string[]>(['football']);
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [price, setPrice] = useState<number>(0);
   const [registrationDeadlineHours, setRegistrationDeadlineHours] = useState<number>(24);
+
+  // Available sports for indoor/balloon hall facilities
+  const availableSports = [
+    { id: 'football', label: 'Fudbal' },
+    { id: 'basketball', label: 'Košarka' },
+    { id: 'handball', label: 'Rukomet' },
+    { id: 'volleyball', label: 'Odbojka' },
+    { id: 'tennis', label: 'Tenis' },
+    { id: 'tabletennis', label: 'Stoni tenis' },
+  //  { id: 'gymnastics', label: 'Gimnastika' },
+  //  { id: 'dance', label: 'Ples' },
+  //  { id: 'yoga', label: 'Joga' },
+  ];
   const [mapCenter, setMapCenter] = useState<[number, number]>([44.7866, 20.4489]);
   const [markerPosition, setMarkerPosition] = useState<[number, number] | null>(null);
 
@@ -197,44 +216,31 @@ export default function ManageFields() {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           if (position.coords.latitude && position.coords.longitude) {
-            const location: [number, number] = [
-              position.coords.latitude, 
-              position.coords.longitude
-            ];
+            const location: [number, number] = [position.coords.latitude, position.coords.longitude];
             setMapCenter(location);
             setMarkerPosition(location);
             setLat(location[0].toFixed(6));
             setLng(location[1].toFixed(6));
-          } else {
-            console.warn('Geolocation returned null coordinates');
           }
         },
         (error) => {
           console.error('Geolocation error:', error);
-          // Keep default location if geolocation fails
         },
-        { 
-          enableHighAccuracy: true, 
-          timeout: 15000,
-          maximumAge: 0 // Don't use cached position
-        }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
-    } else {
-      console.warn('Geolocation is not supported');
     }
   }
 
   function openAddDialog() {
     setEditingField(null);
     setName('');
-    setSport('football');
+    setSports(['football']);
     setLat('');
     setLng('');
     setPrice(0);
     setRegistrationDeadlineHours(24);
     setMarkerPosition(null);
     setError(null);
-    // Get user location first, then open dialog
     getUserLocation();
     setOpenDialog(true);
   }
@@ -242,7 +248,8 @@ export default function ManageFields() {
   function openEditDialog(field: Field) {
     setEditingField(field);
     setName(field.name);
-    setSport(field.sport);
+    // Use sports array if available, otherwise fall back to single sport
+    setSports(field.sports || (field.sport ? [field.sport] : ['football']));
     setLat(field.lat.toString());
     setLng(field.lng.toString());
     setPrice(field.price || 0);
@@ -252,10 +259,18 @@ export default function ManageFields() {
     setOpenDialog(true);
   }
 
+  function handleSportToggle(sportId: string) {
+    setSports(prev => {
+      if (prev.includes(sportId)) {
+        return prev.filter(s => s !== sportId);
+      } else {
+        return [...prev, sportId];
+      }
+    });
+  }
+
   function handleOpenWorkingHoursDialog(field: Field) {
     setEditingWorkingHoursField(field);
-    // Initialize working hours from field or use defaults
-    // Extract hour from "HH:MM" format or use default
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     const defaultHours: Record<string, { start: string; end: string; closed: boolean }> = {};
     days.forEach(day => {
@@ -263,7 +278,6 @@ export default function ManageFields() {
       let start = '16';
       let end = '23';
       if (existing && existing.start) {
-        // Extract hour from "HH:MM" or use as is if already just hour
         start = existing.start.includes(':') ? existing.start.split(':')[0] : existing.start;
       }
       if (existing && existing.end) {
@@ -284,7 +298,6 @@ export default function ManageFields() {
 
   async function handleSaveWorkingHours() {
     if (!editingWorkingHoursField) return;
-    
     try {
       setError(null);
       await api.put(`/api/courts/fields/${editingWorkingHoursField._id}/working-hours`, {
@@ -301,27 +314,25 @@ export default function ManageFields() {
     setOpenDialog(false);
     setEditingField(null);
     setError(null);
-    setMapCenter([44.7866, 20.4489]); // Reset to default
+    setMapCenter([44.7866, 20.4489]);
   }
 
   async function handleSubmit() {
-    if (!name || !sport || !lat || !lng) {
-      setError('Molimo popunite sva polja i odaberite lokaciju na mapi');
+    if (!name || sports.length === 0 || !lat || !lng) {
+      setError('Molimo popunite sva polja, odaberite barem jedan sport i izaberite lokaciju na mapi');
       return;
     }
 
     try {
       setError(null);
       if (editingField) {
-        // Update existing field (name, sport, location, price, registrationDeadlineHours)
-        // Ensure all numeric values are properly converted
         const deadlineHours = typeof registrationDeadlineHours === 'number' && !isNaN(registrationDeadlineHours) 
           ? registrationDeadlineHours 
           : parseInt(String(registrationDeadlineHours ?? 24));
         
         await api.put(`/api/courts/fields/${editingField._id}`, {
           name,
-          sport,
+          sports,
           lat: parseFloat(lat),
           lng: parseFloat(lng),
           price: typeof price === 'number' ? price : parseFloat(String(price || 0)),
@@ -329,10 +340,9 @@ export default function ManageFields() {
         });
         await loadFields();
       } else {
-        // Create new field
         await api.post<Field>('/api/fields', {
           name,
-          sport,
+          sports,
           lat: parseFloat(lat),
           lng: parseFloat(lng),
           price,
@@ -347,444 +357,180 @@ export default function ManageFields() {
   }
 
   if (user?.role !== 'court') {
-    return (
-      <Alert severity="error">Samo tereni mogu pristupiti ovoj stranici</Alert>
-    );
+    return <Alert severity="error" sx={{ borderRadius: 2 }}>Samo tereni mogu pristupiti ovoj stranici</Alert>;
   }
 
   return (
-    <Stack spacing={3}>
-      <Stack 
-        direction={{ xs: 'column', sm: 'row' }} 
-        justifyContent="space-between" 
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        spacing={{ xs: 2, sm: 0 }}
-      >
-        <Typography 
-          variant="h4" 
-          fontWeight={600}
-          sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}
+    <Box sx={{ maxWidth: 1000, mx: 'auto' }}>
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Button
+          startIcon={<ArrowBackIcon />}
+          onClick={() => navigate(-1)}
+          sx={{ mb: 2, color: 'text.secondary' }}
         >
-          Moji Tereni
-        </Typography>
-        <Button 
-          variant="contained" 
-          onClick={openAddDialog}
-          sx={{ 
-            fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-            py: { xs: 1, sm: 0.75 },
-            width: { xs: '100%', sm: 'auto' }
-          }}
-        >
-          Dodaj Novi Teren
+          Nazad
         </Button>
-      </Stack>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Typography variant="h4" fontWeight={700}>
+            Moji Tereni
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={openAddDialog}
+            sx={{ borderRadius: 3 }}
+          >
+            Dodaj Teren
+          </Button>
+        </Stack>
+      </Box>
 
-      {error && !openDialog && <Alert severity="error">{error}</Alert>}
+      {error && !openDialog && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>}
 
       {loading ? (
-        <Typography>Učitavanje...</Typography>
+        <Box display="flex" justifyContent="center" py={8}>
+          <CircularProgress />
+        </Box>
       ) : fields.length === 0 ? (
-        <Alert severity="info">Još nemate terene. Kliknite "Dodaj Novi Teren" da kreirate jedan.</Alert>
+        <Alert severity="info" sx={{ borderRadius: 2 }}>
+          Još nemate terene. Kliknite "Dodaj Teren" da kreirate jedan.
+        </Alert>
       ) : (
-        <Stack spacing={2}>
+        <Stack spacing={3}>
           {fields.map((field) => {
             const isExpanded = expandedFields.has(field._id);
             const fieldAppointments = appointments[field._id];
             const isLoading = loadingAppointments[field._id];
             
             return (
-              <Card key={field._id} sx={{ mb: 2 }}>
-                <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
-                  <Stack spacing={{ xs: 2, sm: 2.5 }}>
-                    {/* Header - responsive layout */}
-                    <Stack 
-                      direction={{ xs: 'column', sm: 'row' }} 
-                      justifyContent="space-between" 
-                      alignItems={{ xs: 'flex-start', sm: 'flex-start' }}
-                      spacing={{ xs: 2, sm: 2 }}
-                    >
-                      {/* Field Info */}
-                      <Stack spacing={1.5} sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography 
-                          variant="h6" 
-                          fontWeight={600}
-                          sx={{ 
-                            fontSize: { xs: '1.1rem', sm: '1.25rem' },
-                            wordBreak: 'break-word'
+              <Card key={field._id} elevation={0} sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
+                <CardContent sx={{ p: 3 }}>
+                  <Stack spacing={2}>
+                    {/* Header */}
+                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <Box
+                          sx={{
+                            width: 56,
+                            height: 56,
+                            borderRadius: 3,
+                            bgcolor: 'primary.main',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
                           }}
                         >
-                          {field.name}
-                        </Typography>
-                        
-                        {/* Sport and Price - responsive */}
-                        <Stack 
-                          direction={{ xs: 'column', sm: 'row' }} 
-                          spacing={{ xs: 1, sm: 1.5 }} 
-                          alignItems={{ xs: 'flex-start', sm: 'center' }}
-                          flexWrap="wrap"
-                        >
-                          <Chip 
-                            label={field.sport} 
-                            size="small" 
-                            sx={{ 
-                              fontSize: { xs: '0.75rem', sm: '0.8125rem' },
-                              height: { xs: 24, sm: 28 }
-                            }} 
-                          />
-                          <Typography 
-                            variant="body2" 
-                            color="text.secondary"
-                            sx={{ 
-                              fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                              fontWeight: 500
-                            }}
-                          >
-                            Cena: <strong>{field.price || 0} EUR</strong>
+                          <LocationOnIcon sx={{ fontSize: 28 }} />
+                        </Box>
+                        <Box>
+                          <Typography variant="h6" fontWeight={700}>
+                            {field.name}
                           </Typography>
-                        </Stack>
-                        
-                        {/* Location - hidden on very small screens, shown on larger */}
-                        <Typography 
-                          variant="body2" 
-                          color="text.secondary"
-                          sx={{ 
-                            fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                            display: { xs: 'none', sm: 'block' }
-                          }}
-                        >
-                          Lokacija: {field.lat.toFixed(6)}, {field.lng.toFixed(6)}
-                        </Typography>
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
+                            {(field.sports || [field.sport]).filter(Boolean).map((s) => (
+                              <Chip key={s} label={s} size="small" color="primary" />
+                            ))}
+                            {field.price && field.price > 0 && (
+                              <Typography variant="body2" color="text.secondary">
+                                {field.price} EUR
+                              </Typography>
+                            )}
+                          </Stack>
+                        </Box>
                       </Stack>
                       
-                      {/* Action Buttons - responsive */}
-                      <Stack 
-                        direction={{ xs: 'column', sm: 'row' }} 
-                        spacing={{ xs: 1, sm: 1 }}
-                        sx={{ 
-                          width: { xs: '100%', sm: 'auto' },
-                          minWidth: { xs: '100%', sm: 'auto' }
-                        }}
-                      >
-                        <Button 
-                          variant="outlined" 
-                          onClick={() => openEditDialog(field)}
-                          size="small"
-                          sx={{ 
-                            fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                            py: { xs: 0.75, sm: 0.5 },
-                            width: { xs: '100%', sm: 'auto' }
-                          }}
-                        >
+                      <Stack direction="row" spacing={1}>
+                        <Button variant="outlined" size="small" onClick={() => openEditDialog(field)} startIcon={<EditIcon />}
+                          sx={{ borderRadius: 2 }}>
                           Izmeni
                         </Button>
-                        <Button 
-                          variant="outlined" 
-                          onClick={() => handleOpenWorkingHoursDialog(field)}
-                          size="small"
-                          sx={{ 
-                            fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                            py: { xs: 0.75, sm: 0.5 },
-                            width: { xs: '100%', sm: 'auto' }
-                          }}
-                        >
+                        <Button variant="outlined" size="small" onClick={() => handleOpenWorkingHoursDialog(field)} startIcon={<ScheduleIcon />}
+                          sx={{ borderRadius: 2 }}>
                           Radno Vreme
                         </Button>
-                        <IconButton 
-                          onClick={() => toggleFieldExpanded(field._id)}
-                          size="small"
-                          sx={{ 
-                            alignSelf: { xs: 'flex-end', sm: 'center' },
-                            ml: { xs: 'auto', sm: 0 }
-                          }}
-                        >
+                        <IconButton onClick={() => toggleFieldExpanded(field._id)} sx={{ ml: 1 }}>
                           {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                         </IconButton>
                       </Stack>
                     </Stack>
                     
                     <Collapse in={isExpanded}>
-                      <Divider sx={{ my: 1 }} />
+                      <Divider sx={{ my: 2 }} />
                       {isLoading ? (
-                        <Box display="flex" justifyContent="center" p={2}>
-                          <CircularProgress size={24} />
+                        <Box display="flex" justifyContent="center" py={4}>
+                          <CircularProgress />
                         </Box>
                       ) : fieldAppointments ? (
-                        <Stack spacing={2}>
-                          {/* Pending Appointments */}
+                        <Grid container spacing={2}>
+                          {/* Pending */}
                           {fieldAppointments.pending.length > 0 && (
-                            <Box>
-                              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+                            <Grid item xs={12}>
+                              <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
                                 Na čekanju ({fieldAppointments.pending.length})
                               </Typography>
-                              <Stack spacing={1}>
+                              <Stack spacing={2}>
                                 {fieldAppointments.pending.map((match) => (
-                                  <Card key={match._id} variant="outlined" sx={{ mb: 1 }}>
-                                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-                                      <Stack spacing={1.5}>
-                                        <Stack spacing={0.5}>
-                                          <Typography 
-                                            variant="body2" 
-                                            sx={{ 
-                                              fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                                              fontWeight: 600
-                                            }}
-                                          >
-                                            {formatDateTime(match.dateTime)}
-                                          </Typography>
-                                          <Typography 
-                                            variant="body2" 
-                                            color="text.secondary"
-                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
-                                          >
-                                            Kreirao: <strong>{match.createdBy.name}</strong>
-                                          </Typography>
-                                          <Typography 
-                                            variant="body2" 
-                                            color="text.secondary"
-                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
-                                          >
-                                            Igrači: <strong>{formatPlayersCount(match)}</strong>
-                                          </Typography>
-                                        </Stack>
-                                        <Stack 
-                                          direction={{ xs: 'column', sm: 'row' }} 
-                                          spacing={1} 
-                                          sx={{ mt: 1 }}
-                                        >
-                                          <Button
-                                            size="small"
-                                            variant="contained"
-                                            color="success"
-                                            startIcon={<CheckCircleIcon />}
-                                            onClick={() => handleApprove(match._id, field._id)}
-                                            sx={{ 
-                                              fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                                              py: { xs: 0.75, sm: 0.5 },
-                                              width: { xs: '100%', sm: 'auto' }
-                                            }}
-                                          >
-                                            Odobri
-                                          </Button>
-                                          <Button
-                                            size="small"
-                                            variant="outlined"
-                                            color="error"
-                                            startIcon={<CancelIcon />}
-                                            onClick={() => handleReject(match._id, field._id)}
-                                            sx={{ 
-                                              fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                                              py: { xs: 0.75, sm: 0.5 },
-                                              width: { xs: '100%', sm: 'auto' }
-                                            }}
-                                          >
-                                            Odbij
-                                          </Button>
-                                          <Button
-                                            size="small"
-                                            variant="outlined"
-                                            color="error"
-                                            startIcon={<CancelIcon />}
-                                            onClick={() => handleCancel(match._id, field._id)}
-                                            sx={{ 
-                                              fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                                              py: { xs: 0.75, sm: 0.5 },
-                                              width: { xs: '100%', sm: 'auto' }
-                                            }}
-                                          >
-                                            Otkaži
-                                          </Button>
-                                        </Stack>
-                                      </Stack>
-                                    </CardContent>
-                                  </Card>
-                                ))}
-                              </Stack>
-                            </Box>
-                          )}
-                          
-                          {/* Termini na upit (onRequest) */}
-                          {fieldAppointments.onRequest && fieldAppointments.onRequest.length > 0 && (
-                            <Box>
-                              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }} color="info.main">
-                                Na upit ({fieldAppointments.onRequest.length})
-                              </Typography>
-                              <Stack spacing={1}>
-                                {fieldAppointments.onRequest.map((match) => (
-                                  <Card key={match._id} variant="outlined" sx={{ borderColor: 'info.main', mb: 1 }}>
-                                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-                                      <Stack spacing={1.5}>
-                                        <Stack spacing={0.5}>
-                                          <Typography 
-                                            variant="body2" 
-                                            sx={{ 
-                                              fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                                              fontWeight: 600
-                                            }}
-                                          >
-                                            {formatDateTime(match.dateTime)}
-                                          </Typography>
-                                          <Typography 
-                                            variant="body2" 
-                                            color="text.secondary"
-                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
-                                          >
-                                            Kreirao: <strong>{match.createdBy.name}</strong>
-                                          </Typography>
-                                          <Typography 
-                                            variant="body2" 
-                                            color="text.secondary"
-                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
-                                          >
-                                            Igrači: <strong>{formatPlayersCount(match)}</strong>
-                                          </Typography>
-                                          <Typography 
-                                            variant="body2" 
-                                            color="info.main"
-                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' }, fontWeight: 500 }}
-                                          >
-                                          Status: Traže se igrači
-                                        </Typography>
-                                      </Stack>
-                                      <Button
-                                        size="small"
-                                        variant="outlined"
-                                        color="error"
-                                        startIcon={<CancelIcon />}
-                                        onClick={() => handleCancel(match._id, field._id)}
-                                        sx={{ 
-                                          fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                                          py: { xs: 0.75, sm: 0.5 },
-                                          mt: { xs: 0.5, sm: 1 },
-                                          width: { xs: '100%', sm: 'auto' }
-                                        }}
-                                      >
-                                        Otkaži
-                                      </Button>
-                                      </Stack>
-                                    </CardContent>
-                                  </Card>
-                                ))}
-                              </Stack>
-                            </Box>
-                          )}
-                          
-                          {/* Reserved Appointments */}
-                          {fieldAppointments.reserved.length > 0 && (
-                            <Box>
-                              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
-                                Rezervisani ({fieldAppointments.reserved.length})
-                              </Typography>
-                              <Stack spacing={1}>
-                                {fieldAppointments.reserved.map((match) => (
-                                  <Card key={match._id} variant="outlined" sx={{ mb: 1 }}>
-                                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-                                      <Stack spacing={1.5}>
-                                        <Stack spacing={0.5}>
-                                          <Typography 
-                                            variant="body2" 
-                                            sx={{ 
-                                              fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                                              fontWeight: 600
-                                            }}
-                                          >
-                                            {formatDateTime(match.dateTime)}
-                                          </Typography>
-                                          <Typography 
-                                            variant="body2" 
-                                            color="text.secondary"
-                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
-                                          >
-                                            Kreirao: <strong>{match.createdBy.name}</strong>
-                                          </Typography>
-                                          <Typography 
-                                            variant="body2" 
-                                            color="text.secondary"
-                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
-                                          >
-                                            Igrači: <strong>{formatPlayersCount(match)}</strong>
-                                          </Typography>
-                                          <Typography 
-                                            variant="body2" 
-                                            color="text.secondary"
-                                            sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
-                                          >
-                                            Status: <strong>{match.status}</strong>
-                                          </Typography>
-                                        </Stack>
-                                        <Button
-                                          size="small"
-                                          variant="outlined"
-                                          color="error"
-                                          startIcon={<CancelIcon />}
-                                          onClick={() => handleCancel(match._id, field._id)}
-                                          sx={{ 
-                                            fontSize: { xs: '0.8125rem', sm: '0.875rem' },
-                                            py: { xs: 0.75, sm: 0.5 },
-                                            mt: { xs: 0.5, sm: 1 },
-                                            width: { xs: '100%', sm: 'auto' }
-                                          }}
-                                        >
-                                          Otkaži
-                                        </Button>
-                                      </Stack>
-                                    </CardContent>
-                                  </Card>
-                                ))}
-                              </Stack>
-                            </Box>
-                          )}
-                          
-                          {/* Cancelled Appointments */}
-                          {fieldAppointments.cancelled.length > 0 && (
-                            <Box>
-                              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }} color="text.secondary">
-                                Otkazani ({fieldAppointments.cancelled.length})
-                              </Typography>
-                              <Stack spacing={1}>
-                                {fieldAppointments.cancelled.map((match) => (
-                                  <Card key={match._id} variant="outlined" sx={{ opacity: 0.7, mb: 1 }}>
-                                    <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-                                      <Stack spacing={1}>
-                                        <Typography 
-                                          variant="body2" 
-                                          color="text.secondary"
-                                          sx={{ 
-                                            fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                                            fontWeight: 500
-                                          }}
-                                        >
+                                  <Paper key={match._id} elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+                                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
+                                      <Box>
+                                        <Typography variant="body1" fontWeight={600}>
                                           {formatDateTime(match.dateTime)}
                                         </Typography>
-                                        <Typography 
-                                          variant="body2" 
-                                          color="text.secondary"
-                                          sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
-                                        >
-                                          Kreirao: <strong>{match.createdBy.name}</strong>
+                                        <Typography variant="body2" color="text.secondary">
+                                          Kreirao: {match.createdBy.name} • Igrači: {formatPlayersCount(match)}
                                         </Typography>
-                                        <Typography 
-                                          variant="body2" 
-                                          color="text.secondary"
-                                          sx={{ fontSize: { xs: '0.8125rem', sm: '0.875rem' } }}
-                                        >
-                                          Status: <strong>Otkazano</strong>
-                                        </Typography>
+                                      </Box>
+                                      <Stack direction="row" spacing={1}>
+                                        <Button size="small" variant="contained" color="success" startIcon={<CheckCircleIcon />} onClick={() => handleApprove(match._id, field._id)}>
+                                          Odobri
+                                        </Button>
+                                        <Button size="small" variant="outlined" color="error" startIcon={<CancelIcon />} onClick={() => handleReject(match._id, field._id)}>
+                                          Odbij
+                                        </Button>
                                       </Stack>
-                                    </CardContent>
-                                  </Card>
+                                    </Stack>
+                                  </Paper>
                                 ))}
                               </Stack>
-                            </Box>
+                            </Grid>
                           )}
                           
-                          {fieldAppointments.pending.length === 0 && 
-                           fieldAppointments.reserved.length === 0 && 
-                           (!fieldAppointments.onRequest || fieldAppointments.onRequest.length === 0) &&
-                           fieldAppointments.cancelled.length === 0 && (
-                            <Alert severity="info">Nema termina za ovaj teren</Alert>
+                          {/* Reserved */}
+                          {fieldAppointments.reserved.length > 0 && (
+                            <Grid item xs={12}>
+                              <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, color: 'success.main' }}>
+                                Rezervisani ({fieldAppointments.reserved.length})
+                              </Typography>
+                              <Stack spacing={2}>
+                                {fieldAppointments.reserved.map((match) => (
+                                  <Paper key={match._id} elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+                                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
+                                      <Box>
+                                        <Typography variant="body1" fontWeight={600}>
+                                          {formatDateTime(match.dateTime)}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                          Kreirao: {match.createdBy.name} • Igrači: {formatPlayersCount(match)}
+                                        </Typography>
+                                      </Box>
+                                      <Button size="small" variant="outlined" color="error" onClick={() => handleCancel(match._id, field._id)}>
+                                        Otkaži
+                                      </Button>
+                                    </Stack>
+                                  </Paper>
+                                ))}
+                              </Stack>
+                            </Grid>
                           )}
-                        </Stack>
+                          
+                          {fieldAppointments.pending.length === 0 && fieldAppointments.reserved.length === 0 && (
+                            <Grid item xs={12}>
+                              <Alert severity="info" sx={{ borderRadius: 2 }}>Nema aktivnih termina za ovaj teren</Alert>
+                            </Grid>
+                          )}
+                        </Grid>
                       ) : null}
                     </Collapse>
                   </Stack>
@@ -795,131 +541,120 @@ export default function ManageFields() {
         </Stack>
       )}
 
-      <Dialog open={openDialog} onClose={closeDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingField ? 'Izmeni Teren' : 'Dodaj Novi Teren'}</DialogTitle>
+      {/* Add/Edit Dialog */}
+      <Dialog open={openDialog} onClose={closeDialog} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+        <DialogTitle sx={{ pb: 1, fontSize: '1.5rem', fontWeight: 700 }}>
+          {editingField ? 'Izmeni Teren' : 'Dodaj Novi Teren'}
+        </DialogTitle>
         <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            {error && <Alert severity="error">{error}</Alert>}
-            <TextField 
-              label="Naziv terena" 
-              value={name} 
-              onChange={(e) => setName(e.target.value)} 
-              required 
-              fullWidth 
-            />
-            <TextField 
-              select 
-              label="Sport" 
-              value={sport} 
-              onChange={(e) => setSport(e.target.value)} 
-              required 
-              fullWidth
-            >
-              {['football', 'basketball', 'tennis'].map((s) => (
-                <MenuItem key={s} value={s}>{s}</MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              type="number"
-              label="Cena (EUR)"
-              value={price}
-              onChange={(e) => setPrice(parseFloat(e.target.value))}
-              required
-              fullWidth
-            />
-            <TextField
-              type="number"
-              label="Rok za prijavu (sati pre meča)"
-              value={registrationDeadlineHours}
-              onChange={(e) => {
-                const value = parseInt(e.target.value);
-                if (!isNaN(value) && value >= 0 && value <= 168) {
-                  setRegistrationDeadlineHours(value);
-                }
-              }}
-              required
-              fullWidth
-              inputProps={{ min: 0, max: 168 }}
-              helperText="Koliko sati pre meča se zatvara prijava (0 = zatvara se u vreme meča, npr. 24 = 24 sata pre meča)"
-            />
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+            <TextField label="Naziv terena" value={name} onChange={(e) => setName(e.target.value)} required fullWidth />
+
+            {/* Sports Selection with Checkboxes */}
             <Box>
-              <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
-                {editingField ? 'Ažuriraj lokaciju na mapi (kliknite da postavite marker)' : 'Odaberite lokaciju na mapi (kliknite da postavite marker)'}
+              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+                Sportovi * (odaberite jedan ili više)
               </Typography>
-              <Box sx={{ height: 300, width: '100%', borderRadius: 1, overflow: 'hidden', border: '1px solid #ccc' }}>
-                <MapContainer
-                  center={markerPosition || mapCenter}
-                  zoom={markerPosition ? 15 : 13}
-                  style={{ height: '100%', width: '100%' }}
-                  scrollWheelZoom={true}
-                  key={`${mapCenter[0]}-${mapCenter[1]}`}
-                >
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
+              <Paper
+                elevation={0}
+                sx={{
+                  border: '1px solid',
+                  borderColor: sports.length === 0 ? 'error.main' : 'divider',
+                  borderRadius: 2,
+                  p: 2,
+                  maxHeight: 300,
+                  overflow: 'auto',
+                }}
+              >
+                <Grid container spacing={1}>
+                  {availableSports.map((sport) => (
+                    <Grid item xs={6} sm={4} key={sport.id}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={sports.includes(sport.id)}
+                            onChange={() => handleSportToggle(sport.id)}
+                            color="primary"
+                          />
+                        }
+                        label={
+                          <Typography variant="body2">{sport.label}</Typography>
+                        }
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              </Paper>
+              {sports.length === 0 && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5 }}>
+                  Molimo odaberite barem jedan sport
+                </Typography>
+              )}
+              {sports.length > 0 && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Odabrani sportovi: {sports.map(s => availableSports.find(as => as.id === s)?.label).join(', ')}
+                </Typography>
+              )}
+            </Box>
+            <TextField type="number" label="Cena (EUR)" value={price} onChange={(e) => setPrice(parseFloat(e.target.value))} required fullWidth />
+            <TextField type="number" label="Rok za prijavu (sati pre meča)" value={registrationDeadlineHours} onChange={(e) => {
+              const value = parseInt(e.target.value);
+              if (!isNaN(value) && value >= 0 && value <= 168) {
+                setRegistrationDeadlineHours(value);
+              }
+            }} required fullWidth helperText="Koliko sati pre meča se zatvara prijava" />
+            
+            <Box>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" fontWeight={600}>Lokacija na mapi</Typography>
+                <Button size="small" startIcon={<MyLocationIcon />} onClick={getUserLocation}>
+                  Moja lokacija
+                </Button>
+              </Stack>
+              <Paper elevation={0} sx={{ height: 300, borderRadius: 3, overflow: 'hidden', border: '1px solid', borderColor: markerPosition ? 'primary.main' : 'divider' }}>
+                <MapContainer center={markerPosition || mapCenter} zoom={markerPosition ? 15 : 13} style={{ height: '100%', width: '100%' }} scrollWheelZoom={true} key={`${mapCenter[0]}-${mapCenter[1]}`}>
+                  <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                   <MapCenter position={markerPosition || mapCenter} />
                   <MapClickHandler onMapClick={handleMapClick} />
                   {markerPosition && <Marker position={markerPosition} />}
                 </MapContainer>
-              </Box>
+              </Paper>
             </Box>
+            
             <Stack direction="row" spacing={2}>
-              <TextField 
-                label="Geografska širina" 
-                value={lat} 
-                InputProps={{ readOnly: true }}
-                fullWidth 
-                helperText="Kliknite na mapu da postavite"
-              />
-              <TextField 
-                label="Geografska dužina" 
-                value={lng} 
-                InputProps={{ readOnly: true }}
-                fullWidth
-                helperText="Kliknite na mapu da postavite"
-              />
+              <TextField label="Geografska širina" value={lat} InputProps={{ readOnly: true }} fullWidth helperText={lat ? '✓ Postavljeno' : 'Kliknite na mapu'} />
+              <TextField label="Geografska dužina" value={lng} InputProps={{ readOnly: true }} fullWidth helperText={lng ? '✓ Postavljeno' : 'Kliknite na mapu'} />
             </Stack>
-            {!lat && (
-              <Alert severity="info">Kliknite bilo gde na mapi da odaberete lokaciju terena</Alert>
-            )}
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={closeDialog}>Otkaži</Button>
-          <Button 
-            onClick={handleSubmit} 
-            variant="contained" 
-            disabled={(!lat || !lng || !name)}
-          >
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={closeDialog} variant="outlined" sx={{ borderRadius: 3, px: 3 }}>Otkaži</Button>
+          <Button onClick={handleSubmit} variant="contained" disabled={(!lat || !lng || !name)} sx={{ borderRadius: 3, px: 3 }}>
             {editingField ? 'Ažuriraj Teren' : 'Dodaj Teren'}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Working Hours Dialog */}
-      <Dialog open={openWorkingHoursDialog} onClose={closeWorkingHoursDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Radno Vreme - {editingWorkingHoursField?.name}</DialogTitle>
+      <Dialog open={openWorkingHoursDialog} onClose={closeWorkingHoursDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+        <DialogTitle sx={{ fontSize: '1.5rem', fontWeight: 700 }}>
+          Radno Vreme - {editingWorkingHoursField?.name}
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            {error && <Alert severity="error">{error}</Alert>}
+            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
             {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => {
               const dayNames: Record<string, string> = {
-                monday: 'Ponedeljak',
-                tuesday: 'Utorak',
-                wednesday: 'Sreda',
-                thursday: 'Četvrtak',
-                friday: 'Petak',
-                saturday: 'Subota',
-                sunday: 'Nedelja'
+                monday: 'Ponedeljak', tuesday: 'Utorak', wednesday: 'Sreda',
+                thursday: 'Četvrtak', friday: 'Petak', saturday: 'Subota', sunday: 'Nedelja'
               };
               const dayData = workingHours[day] || { start: '17', end: '23', closed: false };
-              // Extract hour if in "HH:MM" format
               const startHour = dayData.start.includes(':') ? dayData.start.split(':')[0] : dayData.start;
               const endHour = dayData.end.includes(':') ? dayData.end.split(':')[0] : dayData.end;
               
               return (
-                <Box key={day} sx={{ p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                <Paper key={day} elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
                   <Stack spacing={2}>
                     <FormControlLabel
                       control={
@@ -937,55 +672,30 @@ export default function ManageFields() {
                     />
                     {!dayData.closed && (
                       <Stack direction="row" spacing={2} alignItems="center">
-                        <TextField
-                          type="number"
-                          label="Od (sat)"
-                          value={startHour}
-                          onChange={(e) => {
-                            const hour = parseInt(e.target.value) || 0;
-                            const clampedHour = Math.max(0, Math.min(23, hour));
-                            setWorkingHours({
-                              ...workingHours,
-                              [day]: { ...dayData, start: clampedHour.toString() }
-                            });
-                          }}
-                          InputLabelProps={{ shrink: true }}
-                          inputProps={{ min: 0, max: 23, step: 1 }}
-                          sx={{ width: 120 }}
-                        />
+                        <TextField type="number" label="Od (sat)" value={startHour} onChange={(e) => {
+                          const hour = parseInt(e.target.value) || 0;
+                          const clampedHour = Math.max(0, Math.min(23, hour));
+                          setWorkingHours({ ...workingHours, [day]: { ...dayData, start: clampedHour.toString() }});
+                        }} inputProps={{ min: 0, max: 23 }} sx={{ width: 100 }} />
                         <Typography variant="body1">-</Typography>
-                        <TextField
-                          type="number"
-                          label="Do (sat)"
-                          value={endHour}
-                          onChange={(e) => {
-                            const hour = parseInt(e.target.value) || 0;
-                            const clampedHour = Math.max(0, Math.min(23, hour));
-                            setWorkingHours({
-                              ...workingHours,
-                              [day]: { ...dayData, end: clampedHour.toString() }
-                            });
-                          }}
-                          InputLabelProps={{ shrink: true }}
-                          inputProps={{ min: 0, max: 23, step: 1 }}
-                          sx={{ width: 120 }}
-                        />
+                        <TextField type="number" label="Do (sat)" value={endHour} onChange={(e) => {
+                          const hour = parseInt(e.target.value) || 0;
+                          const clampedHour = Math.max(0, Math.min(23, hour));
+                          setWorkingHours({ ...workingHours, [day]: { ...dayData, end: clampedHour.toString() }});
+                        }} inputProps={{ min: 0, max: 23 }} sx={{ width: 100 }} />
                       </Stack>
                     )}
                   </Stack>
-                </Box>
+                </Paper>
               );
             })}
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={closeWorkingHoursDialog}>Otkaži</Button>
-          <Button onClick={handleSaveWorkingHours} variant="contained">
-            Sačuvaj
-          </Button>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={closeWorkingHoursDialog} variant="outlined" sx={{ borderRadius: 3, px: 3 }}>Otkaži</Button>
+          <Button onClick={handleSaveWorkingHours} variant="contained" sx={{ borderRadius: 3, px: 3 }}>Sačuvaj</Button>
         </DialogActions>
       </Dialog>
-    </Stack>
+    </Box>
   );
 }
-

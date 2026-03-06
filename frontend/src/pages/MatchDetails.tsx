@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Stack,
   Typography,
@@ -12,10 +12,25 @@ import {
   DialogActions,
   TextField,
   Box,
-  Divider
+  Divider,
+  Card,
+  CardContent,
+  Avatar,
+  IconButton,
+  Skeleton,
 } from '@mui/material';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import CancelIcon from '@mui/icons-material/Cancel';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import PeopleIcon from '@mui/icons-material/People';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import PersonIcon from '@mui/icons-material/Person';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import WarningIcon from '@mui/icons-material/Warning';
+import ErrorIcon from '@mui/icons-material/Error';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import api from '../lib/api';
@@ -37,7 +52,7 @@ function formatPlayersCount(match: Match): string {
   const current = match.players.length;
   const min = match.minPlayers ?? match.playersNeeded;
   const max = match.maxPlayers;
-  
+
   if (max) {
     return `${current}/${min}-${max}`;
   }
@@ -46,15 +61,23 @@ function formatPlayersCount(match: Match): string {
 
 export default function MatchDetails() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [match, setMatch] = useState<Match | null>(null);
+  const [loading, setLoading] = useState(true);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelComment, setCancelComment] = useState('');
   const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     if (!id) return;
-    api.get(`/api/matches/${id}`).then((res) => setMatch(res.data));
+    setLoading(true);
+    api.get(`/api/matches/${id}`).then((res) => {
+      setMatch(res.data);
+      setLoading(false);
+    }).catch(() => {
+      setLoading(false);
+    });
   }, [id]);
 
   useEffect(() => {
@@ -74,7 +97,8 @@ export default function MatchDetails() {
     if (!match || !user) return false;
     const deadlinePassed = new Date() > new Date(match.registrationDeadline);
     const isAlreadyJoined = match.players.some(p => p._id === user._id);
-    return !isAlreadyJoined && match.status !== 'full' && match.status !== 'failed' && !deadlinePassed;
+    const maxPlayersReached = match.players.length >= (match.maxPlayers || match.playersNeeded || 100);
+    return !isAlreadyJoined && match.status !== 'failed' && !deadlinePassed && !maxPlayersReached;
   }, [match, user]);
 
   const canLeave = useMemo(() => {
@@ -82,7 +106,6 @@ export default function MatchDetails() {
     const isJoined = match.players.some(p => p._id === user._id);
     const isCreator = match.createdBy._id === user._id;
     const deadlinePassed = new Date() > new Date(match.registrationDeadline);
-    // Can leave if joined, not the creator (or creator but match not full/completed), and deadline hasn't passed
     return isJoined && (!isCreator || (match.status !== 'full' && match.status !== 'completed')) && !deadlinePassed;
   }, [match, user]);
 
@@ -94,7 +117,6 @@ export default function MatchDetails() {
     } catch (err: any) {
       alert(err.response?.data?.message || 'Neuspešno pridruživanje meču');
       if (id) {
-        // Reload match to get updated status
         api.get(`/api/matches/${id}`).then((res) => setMatch(res.data));
       }
     }
@@ -122,7 +144,6 @@ export default function MatchDetails() {
     } catch (err: any) {
       alert(err.response?.data?.message || 'Neuspešno otkazivanje dolaska');
       if (id) {
-        // Reload match to get updated status
         api.get(`/api/matches/${id}`).then((res) => setMatch(res.data));
       }
     } finally {
@@ -141,142 +162,355 @@ export default function MatchDetails() {
     });
   }
 
+  if (loading) {
+    return (
+      <Box sx={{ maxWidth: 800, mx: 'auto' }}>
+        <Skeleton variant="text" height={40} sx={{ mb: 2 }} />
+        <Skeleton variant="rectangular" height={300} sx={{ mb: 2, borderRadius: 4 }} />
+        <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 4 }} />
+      </Box>
+    );
+  }
+
   if (!match) return <Typography>Učitavanje...</Typography>;
 
   const { fieldId } = match;
   const center: [number, number] = [fieldId.lat, fieldId.lng];
 
+  const getStatusConfig = () => {
+    switch (match.status) {
+      case 'failed':
+        return { color: 'error' as const, icon: <ErrorIcon />, label: 'Neuspešan' };
+      case 'full':
+        return { color: 'warning' as const, icon: <PeopleIcon />, label: 'Pun' };
+      case 'completed':
+        return { color: 'success' as const, icon: <CheckCircleIcon />, label: 'Završen' };
+      default:
+        return { color: 'primary' as const, icon: <SportsSoccerIcon />, label: 'Otvoren' };
+    }
+  };
+
+  const statusConfig = getStatusConfig();
+  const isDeadlinePassed = new Date() > new Date(match.registrationDeadline);
+
   return (
-    <Stack spacing={{ xs: 1.5, sm: 2 }}>
-      <Typography variant="h5" fontWeight={600} sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}>
-        {match.sport} na {fieldId.name}
-      </Typography>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 1 }}>
-        <Chip 
-          label={`Status: ${match.status === 'full' ? 'Pun' : match.status === 'open' ? 'Otvoren' : match.status === 'completed' ? 'Završen' : match.status}`} 
-          color={
-            match.status === 'failed' ? 'error' :
-            match.status === 'full' ? 'warning' :
-            match.status === 'completed' ? 'success' :
-            'primary'
-          }
-          sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 24, sm: 32 } }}
-        />
-        <Chip 
-          color="primary" 
-          label={`Igrači: ${formatPlayersCount(match)}`}
-          sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 24, sm: 32 } }}
-        />
-      </Stack>
-      <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-        <strong>Datum meča:</strong> {formatDateTime(match.dateTime)}
-      </Typography>
-      <Typography 
-        variant="body1" 
-        color={new Date() > new Date(match.registrationDeadline) ? 'error.main' : 'text.primary'}
-        sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}
+    <Box sx={{ maxWidth: 800, mx: 'auto' }}>
+      {/* Back Button */}
+      <Button
+        startIcon={<ArrowBackIcon />}
+        onClick={() => navigate(-1)}
+        sx={{ mb: 2, color: 'text.secondary' }}
       >
-        <strong>Rok za prijavu:</strong> {formatDateTime(match.registrationDeadline)}
-        {new Date() > new Date(match.registrationDeadline) && ' (ISTEKAO)'}
-      </Typography>
-      <Paper 
-        elevation={1} 
-        sx={{ 
-          p: 0, 
-          overflow: 'hidden', 
-          height: { xs: 280, sm: 360 },
-          borderRadius: { xs: 2, sm: 3 }
+        Nazad
+      </Button>
+
+      {/* Header Card */}
+      <Card
+        elevation={0}
+        sx={{
+          mb: 3,
+          borderRadius: 4,
+          border: '1px solid',
+          borderColor: 'divider',
+          overflow: 'hidden',
         }}
       >
-        <MapContainer 
-          center={center} 
-          zoom={14} 
-          style={{ height: '100%', width: '100%' }}
-          scrollWheelZoom={true}
+        <Box
+          sx={{
+            p: 3,
+            background: 'linear-gradient(135deg, primary.main 0%, primary.dark 100%)',
+            color: 'primary.contrastText',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
         >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          <Box
+            sx={{
+              position: 'absolute',
+              top: -20,
+              right: -20,
+              width: 120,
+              height: 120,
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.1)',
+            }}
           />
-          <Marker position={center}>
-            <Popup>{fieldId.name} — {fieldId.sport}</Popup>
-          </Marker>
-        </MapContainer>
-      </Paper>
-      <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600 }}>
-        Igrači
-      </Typography>
-      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: { xs: 0.5, sm: 1 } }}>
-        {match.players.map((p) => (
-          <Chip 
-            key={p._id} 
-            label={p.name}
-            sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' }, height: { xs: 24, sm: 32 } }}
-          />
-        ))}
-      </Stack>
-      
-      {/* Show cancellations if any */}
-      {match.playerCancellations && match.playerCancellations.length > 0 && (
-        <Box>
-          <Typography variant="h6" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600, mt: 2 }}>
-            Otkazani dolasci
-          </Typography>
-          <Stack spacing={1} sx={{ mt: 1 }}>
-            {match.playerCancellations.map((cancellation, index) => (
-              <Paper key={index} elevation={1} sx={{ p: 2 }}>
-                <Stack spacing={0.5}>
-                  <Typography variant="body2" fontWeight="bold">
-                    {typeof cancellation.playerId === 'object' ? cancellation.playerId.name : 'Nepoznat korisnik'}
-                  </Typography>
-                  {cancellation.comment && (
-                    <Typography variant="body2" color="text.secondary">
-                      {cancellation.comment}
-                    </Typography>
-                  )}
-                  <Typography variant="caption" color="text.secondary">
-                    {formatDateTime(cancellation.cancelledAt)}
-                  </Typography>
-                </Stack>
-              </Paper>
-            ))}
+          <Stack spacing={1}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip
+                icon={statusConfig.icon}
+                label={statusConfig.label}
+                size="small"
+                color={statusConfig.color}
+                sx={{
+                  bgcolor: 'rgba(255,255,255,0.9)',
+                  fontWeight: 600,
+                }}
+              />
+            </Stack>
+            <Typography variant="h4" fontWeight={700}>
+              {match.sport}
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <LocationOnIcon sx={{ fontSize: 20 }} />
+              <Typography variant="h6" fontWeight={500}>
+                {fieldId.name}
+              </Typography>
+            </Stack>
           </Stack>
         </Box>
-      )}
+
+        <CardContent sx={{ p: 3 }}>
+          <Stack spacing={3}>
+            {/* Info Grid */}
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
+                gap: 3,
+              }}
+            >
+              <Stack spacing={1}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <CalendarTodayIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    Datum meča
+                  </Typography>
+                </Stack>
+                <Typography variant="body1" fontWeight={600}>
+                  {formatDateTime(match.dateTime)}
+                </Typography>
+              </Stack>
+
+              <Stack spacing={1}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <AccessTimeIcon sx={{ color: isDeadlinePassed ? 'error.main' : 'text.secondary', fontSize: 18 }} />
+                  <Typography variant="body2" color={isDeadlinePassed ? 'error.main' : 'text.secondary'}>
+                    Rok za prijavu
+                  </Typography>
+                </Stack>
+                <Typography variant="body1" fontWeight={600} color={isDeadlinePassed ? 'error.main' : 'text.primary'}>
+                  {formatDateTime(match.registrationDeadline)}
+                  {isDeadlinePassed && ' (ISTEKAO)'}
+                </Typography>
+              </Stack>
+
+              <Stack spacing={1}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <PeopleIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    Igrači
+                  </Typography>
+                </Stack>
+                <Typography variant="body1" fontWeight={600}>
+                  {formatPlayersCount(match)}
+                </Typography>
+              </Stack>
+
+              <Stack spacing={1}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <PersonIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    Organizator
+                  </Typography>
+                </Stack>
+                <Typography variant="body1" fontWeight={600}>
+                  {match.createdBy.name}
+                </Typography>
+              </Stack>
+            </Box>
+
+            <Divider />
+
+            {/* Players Section */}
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+                Prijavljeni igrači ({match.players.length})
+              </Typography>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 1.5,
+                }}
+              >
+                {match.players.map((p) => (
+                  <Chip
+                    key={p._id}
+                    avatar={
+                      <Avatar sx={{ bgcolor: 'primary.main' }}>
+                        {p.name.charAt(0).toUpperCase()}
+                      </Avatar>
+                    }
+                    label={p.name}
+                    sx={{
+                      borderRadius: 2,
+                      '& .MuiChip-avatar': {
+                        width: 28,
+                        height: 28,
+                        fontSize: '0.875rem',
+                      },
+                    }}
+                  />
+                ))}
+              </Box>
+            </Box>
+
+            {/* Cancellations Section */}
+            {match.playerCancellations && match.playerCancellations.length > 0 && (
+              <>
+                <Divider />
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, color: 'error.main' }}>
+                    <WarningIcon sx={{ fontSize: 18, mr: 0.5, verticalAlign: 'middle' }} />
+                    Otkazani dolasci ({match.playerCancellations.length})
+                  </Typography>
+                  <Stack spacing={1.5}>
+                    {match.playerCancellations.map((cancellation, index) => (
+                      <Paper
+                        key={index}
+                        elevation={0}
+                        sx={{
+                          p: 2,
+                          borderRadius: 2,
+                          border: '1px solid',
+                          borderColor: 'error.light',
+                          bgcolor: 'error.light',
+                          opacity: 0.8,
+                        }}
+                      >
+                        <Stack spacing={0.5}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Typography variant="body2" fontWeight={600}>
+                              {typeof cancellation.playerId === 'object' ? cancellation.playerId.name : 'Nepoznat korisnik'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {formatDateTime(cancellation.cancelledAt)}
+                            </Typography>
+                          </Stack>
+                          {cancellation.comment && (
+                            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                              "{cancellation.comment}"
+                            </Typography>
+                          )}
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </Box>
+              </>
+            )}
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* Map Section */}
+      <Paper
+        elevation={0}
+        sx={{
+          borderRadius: 4,
+          overflow: 'hidden',
+          border: '1px solid',
+          borderColor: 'divider',
+          mb: 3,
+        }}
+      >
+        <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <LocationOnIcon sx={{ color: 'primary.main' }} />
+            <Typography variant="subtitle1" fontWeight={600}>
+              Lokacija terena
+            </Typography>
+          </Stack>
+        </Box>
+        <Box sx={{ height: 300 }}>
+          <MapContainer
+            center={center}
+            zoom={14}
+            style={{ height: '100%', width: '100%' }}
+            scrollWheelZoom={true}
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <Marker position={center}>
+              <Popup>{fieldId.name} — {fieldId.sports?.join(', ') || fieldId.sport || 'Nepoznat sport'}</Popup>
+            </Marker>
+          </MapContainer>
+        </Box>
+      </Paper>
+
+      {/* Action Buttons */}
       {match.status === 'failed' ? (
-        <Typography variant="body1" color="error" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-          Ovaj meč nije uspeo - nije bilo dovoljno igrača do roka za prijavu.
-        </Typography>
-      ) : new Date() > new Date(match.registrationDeadline) ? (
-        <Typography variant="body1" color="warning.main" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>
-          Rok za prijavu je istekao. Ne možete se pridružiti ovom meču.
-        </Typography>
+        <Paper
+          elevation={0}
+          sx={{
+            p: 3,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'error.light',
+            bgcolor: 'error.light',
+            textAlign: 'center',
+          }}
+        >
+          <ErrorIcon sx={{ color: 'error.main', fontSize: 40, mb: 1 }} />
+          <Typography variant="h6" color="error.main" fontWeight={600}>
+            Meč nije uspeo
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Nije bilo dovoljno igrača do roka za prijavu.
+          </Typography>
+        </Paper>
+      ) : isDeadlinePassed ? (
+        <Paper
+          elevation={0}
+          sx={{
+            p: 3,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'warning.light',
+            bgcolor: 'warning.light',
+            textAlign: 'center',
+          }}
+        >
+          <AccessTimeIcon sx={{ color: 'warning.main', fontSize: 40, mb: 1 }} />
+          <Typography variant="h6" color="warning.main" fontWeight={600}>
+            Rok za prijavu je istekao
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Ne možete se pridružiti ovom meču.
+          </Typography>
+        </Paper>
       ) : canLeave ? (
-        <Button 
-          variant="outlined" 
+        <Button
+          variant="outlined"
           color="error"
           onClick={handleOpenCancelDialog}
           fullWidth
           size="large"
           startIcon={<CancelIcon />}
-          sx={{ 
-            fontSize: { xs: '1rem', sm: '1.125rem' },
-            py: { xs: 1.25, sm: 1.5 },
-            fontWeight: 600
+          sx={{
+            py: 1.5,
+            fontSize: '1rem',
+            fontWeight: 600,
+            borderRadius: 3,
+            borderWidth: 2,
           }}
         >
           Otkaži dolazak
         </Button>
       ) : canJoin ? (
-        <Button 
-          variant="contained" 
+        <Button
+          variant="contained"
           onClick={join}
           fullWidth
           size="large"
-          sx={{ 
-            fontSize: { xs: '1rem', sm: '1.125rem' },
-            py: { xs: 1.25, sm: 1.5 },
-            fontWeight: 600
+          sx={{
+            py: 1.5,
+            fontSize: '1rem',
+            fontWeight: 600,
+            borderRadius: 3,
           }}
         >
           Pridruži se meču
@@ -284,12 +518,30 @@ export default function MatchDetails() {
       ) : null}
 
       {/* Cancel Attendance Dialog */}
-      <Dialog open={cancelDialogOpen} onClose={handleCloseCancelDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Otkaži dolazak na meč</DialogTitle>
+      <Dialog
+        open={cancelDialogOpen}
+        onClose={handleCloseCancelDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            p: 1,
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <CancelIcon color="error" />
+            <Typography variant="h6" fontWeight={700}>
+              Otkaži dolazak
+            </Typography>
+          </Stack>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              Da li ste sigurni da želite da otkažete dolazak na ovaj meč? (Opcionalno) dodajte komentar:
+              Da li ste sigurni da želite da otkažete dolazak na ovaj meč? Ako želite, možete dodati razlog:
             </Typography>
             <TextField
               fullWidth
@@ -299,11 +551,21 @@ export default function MatchDetails() {
               value={cancelComment}
               onChange={(e) => setCancelComment(e.target.value)}
               placeholder="Npr. Ne mogu da dođem zbog obaveza..."
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 3,
+                },
+              }}
             />
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseCancelDialog} disabled={cancelling}>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            onClick={handleCloseCancelDialog}
+            disabled={cancelling}
+            variant="outlined"
+            sx={{ borderRadius: 3, px: 3 }}
+          >
             Odustani
           </Button>
           <Button
@@ -311,13 +573,12 @@ export default function MatchDetails() {
             variant="contained"
             color="error"
             disabled={cancelling}
+            sx={{ borderRadius: 3, px: 3 }}
           >
             {cancelling ? 'Otkazivanje...' : 'Otkaži dolazak'}
           </Button>
         </DialogActions>
       </Dialog>
-    </Stack>
+    </Box>
   );
 }
-
-

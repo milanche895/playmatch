@@ -49,7 +49,8 @@ export type PlayerAnalytics = {
 export type Field = {
   _id: string;
   name: string;
-  sport: string;
+  sports: string[]; // Array of sports - one field can have multiple sports
+  sport?: string; // Keep for backward compatibility (first sport from array)
   lat: number;
   lng: number;
   courtOwner?: string;

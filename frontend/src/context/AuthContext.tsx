@@ -6,6 +6,7 @@ type AuthContextValue = {
   user: User | null;
   loading: boolean;
   setUser: (u: User | null) => void;
+  refreshUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string, role?: 'player' | 'court') => Promise<void>;
   logout: () => Promise<void>;
@@ -99,6 +100,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }
 
+  async function refreshUser() {
+    try {
+      const res = await api.get('/api/auth/me');
+      if (res.data) {
+        setUser(res.data);
+      }
+    } catch (err) {
+      console.log('Error refreshing user:', err);
+    }
+  }
+
   function loginWithGoogle(role?: 'player' | 'court') {
     // Redirect to backend Google OAuth endpoint
     const envApiUrl = import.meta.env.VITE_API_URL;
@@ -141,7 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, setUser, login, register, logout, loginWithGoogle, loginWithFacebook, loginWithInstagram }}>
+    <AuthContext.Provider value={{ user, loading, setUser, refreshUser, login, register, logout, loginWithGoogle, loginWithFacebook, loginWithInstagram }}>
       {children}
     </AuthContext.Provider>
   );
