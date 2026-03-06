@@ -1,9 +1,27 @@
 const express = require('express');
+const multer = require('multer');
 const User = require('../models/User');
 const Match = require('../models/Match');
 const auth = require('../middleware/auth');
+const { uploadImageBuffer } = require('../utils/cloudinary');
 
 const router = express.Router();
+
+// Configure multer for memory storage (we'll upload to Cloudinary, not disk)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only image files
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Samo slike su dozvoljene (JPEG, PNG, GIF)'), false);
+    }
+  }
+});
 
 // Get player profile
 router.get('/profile/:id', async (req, res) => {
@@ -383,10 +401,10 @@ router.post('/test-push', auth(true), async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'Korisnik nije pronađen' });
     }
-    
+
     if (!user.pushSubscription) {
-      return res.status(400).json({ 
-        message: 'Nema push subscription. Otvori Notification Settings da se pretplatiš.' 
+      return res.status(400).json({
+        message: 'Nema push subscription. Otvori Notification Settings da se pretplatiš.'
       });
     }
 
@@ -400,17 +418,278 @@ router.post('/test-push', auth(true), async (req, res) => {
     };
 
     await sendPushNotification(user.pushSubscription, testPayload);
-    
-    res.json({ 
+
+    res.json({
       message: 'Test push notifikacija je poslata!',
       success: true
     });
   } catch (error) {
     console.error('Error sending test push:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Greška pri slanju test push notifikacije',
-      error: error.message 
+      error: error.message
     });
+  }
+});
+
+// Get matches created by the current player
+router.get('/my-matches/created', auth(true), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+    if (user.role !== 'player') {
+      return res.status(403).json({ message: 'Samo igrači mogu videti svoje mečeve' });
+    }
+
+    const matches = await Match.find({ createdBy: user._id })
+      .populate('fieldId', 'name sport lat lng')
+      .populate('createdBy', 'name avatarUrl')
+      .populate('players', 'name avatarUrl')
+      .sort({ dateTime: -1 }); // Sort by date, newest first
+
+    res.json(matches);
+  } catch (e) {
+    console.error('Error fetching created matches:', e);
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Get matches where the current player has joined
+router.get('/my-matches/joined', auth(true), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+    if (user.role !== 'player') {
+      return res.status(403).json({ message: 'Samo igrači mogu videti svoje mečeve' });
+    }
+
+    const matches = await Match.find({
+      players: { $in: [user._id] },
+      createdBy: { $ne: user._id } // Exclude matches they created (those are in the other endpoint)
+    })
+      .populate('fieldId', 'name sport lat lng')
+      .populate('createdBy', 'name avatarUrl')
+      .populate('players', 'name avatarUrl')
+      .sort({ dateTime: -1 }); // Sort by date, newest first
+
+    res.json(matches);
+  } catch (e) {
+    console.error('Error fetching joined matches:', e);
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Upload avatar image to Cloudinary
+router.post('/upload-avatar', auth(true), upload.single('avatar'), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'Nijedna slika nije poslata' });
+    }
+
+    // Check if Cloudinary is configured
+    if (!process.env.CLOUDINARY_CLOUD_NAME) {
+      return res.status(500).json({ message: 'Cloudinary nije konfigurisan' });
+    }
+
+    // Upload to Cloudinary
+    const publicId = `user-${user._id}-${Date.now()}`;
+    const cloudinaryUrl = await uploadImageBuffer(
+      req.file.buffer,
+      'avatars',
+      publicId
+    );
+
+    if (!cloudinaryUrl) {
+      return res.status(500).json({ message: 'Greška pri upload-u slike' });
+    }
+
+    // Update user avatarUrl
+    user.avatarUrl = cloudinaryUrl;
+    await user.save();
+
+    res.json({
+      message: 'Slika profila je uspešno ažurirana',
+      avatarUrl: cloudinaryUrl
+    });
+  } catch (error) {
+    console.error('Avatar upload error:', error);
+    res.status(500).json({
+      message: 'Greška pri upload-u slike',
+      error: error.message
+    });
+  }
+});
+
+// Get all unique players who joined matches created by the current user
+router.get('/my-players', auth(true), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+    if (user.role !== 'player') {
+      return res.status(403).json({ message: 'Samo igrači mogu videti svoje igrače' });
+    }
+
+    // Find all matches created by this user where players joined
+    const matches = await Match.find({
+      createdBy: user._id,
+      players: { $exists: true, $not: { $size: 0 } } // Matches with at least one player
+    }).populate('players', '_id name email avatarUrl experience preferredSports');
+
+    // Extract unique players
+    const uniquePlayers = new Map();
+    
+    matches.forEach(match => {
+      match.players.forEach(player => {
+        if (player._id.toString() !== user._id.toString()) {
+          // Don't include the creator themselves
+          if (!uniquePlayers.has(player._id.toString())) {
+            uniquePlayers.set(player._id.toString(), {
+              ...player.toObject(),
+              matchesJoined: 1,
+              matches: [{
+                _id: match._id,
+                sport: match.sport,
+                dateTime: match.dateTime,
+                fieldName: match.fieldId?.name || 'Nepoznat teren'
+              }]
+            });
+          } else {
+            // Player already exists, increment count and add match
+            const existing = uniquePlayers.get(player._id.toString());
+            existing.matchesJoined++;
+            existing.matches.push({
+              _id: match._id,
+              sport: match.sport,
+              dateTime: match.dateTime,
+              fieldName: match.fieldId?.name || 'Nepoznat teren'
+            });
+          }
+        }
+      });
+    });
+
+    // Convert map to array and sort by number of matches joined (descending)
+    const playersList = Array.from(uniquePlayers.values()).sort((a, b) => b.matchesJoined - a.matchesJoined);
+
+    res.json(playersList);
+  } catch (e) {
+    console.error('Error fetching my players:', e);
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Get blocked players list
+router.get('/blocked-players', auth(true), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id)
+      .populate('blockedPlayers', '_id name email avatarUrl');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+
+    res.json(user.blockedPlayers || []);
+  } catch (e) {
+    console.error('Error fetching blocked players:', e);
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Block a player
+router.post('/block-player/:playerId', auth(true), async (req, res) => {
+  try {
+    const { playerId } = req.params;
+    
+    // Validate that the player exists
+    const playerToBlock = await User.findById(playerId);
+    if (!playerToBlock) {
+      return res.status(404).json({ message: 'Igrač nije pronađen' });
+    }
+
+    // Prevent blocking yourself
+    if (playerId === req.user.id) {
+      return res.status(400).json({ message: 'Ne možete blokirati sebe' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+
+    // Initialize blockedPlayers array if it doesn't exist
+    if (!user.blockedPlayers) {
+      user.blockedPlayers = [];
+    }
+
+    // Check if already blocked
+    if (user.blockedPlayers.includes(playerId)) {
+      return res.status(400).json({ message: 'Igrač je već blokiran' });
+    }
+
+    // Add player to blocked list
+    user.blockedPlayers.push(playerId);
+    await user.save();
+
+    res.json({ message: 'Igrač je uspešno blokiran', blockedPlayers: user.blockedPlayers });
+  } catch (e) {
+    console.error('Error blocking player:', e);
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Unblock a player
+router.delete('/block-player/:playerId', auth(true), async (req, res) => {
+  try {
+    const { playerId } = req.params;
+    
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+
+    // Check if player is in blocked list
+    if (!user.blockedPlayers || !user.blockedPlayers.includes(playerId)) {
+      return res.status(400).json({ message: 'Igrač nije blokiran' });
+    }
+
+    // Remove player from blocked list
+    user.blockedPlayers = user.blockedPlayers.filter(id => id.toString() !== playerId);
+    await user.save();
+
+    res.json({ message: 'Igrač je uspešno odblokiran', blockedPlayers: user.blockedPlayers });
+  } catch (e) {
+    console.error('Error unblocking player:', e);
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
+// Check if current user is blocked by a specific user
+router.get('/is-blocked-by/:userId', auth(true), async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+
+    const isBlocked = user.blockedPlayers && user.blockedPlayers.includes(req.user.id);
+    
+    res.json({ isBlocked });
+  } catch (e) {
+    console.error('Error checking blocked status:', e);
+    res.status(500).json({ message: 'Greška servera' });
   }
 });
 

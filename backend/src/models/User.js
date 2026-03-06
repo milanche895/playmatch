@@ -47,7 +47,9 @@ const userSchema = new mongoose.Schema(
       updatedAt: { type: Date }
     }, // Poslednja poznata lokacija igrača
     // Push notification subscription (PWA Web Push with VAPID)
-    pushSubscription: { type: mongoose.Schema.Types.Mixed } // PWA push subscription object
+    pushSubscription: { type: mongoose.Schema.Types.Mixed }, // PWA push subscription object
+    // Blocked players - users who are blocked from joining matches created by this user
+    blockedPlayers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
   },
   { timestamps: true }
 );

@@ -131,7 +131,36 @@ function matchesRoutesFactory(io) {
       { status: 'failed' }
     );
     
-    const matches = await Match.find({})
+    // Build query - if user is authenticated, exclude matches from creators who blocked them
+    let query = {};
+    const token = req.cookies?.token || req.headers?.authorization?.split(' ')[1];
+    
+    if (token) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+        const decoded = jwt.verify(token, JWT_SECRET);
+        
+        // Find users who have blocked the current user
+        const usersWhoBlockedCurrentUser = await User.find({
+          blockedPlayers: { $in: [decoded.userId || decoded.id] }
+        }).select('_id');
+        
+        const blockedByIds = usersWhoBlockedCurrentUser.map(u => u._id.toString());
+        
+        // Exclude matches created by users who blocked the current user
+        if (blockedByIds.length > 0) {
+          query = {
+            createdBy: { $nin: blockedByIds }
+          };
+        }
+      } catch (err) {
+        // Invalid token, proceed without filtering
+        console.log('Invalid token in matches GET, proceeding without blocked filter');
+      }
+    }
+    
+    const matches = await Match.find(query)
       .populate('fieldId')
       .populate('players', 'name')
       .populate('createdBy', 'name')
@@ -352,15 +381,27 @@ function matchesRoutesFactory(io) {
     if (user && user.role === 'court') {
       return res.status(403).json({ message: 'Tereni ne mogu da se pridruže meču' });
     }
+
+    // Check if the current user is blocked by the match creator
+    const creator = await User.findById(match.createdBy);
+    if (creator && creator.blockedPlayers && creator.blockedPlayers.includes(req.user.id)) {
+      return res.status(403).json({ message: 'Organizator meča vam je zabranio pristup' });
+    }
     
     // Check if registration deadline has passed
     if (new Date() > match.registrationDeadline) {
       return res.status(400).json({ message: 'Rok za prijavu je istekao' });
     }
     
-    // Check if match is already full or failed
-    if (match.status === 'full' || match.status === 'failed') {
+    // Check if match has failed
+    if (match.status === 'failed') {
       return res.status(400).json({ message: `Ne možete se pridružiti meču sa statusom: ${match.status}` });
+    }
+
+    // Check if match has reached maxPlayers (if set), otherwise allow up to a reasonable limit
+    const maxPlayersValue = match.maxPlayers || 100; // Default max if not set
+    if (match.players.length >= maxPlayersValue) {
+      return res.status(400).json({ message: 'Meč je pun - dostignut je maksimalni broj igrača' });
     }
     
     const already = match.players.some((p) => p.toString() === req.user.id);
@@ -374,11 +415,11 @@ function matchesRoutesFactory(io) {
         );
       }
     }
-    // Check if match is full based on maxPlayers (if set) or minPlayers
-    const maxPlayersValue = match.maxPlayers || match.playersNeeded || match.minPlayers;
-    if (match.players.length >= maxPlayersValue) {
+    // Check if minimum players requirement is met - reserve the slot when minPlayers is reached
+    const minPlayersValue = match.minPlayers || match.playersNeeded || 1;
+    if (match.players.length >= minPlayersValue) {
       match.status = 'full';
-      // Ako je meč pun, automatski postavi courtApproval na 'approved' (rezervisano) ako je bio 'pending'
+      // Automatski postavi courtApproval na 'approved' (rezervisano) kada je dostignut minPlayers
       if (match.courtApproval === 'pending') {
         match.courtApproval = 'approved';
         match.courtApprovedAt = new Date();
@@ -418,10 +459,16 @@ function matchesRoutesFactory(io) {
 
       // Remove player from match
       match.players.splice(playerIndex, 1);
-      
-      // Update match status if it was full
-      if (match.status === 'full') {
+
+      // Check if player count dropped below minPlayers - unreserve the slot
+      const minPlayersValue = match.minPlayers || match.playersNeeded || 1;
+      if (match.players.length < minPlayersValue) {
         match.status = 'open';
+        // Return courtApproval to 'pending' since minimum requirement is no longer met
+        if (match.courtApproval === 'approved') {
+          match.courtApproval = 'pending';
+          match.courtApprovedAt = undefined;
+        }
       }
 
       await match.save();
@@ -474,10 +521,16 @@ function matchesRoutesFactory(io) {
 
       // Remove player from match
       match.players.splice(playerIndex, 1);
-      
-      // Update match status if it was full
-      if (match.status === 'full') {
+
+      // Check if player count dropped below minPlayers - unreserve the slot
+      const minPlayersValue = match.minPlayers || match.playersNeeded || 1;
+      if (match.players.length < minPlayersValue) {
         match.status = 'open';
+        // Return courtApproval to 'pending' since minimum requirement is no longer met
+        if (match.courtApproval === 'approved') {
+          match.courtApproval = 'pending';
+          match.courtApprovedAt = undefined;
+        }
       }
 
       await match.save();

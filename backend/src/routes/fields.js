@@ -21,16 +21,20 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', auth(true), async (req, res) => {
   try {
-    const { name, sport, lat, lng, price, registrationDeadlineHours } = req.body;
-    if (!name || !sport || typeof lat !== 'number' || typeof lng !== 'number') {
-      return res.status(400).json({ message: 'Invalid payload' });
+    const { name, sports, sport, lat, lng, price, registrationDeadlineHours } = req.body;
+    
+    // Support both 'sports' (array) and 'sport' (single string) for backward compatibility
+    const sportsArray = sports || (sport ? [sport] : null);
+    
+    if (!name || !sportsArray || !Array.isArray(sportsArray) || sportsArray.length === 0 || typeof lat !== 'number' || typeof lng !== 'number') {
+      return res.status(400).json({ message: 'Invalid payload - name, sports (array), lat, lng are required' });
     }
     
     const User = require('../models/User');
     const user = await User.findById(req.user.id);
     
     // If user is a court, set them as the owner
-    const fieldData = { name, sport, lat, lng };
+    const fieldData = { name, sports: sportsArray, lat, lng };
     if (user && user.role === 'court') {
       fieldData.courtOwner = req.user.id;
       if (typeof price === 'number') {

@@ -254,11 +254,11 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
       fieldId: { $in: fieldIds },
       dateTime: { $gte: today, $lte: todayEnd }
     })
-      .populate('fieldId', 'name sport')
+      .populate('fieldId', 'name sports')
       .populate('players', 'name')
       .populate('createdBy', 'name')
       .sort({ dateTime: 1 });
-    
+
     // Rezervisani termini: svi full termini koji su approved i NISU završeni (completed)
     // Uzimamo SVE termine bez obzira na datum - samo oni koji još nisu završeni
     const allReservedMatches = await Match.find({
@@ -266,7 +266,7 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
       courtApproval: 'approved',
       status: 'full' // 'full' status znači da termin nije završen (completed)
     })
-      .populate('fieldId', 'name sport')
+      .populate('fieldId', 'name sports')
       .populate('players', 'name')
       .populate('createdBy', 'name')
       .sort({ dateTime: 1 });
@@ -288,7 +288,7 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
       fieldId: { $in: fieldIds },
       dateTime: { $gte: start, $lte: end }
     })
-      .populate('fieldId', 'name sport')
+      .populate('fieldId', 'name sports')
       .populate('players', 'name')
       .populate('createdBy', 'name')
       .sort({ dateTime: 1 });
@@ -352,7 +352,7 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
               fieldId: {
                 _id: field._id,
                 name: field.name,
-                sport: field.sport
+                sports: field.sports
               },
               dateTime: slotTime.toISOString(),
               available: true
@@ -384,7 +384,7 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
       fieldId: { $in: fieldIds },
       dateTime: { $gte: weekStart, $lte: weekEnd }
     })
-      .populate('fieldId', 'name sport price')
+      .populate('fieldId', 'name sports price')
       .populate('players', 'name')
       .populate('createdBy', 'name')
       .sort({ dateTime: 1 });
@@ -442,7 +442,7 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
       fieldId: { $in: fieldIds },
       dateTime: { $gte: monthStart, $lte: monthEnd }
     })
-      .populate('fieldId', 'name sport price')
+      .populate('fieldId', 'name sports price')
       .populate('players', 'name')
       .populate('createdBy', 'name')
       .sort({ dateTime: 1 });
@@ -498,7 +498,7 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
         totalRevenue: completedTotalRevenue
       },
       cancelled: cancelledMatches,
-      fields: fields.map(f => ({ _id: f._id, name: f.name, sport: f.sport }))
+      fields: fields.map(f => ({ _id: f._id, name: f.name, sports: f.sports }))
     });
   } catch (e) {
     console.error('Error fetching appointments:', e);
@@ -576,11 +576,11 @@ router.get('/fields', auth(true), requireCourt, async (req, res) => {
   }
 });
 
-// Update field (name, sport, lat, lng, price, registrationDeadlineHours)
+// Update field (name, sports, lat, lng, price, registrationDeadlineHours)
 router.put('/fields/:fieldId', auth(true), requireCourt, async (req, res) => {
   try {
     const { fieldId } = req.params;
-    const { name, sport, lat, lng, price, registrationDeadlineHours } = req.body;
+    const { name, sports, sport, lat, lng, price, registrationDeadlineHours } = req.body;
     
     const field = await Field.findById(fieldId);
     if (!field || field.courtOwner?.toString() !== req.user.id) {
@@ -589,7 +589,14 @@ router.put('/fields/:fieldId', auth(true), requireCourt, async (req, res) => {
     
     // Update only provided fields
     if (name !== undefined) field.name = name;
-    if (sport !== undefined) field.sport = sport;
+    
+    // Support both 'sports' (array) and 'sport' (single string) for backward compatibility
+    if (sports !== undefined && Array.isArray(sports) && sports.length > 0) {
+      field.sports = sports;
+    } else if (sport !== undefined) {
+      field.sports = [sport]; // Convert single sport to array
+    }
+    
     if (typeof lat === 'number') field.lat = lat;
     if (typeof lng === 'number') field.lng = lng;
     if (typeof price === 'number' && price >= 0) field.price = price;
@@ -736,8 +743,11 @@ router.post('/appointments/reserve', auth(true), requireCourt, async (req, res) 
     deadlineDate.setHours(deadlineDate.getHours() - 1); // 1 hour before match
     
     // Create match with status 'full' and courtApproval 'approved'
+    // Use the first sport from the sports array (or 'unknown' if empty)
+    const sport = field.sports && field.sports.length > 0 ? field.sports[0] : 'unknown';
+    
     const match = await Match.create({
-      sport: field.sport,
+      sport: sport,
       fieldId: field._id,
       dateTime: matchDate,
       registrationDeadline: deadlineDate,
@@ -752,7 +762,7 @@ router.post('/appointments/reserve', auth(true), requireCourt, async (req, res) 
     });
     
     const populated = await Match.findById(match._id)
-      .populate('fieldId', 'name sport')
+      .populate('fieldId', 'name sports')
       .populate('players', 'name')
       .populate('createdBy', 'name');
     

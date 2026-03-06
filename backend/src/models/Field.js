@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const fieldSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    sport: { type: String, required: true },
+    sports: [{ type: String, required: true }], // Array of sports - one field can have multiple sports
     lat: { type: Number, required: true },
     lng: { type: Number, required: true },
     courtOwner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Court that owns this field

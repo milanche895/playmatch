@@ -61,6 +61,50 @@ async function uploadImageFromUrl(imageUrl, folder = 'avatars', publicId = null)
   }
 }
 
+/**
+ * Upload image file buffer to Cloudinary
+ * @param {Buffer} fileBuffer - Image file buffer
+ * @param {string} folder - Folder path in Cloudinary (optional)
+ * @param {string} publicId - Public ID for the image (optional)
+ * @returns {Promise<string>} - Cloudinary URL of the uploaded image
+ */
+async function uploadImageBuffer(fileBuffer, folder = 'avatars', publicId = null) {
+  try {
+    if (!fileBuffer || fileBuffer.length === 0) {
+      return null;
+    }
+
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: folder,
+          public_id: publicId,
+          resource_type: 'image',
+          transformation: [
+            { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+            { quality: 'auto' },
+            { format: 'auto' }
+          ]
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary upload error:', error);
+            reject(error);
+          } else {
+            resolve(result.secure_url);
+          }
+        }
+      );
+
+      uploadStream.end(fileBuffer);
+    });
+  } catch (error) {
+    console.error('Error uploading image buffer to Cloudinary:', error.message);
+    throw error;
+  }
+}
+
 module.exports = {
-  uploadImageFromUrl
+  uploadImageFromUrl,
+  uploadImageBuffer
 };
