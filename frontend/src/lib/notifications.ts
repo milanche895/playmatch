@@ -131,6 +131,7 @@ export async function getNotificationStatus(): Promise<{
   try {
     // Check if service worker is registered
     if (!('serviceWorker' in navigator)) {
+      console.log('Service workers not supported');
       return {
         subscribed: false,
         enabled: false,
@@ -138,14 +139,48 @@ export async function getNotificationStatus(): Promise<{
       };
     }
 
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
+    // Wait for service worker with timeout (5 seconds)
+    const registration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<ServiceWorkerRegistration>((_, reject) => 
+        setTimeout(() => reject(new Error('Service worker registration timeout')), 5000)
+      )
+    ]).catch(err => {
+      console.warn('Service worker not ready:', err);
+      return null;
+    });
 
-    const res = await api.get('/api/players/push-subscription/status');
+    if (!registration) {
+      return {
+        subscribed: false,
+        enabled: false,
+        permission
+      };
+    }
+
+    // Get push subscription
+    let subscription = null;
+    try {
+      subscription = await registration.pushManager.getSubscription();
+    } catch (subError) {
+      console.warn('Could not get push subscription:', subError);
+    }
+
+    // Get backend status
+    let backendSubscribed = false;
+    let backendEnabled = true;
+    try {
+      const res = await api.get('/api/players/push-subscription/status');
+      backendSubscribed = res.data.subscribed;
+      backendEnabled = res.data.enabled !== false;
+    } catch (apiError) {
+      console.warn('Could not get backend subscription status:', apiError);
+      // Continue with local status only
+    }
     
     return {
-      subscribed: subscription !== null && res.data.subscribed,
-      enabled: res.data.enabled !== false,
+      subscribed: subscription !== null && backendSubscribed,
+      enabled: backendEnabled,
       permission,
       endpoint: subscription?.endpoint
     };

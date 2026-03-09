@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Card,
@@ -29,6 +29,7 @@ import {
   TrendingUp as TrendingUpIcon,
   Person as PersonIcon,
   Notifications as NotificationsIcon,
+  NotificationsActive as NotificationsActiveIcon,
   LocationOn as LocationIcon,
   Phone as PhoneIcon,
   Email as EmailIcon,
@@ -48,9 +49,10 @@ export default function PlayerProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<React.ReactNode | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [testingNotification, setTestingNotification] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
@@ -184,6 +186,46 @@ export default function PlayerProfile() {
     }
     setEditing(false);
     setError(null);
+  }
+
+  async function handleTestNotification() {
+    // Check if user has push subscription first
+    if (!user?.pushSubscription) {
+      setError(
+        <span>
+          Nema aktivne pretplate na push notifikacije.{' '}
+          <Link to="/notification-settings" style={{ color: 'inherit', fontWeight: 600, textDecoration: 'underline' }}>
+            Otvori Notification Settings
+          </Link>{' '}
+          da se pretplatiš.
+        </span>
+      );
+      return;
+    }
+
+    try {
+      setTestingNotification(true);
+      setError(null);
+      const res = await api.post('/api/players/test-push');
+      setSuccess(res.data.message || 'Test notifikacija poslata! Proveri da li si je primio.');
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || 'Greška pri slanju test notifikacije';
+      // If the error is about missing subscription, provide helpful link
+      if (errorMessage.includes('Nema push subscription') || errorMessage.includes('pretplat')) {
+        setError(
+          <span>
+            {errorMessage}.{' '}
+            <Link to="/notification-settings" style={{ color: 'inherit', fontWeight: 600, textDecoration: 'underline' }}>
+              Klikni ovde da se pretplatiš
+            </Link>
+          </span>
+        );
+      } else {
+        setError(errorMessage);
+      }
+    } finally {
+      setTestingNotification(false);
+    }
   }
 
   async function requestLocationAndSubscribe() {
@@ -622,6 +664,28 @@ export default function PlayerProfile() {
                     </Box>
                   )}
 
+                  {/* Test Notification Button */}
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    size="small"
+                    startIcon={<NotificationsActiveIcon />}
+                    onClick={handleTestNotification}
+                    disabled={testingNotification}
+                    sx={{ borderRadius: 3, mt: 1 }}
+                  >
+                    {testingNotification ? 'Slanje...' : 'Pošalji test notifikaciju'}
+                  </Button>
+
+                  {!user?.pushSubscription && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                      Napomena: Morate biti pretplaćeni na notifikacije da biste mogli testirati.{' '}
+                      <Link to="/notification-settings" style={{ color: 'inherit', fontWeight: 600 }}>
+                        Pretplati se ovde
+                      </Link>
+                    </Typography>
+                  )}
+
                   {/* Action Buttons */}
                   <Stack direction="row" spacing={2} justifyContent="flex-end">
                     <Button
@@ -664,6 +728,28 @@ export default function PlayerProfile() {
                       {user.notificationEnabled ? `Omogućena (${user.notificationRadius || 10} km radius)` : 'Onemogućena'}
                     </Typography>
                   </Box>
+
+                  {/* Test Notification Button - View Mode */}
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    size="small"
+                    startIcon={<NotificationsActiveIcon />}
+                    onClick={handleTestNotification}
+                    disabled={testingNotification}
+                    sx={{ borderRadius: 3, mt: 1, alignSelf: 'flex-start' }}
+                  >
+                    {testingNotification ? 'Slanje...' : 'Pošalji test notifikaciju'}
+                  </Button>
+
+                  {!user?.pushSubscription && (
+                    <Typography variant="caption" color="text.secondary">
+                      Napomena: Morate biti pretplaćeni na notifikacije da biste mogli testirati.{' '}
+                      <Link to="/notification-settings" style={{ color: 'inherit', fontWeight: 600 }}>
+                        Pretplati se ovde
+                      </Link>
+                    </Typography>
+                  )}
                 </Stack>
               )}
             </CardContent>
