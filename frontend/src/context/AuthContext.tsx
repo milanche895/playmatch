@@ -22,46 +22,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Load current user on mount only if token exists
-    const token = localStorage.getItem('token');
-    if (!token) {
-      // No token, user is not logged in
-      setUser(null);
-      setLoading(false);
-      return;
-    }
+    const controller = new AbortController();
 
-    // Token exists, check if it's valid
-    api.get('/api/auth/me')
+    api.get('/api/auth/me', { signal: controller.signal })
       .then((res) => {
-        if (res.data) {
-          setUser(res.data);
-        } else {
-          setUser(null);
-          localStorage.removeItem('token'); // Remove invalid token
-        }
+        if (res.data) setUser(res.data);
+        else setUser(null);
       })
       .catch((err) => {
-        // Token is invalid or expired
-        console.log('Not authenticated or error loading user:', err);
-        setUser(null);
-        localStorage.removeItem('token'); // Remove invalid token
+        if (err.name !== 'CanceledError') setUser(null);
       })
       .finally(() => setLoading(false));
+
+    return () => controller.abort();
   }, []);
 
   async function login(email: string, password: string) {
     try {
       const res = await api.post('/api/auth/login', { email, password });
-      // Save token to localStorage if provided
-      if (res.data.token) {
-        localStorage.setItem('token', res.data.token);
-      }
-      // Remove token from response before setting user
-      const { token, ...userData } = res.data;
+      const { token: _token, ...userData } = res.data;
       setUser(userData);
     } catch (error) {
-      // Re-throw error so Login component can handle it
       throw error;
     }
   }
@@ -69,34 +50,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function register(name: string, email: string, password: string, role?: 'player' | 'court') {
     try {
       const res = await api.post('/api/auth/register', { name, email, password, role });
-      // Save token to localStorage if provided
-      if (res.data.token) {
-        localStorage.setItem('token', res.data.token);
-      }
-      // Remove token from response before setting user
-      const { token, ...userData } = res.data;
+      const { token: _token, ...userData } = res.data;
       setUser(userData);
-      // Verify that cookie was set by checking if we can get user info
-      // This ensures cookie is properly set before proceeding
-      try {
-        const meRes = await api.get('/api/auth/me');
-        if (meRes.data) {
-          setUser(meRes.data);
-        }
-      } catch (meErr) {
-        console.warn('Could not verify authentication after registration:', meErr);
-        // Don't throw - registration was successful, cookie might just need a moment
-      }
     } catch (error) {
-      // Re-throw error so Register component can handle it
       throw error;
     }
   }
 
   async function logout() {
     await api.post('/api/auth/logout');
-    // Remove token from localStorage
-    localStorage.removeItem('token');
     setUser(null);
   }
 
@@ -142,10 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function loginWithInstagram(accessToken: string, role?: 'player' | 'court') {
     try {
       const res = await api.post('/api/auth/instagram', { accessToken, role });
-      if (res.data.token) {
-        localStorage.setItem('token', res.data.token);
-      }
-      const { token, ...userData } = res.data;
+      const { token: _token, ...userData } = res.data;
       setUser(userData);
     } catch (error) {
       throw error;

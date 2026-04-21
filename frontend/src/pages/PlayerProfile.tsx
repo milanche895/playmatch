@@ -479,6 +479,15 @@ export default function PlayerProfile() {
               
               {analytics ? (
                 <Stack spacing={3}>
+                  <Paper elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: 'action.hover' }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Prosečna ocena igrača
+                    </Typography>
+                    <Typography variant="h5" fontWeight={700} color="warning.main">
+                      {Number(user.ratingAvg || 0).toFixed(1)} / 5
+                    </Typography>
+                  </Paper>
+
                   {/* Reliability Score */}
                   <Paper
                     elevation={0}
@@ -727,6 +736,24 @@ export default function PlayerProfile() {
                     <Typography variant="body1">
                       {user.notificationEnabled ? `Omogućena (${user.notificationRadius || 10} km radius)` : 'Onemogućena'}
                     </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">Skill level po sportu</Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.75, gap: 1 }}>
+                      {(user.sportSkillLevels || []).length > 0 ? (
+                        user.sportSkillLevels?.map((entry) => (
+                          <Chip
+                            key={`${entry.sport}-${entry.skillLevel}`}
+                            label={`${entry.sport}: ${entry.skillLevel}/5`}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                          />
+                        ))
+                      ) : (
+                        <Typography variant="body2">Još nema skill ocena</Typography>
+                      )}
+                    </Stack>
                   </Box>
 
                   {/* Test Notification Button - View Mode */}

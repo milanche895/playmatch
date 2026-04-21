@@ -9,41 +9,31 @@ export default function AuthCallback() {
   const navigate = useNavigate();
   const { setUser } = useAuth();
   useEffect(() => {
-    const token = searchParams.get('token');
     const userParam = searchParams.get('user');
     const error = searchParams.get('error');
+
     if (error) {
-      // Redirect to login with error
       navigate(`/login?error=${encodeURIComponent(error)}`);
       return;
     }
-    if (token && userParam) {
+
+    // Set user immediately from URL param for instant UI feedback
+    if (userParam) {
       try {
-        // Save token to localStorage
-        localStorage.setItem('token', token);
-        
-        // Parse user data
         const userData = JSON.parse(decodeURIComponent(userParam));
         setUser(userData);
-        // Verify authentication by calling /me endpoint
-        api.get('/api/auth/me')
-          .then((res) => {
-            if (res.data) {
-              setUser(res.data);
-            }
-            navigate('/');
-          })
-          .catch((err) => {
-            console.error('Auth verification error:', err);
-            navigate('/login?error=auth_verification_failed');
-          });
-      } catch (err) {
-        console.error('Auth callback error:', err);
-        navigate('/login?error=invalid_callback_data');
-      }
-    } else {
-      navigate('/login?error=missing_callback_data');
+      } catch {}
     }
+
+    // Verify auth using the HttpOnly cookie set during OAuth redirect
+    api.get('/api/auth/me')
+      .then((res) => {
+        if (res.data) setUser(res.data);
+        navigate('/');
+      })
+      .catch(() => {
+        navigate('/login?error=auth_verification_failed');
+      });
   }, [searchParams, navigate, setUser]);
 
   return (

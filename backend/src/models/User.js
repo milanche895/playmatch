@@ -38,6 +38,13 @@ const userSchema = new mongoose.Schema(
     location: { type: String, default: '' }, // Lokacija
     preferredSports: [{ type: String }], // Omiljeni sportovi
     experience: { type: String, enum: ['beginner', 'intermediate', 'advanced', 'professional'], default: 'beginner' }, // Nivo iskustva
+    ratingAvg: { type: Number, default: 0, min: 0, max: 5 }, // Prosečna ocena igrača (1-5)
+    ratingsCount: { type: Number, default: 0, min: 0 }, // Broj pristiglih ocena
+    reliabilityScore: { type: Number, default: 100, min: 0, max: 100 }, // Pouzdanost igrača (0-100)
+    sportSkillLevels: [{
+      sport: { type: String, required: true },
+      skillLevel: { type: Number, min: 1, max: 5, required: true }
+    }],
     // Notification settings
     notificationEnabled: { type: Boolean, default: true }, // Da li želi push notifikacije
     notificationRadius: { type: Number, default: 10 }, // Radius u km za obaveštenja o mečevima

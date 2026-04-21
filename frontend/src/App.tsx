@@ -1,5 +1,6 @@
+import { Component, ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider as MuiThemeProvider, CssBaseline, Container, CircularProgress, Box } from '@mui/material';
+import { ThemeProvider as MuiThemeProvider, CssBaseline, Container, CircularProgress, Box, Typography, Button } from '@mui/material';
 import { ThemeProvider as CustomThemeProvider, useThemeMode } from './context/ThemeContext';
 import createAppTheme from './theme';
 import Navbar from './components/Navbar';
@@ -16,6 +17,29 @@ import MojiMecevi from './pages/MojiMecevi';
 import MojiIgraci from './pages/MojiIgraci';
 import NotificationSettings from './pages/NotificationSettings';
 import { AuthProvider, useAuth } from './context/AuthContext';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="50vh" gap={2}>
+          <Typography variant="h6">Nešto je pošlo naopako.</Typography>
+          <Button variant="contained" onClick={() => { this.setState({ hasError: false }); window.location.href = '/'; }}>
+            Vrati se na početnu
+          </Button>
+        </Box>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
@@ -142,10 +166,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <CustomThemeProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </CustomThemeProvider>
+    <ErrorBoundary>
+      <CustomThemeProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </CustomThemeProvider>
+    </ErrorBoundary>
   );
 }

@@ -1,27 +1,14 @@
 import axios from 'axios';
 
-// Always use explicit backend URL (port 5050), not Vite proxy
-// This ensures all API calls go directly to the backend
-const api = axios.create({ 
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5050',
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5050';
+
+// Authentication is handled via HttpOnly cookies (set by backend).
+// withCredentials: true ensures cookies are sent on every request.
+const api = axios.create({
+  baseURL: API_URL,
   withCredentials: true,
   timeout: 10000
 });
-
-// Add request interceptor to include token in Authorization header
-api.interceptors.request.use(
-  (config) => {
-    // Get token from localStorage
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
 
 // Add response interceptor to handle errors
 api.interceptors.response.use(

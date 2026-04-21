@@ -12,6 +12,10 @@ export type User = {
   name: string; 
   email: string; 
   avatarUrl?: string;
+  ratingAvg?: number;
+  ratingsCount?: number;
+  reliabilityScore?: number;
+  sportSkillLevels?: { sport: string; skillLevel: number }[];
   role?: 'player' | 'court';
   workingHours?: {
     [key: string]: { start: string; end: string; closed: boolean };
@@ -67,23 +71,40 @@ export type PlayerCancellation = {
   cancelledAt: string;
 };
 
+export type InformalLocation = {
+  name: string;
+  lat: number;
+  lng: number;
+};
+
 export type Match = {
   _id: string;
   sport: string;
-  fieldId: Field;
+  fieldId?: Field; // undefined for informal matches
+  isInformal?: boolean;
+  informalLocation?: InformalLocation;
+  informalRegistrationDeadlineHours?: number;
   dateTime: string;
   registrationDeadline: string;
   minPlayers: number;
   maxPlayers?: number;
   playersNeeded: number; // Keep for backward compatibility
-  players: Pick<User, '_id' | 'name'>[];
-  createdBy: Pick<User, '_id' | 'name'>;
+  players: Pick<User, '_id' | 'name' | 'reliabilityScore' | 'ratingAvg'>[];
+  createdBy: Pick<User, '_id' | 'name' | 'reliabilityScore' | 'ratingAvg'>;
   status: 'open' | 'full' | 'completed' | 'failed' | 'otkazano';
   courtApproval?: 'pending' | 'approved' | 'rejected';
   courtApprovedBy?: string;
   courtApprovedAt?: string;
   description?: string; // Opis rezervacije
   playerCancellations?: PlayerCancellation[];
+  noShows?: string[];
+};
+
+export type PendingRatingUser = Pick<User, '_id' | 'name' | 'ratingAvg' | 'reliabilityScore'>;
+
+export type MatchRatingStatus = {
+  shouldPrompt: boolean;
+  pendingUsers: PendingRatingUser[];
 };
 
 

@@ -43,8 +43,9 @@ function createCustomIcon(color: string) {
   });
 }
 
-const matchIcon = createCustomIcon('#22c55e'); // Cypress green for matches
+const matchIcon = createCustomIcon('#22c55e'); // Green for formal matches
 const fieldIcon = createCustomIcon('#3b82f6'); // Blue for fields
+const informalMatchIcon = createCustomIcon('#f97316'); // Orange for informal matches
 
 // Function to calculate distance between two coordinates (in km)
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -117,6 +118,12 @@ function MatchCard({
     return 'Otvoren';
   };
 
+  const isLastMinute = (() => {
+    const startsInMs = new Date(match.dateTime).getTime() - Date.now();
+    const freeSlots = (match.maxPlayers || match.playersNeeded || 100) - match.players.length;
+    return startsInMs > 0 && startsInMs <= 4 * 60 * 60 * 1000 && freeSlots > 0;
+  })();
+
   return (
     <Card
       elevation={0}
@@ -144,17 +151,23 @@ function MatchCard({
                 </Typography>
               </Stack>
               <Typography variant="subtitle1" fontWeight={700}>
-                {typeof match.fieldId === 'object' ? match.fieldId.name : 'Nepoznat teren'}
+                {match.isInformal
+                  ? (match.informalLocation?.name || 'Privatni teren')
+                  : (typeof match.fieldId === 'object' ? match.fieldId.name : 'Nepoznat teren')}
               </Typography>
             </Box>
-            {userLocation && typeof match.fieldId === 'object' && match.fieldId.lat && (
+            {userLocation && (() => {
+              const lat = match.isInformal ? match.informalLocation?.lat : (typeof match.fieldId === 'object' ? match.fieldId?.lat : undefined);
+              const lng = match.isInformal ? match.informalLocation?.lng : (typeof match.fieldId === 'object' ? match.fieldId?.lng : undefined);
+              if (!lat || !lng) return null;
+              return (
               <Chip
                 icon={<LocationOnIcon sx={{ fontSize: 14 }} />}
                 label={`${getDistance(
                   userLocation[0],
                   userLocation[1],
-                  match.fieldId.lat,
-                  match.fieldId.lng
+                  lat,
+                  lng
                 ).toFixed(1)} km`}
                 size="small"
                 sx={{
@@ -165,7 +178,8 @@ function MatchCard({
                   },
                 }}
               />
-            )}
+              );
+            })()}
           </Stack>
 
           {/* Meta info */}
@@ -198,6 +212,14 @@ function MatchCard({
                 color={getStatusColor() as any}
                 sx={{ fontWeight: 600 }}
               />
+              {isLastMinute && (
+                <Chip
+                  label="Last Minute"
+                  size="small"
+                  color="error"
+                  sx={{ fontWeight: 700 }}
+                />
+              )}
               {isUserInMatch && (
                 <Chip
                   icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
@@ -338,21 +360,17 @@ export default function Home() {
   useEffect(() => {
     if (userLocation && allMatches.length > 0) {
       const nearbyMatches = allMatches.filter((match) => {
-        if (!match.fieldId || !match.fieldId.lat || !match.fieldId.lng) {
-          return false;
-        }
-        const distance = getDistance(
-          userLocation[0],
-          userLocation[1],
-          match.fieldId.lat,
-          match.fieldId.lng
-        );
+        const lat = match.isInformal ? match.informalLocation?.lat : match.fieldId?.lat;
+        const lng = match.isInformal ? match.informalLocation?.lng : match.fieldId?.lng;
+        if (!lat || !lng) return false;
+        const distance = getDistance(userLocation[0], userLocation[1], lat, lng);
         return distance <= effectiveRadius;
       });
       setMatches(nearbyMatches);
     } else if (allMatches.length > 0 && !userLocation) {
       const validMatches = allMatches.filter((match) =>
-        match.fieldId && match.fieldId.lat && match.fieldId.lng
+        (match.isInformal && match.informalLocation?.lat && match.informalLocation?.lng) ||
+        (match.fieldId && match.fieldId.lat && match.fieldId.lng)
       );
       setMatches(validMatches);
     }
@@ -392,14 +410,11 @@ export default function Home() {
 
       const filteredMatches = updatedAllMatches.filter((m: Match) => {
         if ((m.status !== 'open' && m.status !== 'full') || m.courtApproval === 'rejected') return false;
-        if (!m.fieldId || !m.fieldId.lat || !m.fieldId.lng) return false;
+        const lat = m.isInformal ? m.informalLocation?.lat : m.fieldId?.lat;
+        const lng = m.isInformal ? m.informalLocation?.lng : m.fieldId?.lng;
+        if (!lat || !lng) return false;
         if (userLocation) {
-          const distance = getDistance(
-            userLocation[0],
-            userLocation[1],
-            m.fieldId.lat,
-            m.fieldId.lng
-          );
+          const distance = getDistance(userLocation[0], userLocation[1], lat, lng);
           return distance <= effectiveRadius;
         }
         return true;
@@ -437,6 +452,11 @@ export default function Home() {
   };
 
   const todaysMatches = matches.filter(m => isToday(m.dateTime));
+  const upcomingInformalMatches = matches
+    .filter((m) => m.isInformal && m.informalLocation?.lat && m.informalLocation?.lng)
+    .filter((m) => (m.status === 'open' || m.status === 'full') && m.courtApproval !== 'rejected')
+    .filter((m) => new Date(m.dateTime).getTime() > Date.now())
+    .sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
 
   return (
     <Box sx={{ position: 'relative' }}>
@@ -710,7 +730,7 @@ export default function Home() {
                   isToday(match.dateTime)
                 )
                 .forEach((match) => {
-                  const fieldId = match.fieldId._id;
+                  const fieldId = match.fieldId!._id;
                   if (!matchesByField.has(fieldId)) {
                     matchesByField.set(fieldId, []);
                   }
@@ -719,7 +739,7 @@ export default function Home() {
 
               return Array.from(matchesByField.entries()).map(([fieldId, fieldMatches]) => {
                 const firstMatch = fieldMatches[0];
-                const field = firstMatch.fieldId;
+                const field = firstMatch.fieldId!;
 
                 return (
                   <Marker
@@ -797,11 +817,86 @@ export default function Home() {
                 );
               });
             })()}
+            {/* Informal match markers — show all upcoming, not just today */}
+            {allMatches
+              .filter((match) =>
+                match.isInformal &&
+                match.informalLocation?.lat &&
+                match.informalLocation?.lng &&
+                new Date(match.dateTime) > new Date()
+              )
+              .map((match) => (
+                <Marker
+                  key={`informal-${match._id}`}
+                  position={[match.informalLocation!.lat, match.informalLocation!.lng]}
+                  icon={informalMatchIcon}
+                >
+                  <Popup>
+                    <Stack spacing={1.5} sx={{ minWidth: 240 }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="subtitle1" fontWeight={700}>
+                          {match.informalLocation!.name || 'Privatni teren'}
+                        </Typography>
+                        <Chip label="Privatni" size="small" sx={{ bgcolor: '#f97316', color: 'white', fontWeight: 600 }} />
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary">
+                        {match.sport.charAt(0).toUpperCase() + match.sport.slice(1)} meč
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(match.dateTime).toLocaleString('sr-RS', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Chip label={formatPlayersCount(match)} size="small" color={match.status === 'full' ? 'warning' : 'primary'} />
+                      </Stack>
+                      <Stack direction="row" spacing={1}>
+                        <Button variant="outlined" size="small" component={Link} to={`/matches/${match._id}`} fullWidth>
+                          Detalji
+                        </Button>
+                        {match.players.length < (match.maxPlayers || match.playersNeeded || 100) && !isUserInMatch(match) && user?.role !== 'court' && (
+                          <Button variant="contained" size="small" onClick={() => handleJoinMatch(match._id)} fullWidth>
+                            Pridruži se
+                          </Button>
+                        )}
+                      </Stack>
+                    </Stack>
+                  </Popup>
+                </Marker>
+              ))
+            }
           </MapContainer>
         </Box>
       </Paper>
 
       {/* Match Cards Section */}
+      {upcomingInformalMatches.length > 0 && (
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
+            Privatni mečevi u blizini
+          </Typography>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: '1fr',
+                sm: 'repeat(2, 1fr)',
+                md: 'repeat(3, 1fr)',
+              },
+              gap: 3,
+            }}
+          >
+            {upcomingInformalMatches.slice(0, 6).map((match) => (
+              <MatchCard
+                key={match._id}
+                match={match}
+                user={user}
+                isUserInMatch={isUserInMatch(match)}
+                onJoin={handleJoinMatch}
+                userLocation={userLocation}
+              />
+            ))}
+          </Box>
+        </Box>
+      )}
       {todaysMatches.length > 0 && (
         <Box sx={{ mb: 4 }}>
           <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>

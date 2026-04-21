@@ -55,17 +55,19 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-app.use(cors({ 
+app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
+    } else if (process.env.NODE_ENV !== 'production') {
+      callback(null, true); // Allow all origins in development only
     } else {
-      callback(null, true); // Allow all origins in development
+      callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true 
+  credentials: true
 }));
 
 // Handle Chrome DevTools .well-known requests to avoid CSP warnings
@@ -201,7 +203,7 @@ mongoose.connect(MONGO_URI, {
   
   // Cron job: check for cancelled matches every hour (at minute 0)
   // Cron expression '0 * * * *' = svakog sata u 0 minuta
-  cron.schedule('* * * * *', () => {
+  cron.schedule('0 * * * *', () => {
     console.log('🕐 Pokretanje cron job-a za proveru otkazanih mečeva...');
     checkCancelledMatches();
   });

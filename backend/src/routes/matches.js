@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Match = require('../models/Match');
 const Field = require('../models/Field');
 const User = require('../models/User');
@@ -6,9 +7,50 @@ const auth = require('../middleware/auth');
 const { calculateDistance } = require('../utils/notifications');
 const { sendPushNotifications } = require('../utils/pushNotifications');
 
+const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
+
+function getReliabilityPenaltyPoints(hoursBeforeMatch) {
+  if (hoursBeforeMatch >= 2) return 0;
+  if (hoursBeforeMatch >= 1) return 10;
+  return 15;
+}
+
+async function recalculateUserRatings(userId) {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const stats = await Match.aggregate([
+    { $match: { 'ratings.ratedUserId': userObjectId } },
+    { $unwind: '$ratings' },
+    { $match: { 'ratings.ratedUserId': userObjectId } },
+    {
+      $group: {
+        _id: '$ratings.ratedUserId',
+        avgStars: { $avg: '$ratings.stars' },
+        totalRatings: { $sum: 1 }
+      }
+    }
+  ]);
+
+  const result = stats[0] || { avgStars: 0, totalRatings: 0 };
+  const rounded = Number(result.avgStars.toFixed(2));
+
+  await User.findByIdAndUpdate(userId, {
+    $set: { ratingAvg: rounded, ratingsCount: result.totalRatings }
+  });
+}
+
 // Helper function to notify nearby players about a new match
 async function notifyNearbyPlayers(match, field) {
   try {
+    // Resolve coordinates — informal matches use their own location, formal matches use the field
+    const fieldLat = match.isInformal ? match.informalLocation?.lat : field?.lat;
+    const fieldLng = match.isInformal ? match.informalLocation?.lng : field?.lng;
+    const locationName = match.isInformal ? (match.informalLocation?.name || 'Privatni teren') : (field?.name || 'Teren');
+
+    if (fieldLat == null || fieldLng == null) {
+      console.log('[Push Notifications] No coordinates available, skipping notifications');
+      return;
+    }
+
     // Build query for players with PWA push subscriptions
     const playersQuery = {
       role: 'player',
@@ -27,9 +69,6 @@ async function notifyNearbyPlayers(match, field) {
       console.log('[Push Notifications] No players to notify - check if players have notifications enabled and are subscribed');
       return;
     }
-
-    const fieldLat = field.lat;
-    const fieldLng = field.lng;
     const nearbyPlayers = [];
 
     // Filter players by distance
@@ -70,7 +109,7 @@ async function notifyNearbyPlayers(match, field) {
     // Prepare notification payload
     const payload = {
       title: 'Novi meč u blizini! ⚽',
-      body: `${field.name} - ${dateStr}`,
+      body: `${locationName} - ${dateStr}`,
       url: `/matches/${match._id}`,
       matchId: match._id.toString(),
       image: '/icons/icon-192.png'
@@ -114,10 +153,9 @@ async function notifyNearbyPlayers(match, field) {
 function matchesRoutesFactory(io) {
   const router = express.Router();
 
-  router.get('/', async (req, res) => {
+  router.get('/', auth(false), async (req, res) => {
     // Check for failed matches before returning
     const now = new Date();
-    // Update failed matches - use minPlayers if available, otherwise playersNeeded
     await Match.updateMany(
       {
         status: { $in: ['open', 'full'] },
@@ -130,65 +168,72 @@ function matchesRoutesFactory(io) {
       },
       { status: 'failed' }
     );
-    
+
     // Build query - if user is authenticated, exclude matches from creators who blocked them
     let query = {};
-    const token = req.cookies?.token || req.headers?.authorization?.split(' ')[1];
-    
-    if (token) {
-      try {
-        const jwt = require('jsonwebtoken');
-        const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-        const decoded = jwt.verify(token, JWT_SECRET);
-        
-        // Find users who have blocked the current user
-        const usersWhoBlockedCurrentUser = await User.find({
-          blockedPlayers: { $in: [decoded.userId || decoded.id] }
-        }).select('_id');
-        
-        const blockedByIds = usersWhoBlockedCurrentUser.map(u => u._id.toString());
-        
-        // Exclude matches created by users who blocked the current user
-        if (blockedByIds.length > 0) {
-          query = {
-            createdBy: { $nin: blockedByIds }
-          };
-        }
-      } catch (err) {
-        // Invalid token, proceed without filtering
-        console.log('Invalid token in matches GET, proceeding without blocked filter');
+    if (req.user) {
+      const usersWhoBlockedCurrentUser = await User.find({
+        blockedPlayers: { $in: [req.user.id] }
+      }).select('_id');
+
+      const blockedByIds = usersWhoBlockedCurrentUser.map(u => u._id.toString());
+      if (blockedByIds.length > 0) {
+        query = { createdBy: { $nin: blockedByIds } };
       }
     }
-    
+
+    // Pagination
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const skip = parseInt(req.query.skip) || 0;
+
     const matches = await Match.find(query)
       .populate('fieldId')
-      .populate('players', 'name')
-      .populate('createdBy', 'name')
+      .populate('players', PLAYER_PUBLIC_FIELDS)
+      .populate('createdBy', PLAYER_PUBLIC_FIELDS)
       .populate('playerCancellations.playerId', 'name')
-      .sort({ dateTime: 1 });
-    
-    // Filter out matches with null or invalid fieldId
-    const validMatches = matches.filter(match => match.fieldId && match.fieldId.lat && match.fieldId.lng);
-    
+      .sort({ dateTime: 1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Filter out matches with no usable coordinates
+    const validMatches = matches.filter(match => {
+      if (match.isInformal) {
+        return match.informalLocation?.lat != null && match.informalLocation?.lng != null;
+      }
+      return match.fieldId && match.fieldId.lat && match.fieldId.lng;
+    });
+
     res.json(validMatches);
   });
 
   router.post('/', auth(true), async (req, res) => {
     try {
-      const { sport, fieldId, dateTime, minPlayers, maxPlayers, playersNeeded } = req.body;
-      
+      const { sport, fieldId, dateTime, minPlayers, maxPlayers, playersNeeded, isInformal, informalLocation, informalRegistrationDeadlineHours } = req.body;
+
       // Support both old (playersNeeded) and new (minPlayers) format for backward compatibility
       const minPlayersValue = minPlayers !== undefined ? minPlayers : playersNeeded;
-      
-      if (!sport || !fieldId || !dateTime || minPlayersValue === undefined) {
+
+      if (!sport || !dateTime || minPlayersValue === undefined) {
         return res.status(400).json({ message: 'Nedostaju polja' });
       }
-      
+
+      // Validate based on match type
+      if (isInformal) {
+        if (!informalLocation || !informalLocation.name?.trim() ||
+            informalLocation.lat == null || informalLocation.lng == null) {
+          return res.status(400).json({ message: 'Neformalni meč zahteva naziv lokacije i koordinate' });
+        }
+      } else {
+        if (!fieldId) {
+          return res.status(400).json({ message: 'Nedostaju polja' });
+        }
+      }
+
       // Validate minPlayers
       if (typeof minPlayersValue !== 'number' || minPlayersValue < 1) {
         return res.status(400).json({ message: 'Minimalni broj igrača mora biti najmanje 1' });
       }
-      
+
       // Validate maxPlayers if provided
       if (maxPlayers !== undefined) {
         if (typeof maxPlayers !== 'number' || maxPlayers < 1) {
@@ -198,13 +243,10 @@ function matchesRoutesFactory(io) {
           return res.status(400).json({ message: 'Maksimalni broj igrača mora biti veći ili jednak minimalnom broju igrača' });
         }
       }
-      
-      // Parse dateTime - if it's in YYYY-MM-DDTHH:MM format (no timezone), treat as local time
-      // Otherwise parse normally
+
+      // Parse dateTime
       let matchDate;
       if (typeof dateTime === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dateTime)) {
-        // Format: YYYY-MM-DDTHH:MM (no timezone) - treat as local time
-        // Extract components and create Date in local timezone
         const [datePart, timePart] = dateTime.split('T');
         const [year, month, day] = datePart.split('-').map(Number);
         const [hours, minutes] = timePart.split(':').map(Number);
@@ -212,149 +254,139 @@ function matchesRoutesFactory(io) {
       } else {
         matchDate = new Date(dateTime);
       }
-      
-      // Round match time to full hour (set minutes, seconds, milliseconds to 0)
+
+      // Round match time to full hour
       matchDate.setMinutes(0);
       matchDate.setSeconds(0);
       matchDate.setMilliseconds(0);
-      
-      const field = await Field.findById(fieldId);
-      if (!field) return res.status(404).json({ message: 'Teren nije pronađen' });
-      
-      // Validate that match date is in the future
+
       const now = new Date();
       if (matchDate <= now) {
         return res.status(400).json({ message: 'Meč mora biti u budućnosti. Molimo izaberite kasniji termin meča.' });
       }
-      
-      // Calculate registration deadline based on field's registrationDeadlineHours
-      // Use ?? instead of || to allow 0 as a valid value
-      const deadlineHours = field.registrationDeadlineHours ?? 24;
+
+      // Calculate registration deadline
       const deadlineDate = new Date(matchDate);
-      deadlineDate.setHours(deadlineDate.getHours() - deadlineHours);
-      
-      // Validate that deadline is in the future (with 1 minute buffer to account for timezone/precision issues)
       const oneMinuteInMs = 60 * 1000;
-      // Only reject if deadline is more than 1 minute in the past (to account for timezone/precision issues)
-      if (deadlineDate.getTime() < now.getTime() - oneMinuteInMs) {
-        return res.status(400).json({ message: 'Rok za prijavu bi bio u prošlosti. Molimo izaberite kasniji termin meča.' });
-      }
-      
-      // Check for overlapping matches on the same field
-      // Assume match duration is 60 minutes (1 hour)
-      const matchDuration = 60 * 60 * 1000; // 60 minutes in milliseconds
-      const matchStart = matchDate.getTime();
-      const matchEnd = matchStart + matchDuration;
-      
-      // Find existing matches on the same field that could potentially overlap
-      // We'll check a wider range first, then verify actual overlap
-      // Check all matches except cancelled (otkazano) and failed ones
-      // Include pending matches as they also reserve the field
-      const potentialMatches = await Match.find({
-        fieldId,
-        status: { $nin: ['otkazano', 'failed'] },
-        // Also exclude rejected matches
-        $or: [
-          { courtApproval: { $ne: 'rejected' } },
-          { courtApproval: { $exists: false } }
-        ],
-        dateTime: {
-          $gte: new Date(matchStart - matchDuration), // Check 1 hour before
-          $lte: new Date(matchEnd + matchDuration) // Check 1 hour after end
+
+      let field = null;
+      let courtApproval = 'approved';
+
+      if (isInformal) {
+        // Informal matches: organizer chooses how long signups are open (hours before match)
+        const hours = informalRegistrationDeadlineHours !== undefined && informalRegistrationDeadlineHours !== null
+          ? Number(informalRegistrationDeadlineHours)
+          : 1;
+        if (Number.isNaN(hours) || hours < 1 || hours > 48) {
+          return res.status(400).json({ message: 'Rok za prijavu mora biti između 1 i 48 sati' });
         }
-      });
-      
-      // Check if any existing match actually overlaps with the new match time
-      // Two time ranges overlap if they share any common time
-      // Range A: [matchStart, matchEnd) where matchEnd = matchStart + 1 hour
-      // Range B: [existingStart, existingEnd) where existingEnd = existingStart + 1 hour
-      // They overlap if: matchStart < existingEnd && existingStart < matchEnd
-      // Note: 20:00-21:00 and 21:00-22:00 should NOT overlap (boundary case)
-      const hasOverlap = potentialMatches.some(existingMatch => {
-        // Round existing match time to full hour (same as new match)
-        const existingDate = new Date(existingMatch.dateTime);
-        existingDate.setMinutes(0);
-        existingDate.setSeconds(0);
-        existingDate.setMilliseconds(0);
-        
-        const existingStart = existingDate.getTime();
-        const existingEnd = existingStart + matchDuration;
-        
-        // Check if time ranges actually overlap
-        // Two ranges overlap if: matchStart < existingEnd && existingStart < matchEnd
-        // For non-overlapping: if matchStart >= existingEnd OR existingStart >= matchEnd, they don't overlap
-        // For overlapping: matchStart < existingEnd AND existingStart < matchEnd
-        const overlaps = matchStart < existingEnd && existingStart < matchEnd;
-        
-        return overlaps;
-      });
-      
-      if (hasOverlap) {
-        const overlappingMatch = potentialMatches.find(m => {
-          // Round existing match time to full hour (same as new match)
-          const existingDate = new Date(m.dateTime);
-          existingDate.setMinutes(0);
-          existingDate.setSeconds(0);
-          existingDate.setMilliseconds(0);
-          
+        deadlineDate.setHours(deadlineDate.getHours() - hours);
+        if (deadlineDate.getTime() < now.getTime() - oneMinuteInMs) {
+          return res.status(400).json({ message: 'Rok za prijavu bi bio u prošlosti. Molimo izaberite kasniji termin meča.' });
+        }
+      } else {
+        field = await Field.findById(fieldId);
+        if (!field) return res.status(404).json({ message: 'Teren nije pronađen' });
+
+        const deadlineHours = field.registrationDeadlineHours ?? 24;
+        deadlineDate.setHours(deadlineDate.getHours() - deadlineHours);
+
+        if (deadlineDate.getTime() < now.getTime() - oneMinuteInMs) {
+          return res.status(400).json({ message: 'Rok za prijavu bi bio u prošlosti. Molimo izaberite kasniji termin meča.' });
+        }
+
+        // Check for overlapping matches on the same field
+        const matchDuration = 60 * 60 * 1000;
+        const matchStart = matchDate.getTime();
+        const matchEnd = matchStart + matchDuration;
+
+        const potentialMatches = await Match.find({
+          fieldId,
+          status: { $nin: ['otkazano', 'failed'] },
+          $or: [
+            { courtApproval: { $ne: 'rejected' } },
+            { courtApproval: { $exists: false } }
+          ],
+          dateTime: {
+            $gte: new Date(matchStart - matchDuration),
+            $lte: new Date(matchEnd + matchDuration)
+          }
+        });
+
+        const hasOverlap = potentialMatches.some(existingMatch => {
+          const existingDate = new Date(existingMatch.dateTime);
+          existingDate.setMinutes(0); existingDate.setSeconds(0); existingDate.setMilliseconds(0);
           const existingStart = existingDate.getTime();
           const existingEnd = existingStart + matchDuration;
           return matchStart < existingEnd && existingStart < matchEnd;
         });
-        
-        const overlappingTime = overlappingMatch 
-          ? (() => {
-              const date = new Date(overlappingMatch.dateTime);
-              date.setMinutes(0);
-              date.setSeconds(0);
-              date.setMilliseconds(0);
-              return date.toLocaleString('sr-RS', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              });
-            })()
-          : '';
-        
-        return res.status(409).json({ 
-          message: `Na ovom terenu već postoji meč u ovom vremenu${overlappingTime ? ` (${overlappingTime})` : ''}. Molimo izaberite drugo vreme.` 
-        });
+
+        if (hasOverlap) {
+          const overlappingMatch = potentialMatches.find(m => {
+            const existingDate = new Date(m.dateTime);
+            existingDate.setMinutes(0); existingDate.setSeconds(0); existingDate.setMilliseconds(0);
+            const existingStart = existingDate.getTime();
+            const existingEnd = existingStart + matchDuration;
+            return matchStart < existingEnd && existingStart < matchEnd;
+          });
+          const overlappingTime = overlappingMatch
+            ? (() => {
+                const date = new Date(overlappingMatch.dateTime);
+                date.setMinutes(0); date.setSeconds(0); date.setMilliseconds(0);
+                return date.toLocaleString('sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+              })()
+            : '';
+          return res.status(409).json({
+            message: `Na ovom terenu već postoji meč u ovom vremenu${overlappingTime ? ` (${overlappingTime})` : ''}. Molimo izaberite drugo vreme.`
+          });
+        }
+
+        // Court owner must approve if field is managed
+        courtApproval = field.courtOwner ? 'pending' : 'approved';
       }
-      
-      // If field has a court owner, require approval. Otherwise, auto-approve.
-      const courtApproval = field.courtOwner ? 'pending' : 'approved';
-      
-      const match = await Match.create({
+
+      const matchData = {
         sport,
-        fieldId,
         dateTime: matchDate,
-        registrationDeadline: deadlineDate, // Automatically calculated based on field's registrationDeadlineHours
+        registrationDeadline: deadlineDate,
         minPlayers: minPlayersValue,
         maxPlayers: maxPlayers || undefined,
-        playersNeeded: minPlayersValue, // Set to minPlayers for backward compatibility
+        playersNeeded: minPlayersValue,
         players: [req.user.id],
         createdBy: req.user.id,
         status: 'open',
-        courtApproval
-      });
+        courtApproval,
+        isInformal: !!isInformal,
+      };
+
+      if (isInformal) {
+        matchData.informalLocation = {
+          name: informalLocation.name.trim(),
+          lat: Number(informalLocation.lat),
+          lng: Number(informalLocation.lng),
+        };
+        matchData.informalRegistrationDeadlineHours = (informalRegistrationDeadlineHours !== undefined && informalRegistrationDeadlineHours !== null)
+          ? Number(informalRegistrationDeadlineHours)
+          : 1;
+      } else {
+        matchData.fieldId = fieldId;
+      }
+
+      const match = await Match.create(matchData);
       const populated = await Match.findById(match._id)
         .populate('fieldId')
-        .populate('players', 'name')
-        .populate('createdBy', 'name')
+        .populate('players', PLAYER_PUBLIC_FIELDS)
+        .populate('createdBy', PLAYER_PUBLIC_FIELDS)
         .populate('playerCancellations.playerId', 'name');
-      
-      // Send push notifications to nearby players
-      try {
-        await notifyNearbyPlayers(match, field);
-      } catch (error) {
-        console.error('Error sending push notifications:', error);
-        // Don't fail match creation if notifications fail
-      }
-      
+
+      // Send push notifications to nearby players (non-blocking)
+      notifyNearbyPlayers(match, field).catch(err =>
+        console.error('Error sending push notifications:', err)
+      );
+
       res.status(201).json(populated);
     } catch (e) {
+      console.error('Create match error:', e);
       res.status(500).json({ message: 'Greška servera' });
     }
   });
@@ -362,11 +394,15 @@ function matchesRoutesFactory(io) {
   router.get('/:id', async (req, res) => {
     const match = await Match.findById(req.params.id)
       .populate('fieldId')
-      .populate('players', 'name')
-      .populate('createdBy', 'name')
+      .populate('players', PLAYER_PUBLIC_FIELDS)
+      .populate('createdBy', PLAYER_PUBLIC_FIELDS)
       .populate('playerCancellations.playerId', 'name');
     if (!match) return res.status(404).json({ message: 'Nije pronađeno' });
-    if (!match.fieldId || !match.fieldId.lat || !match.fieldId.lng) {
+    if (match.isInformal) {
+      if (!match.informalLocation || match.informalLocation.lat == null || match.informalLocation.lng == null) {
+        return res.status(404).json({ message: 'Lokacija meča je nevažeća ili nedostaje' });
+      }
+    } else if (!match.fieldId || !match.fieldId.lat || !match.fieldId.lng) {
       return res.status(404).json({ message: 'Teren meča je nevažeći ili nedostaje' });
     }
     res.json(match);
@@ -428,12 +464,12 @@ function matchesRoutesFactory(io) {
     await match.save();
     const populated = await Match.findById(match._id)
       .populate('fieldId')
-      .populate('players', 'name')
-      .populate('createdBy', 'name')
+      .populate('players', PLAYER_PUBLIC_FIELDS)
+      .populate('createdBy', PLAYER_PUBLIC_FIELDS)
       .populate('playerCancellations.playerId', 'name');
 
-    // Check if populated match has valid fieldId
-    if (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng) {
+    // Check if populated match has valid location
+    if (!populated.isInformal && (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng)) {
       return res.status(500).json({ message: 'Teren meča je nevažeći' });
     }
 
@@ -464,8 +500,8 @@ function matchesRoutesFactory(io) {
       const minPlayersValue = match.minPlayers || match.playersNeeded || 1;
       if (match.players.length < minPlayersValue) {
         match.status = 'open';
-        // Return courtApproval to 'pending' since minimum requirement is no longer met
-        if (match.courtApproval === 'approved') {
+        // Return courtApproval to 'pending' since minimum requirement is no longer met (formal only)
+        if (!match.isInformal && match.courtApproval === 'approved') {
           match.courtApproval = 'pending';
           match.courtApprovedAt = undefined;
         }
@@ -477,8 +513,8 @@ function matchesRoutesFactory(io) {
         .populate('players', 'name')
         .populate('createdBy', 'name');
 
-      // Check if populated match has valid fieldId
-      if (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng) {
+      // Check if populated match has valid location
+      if (!populated.isInformal && (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng)) {
         return res.status(500).json({ message: 'Teren meča je nevažeći' });
       }
 
@@ -513,10 +549,24 @@ function matchesRoutesFactory(io) {
       if (!match.playerCancellations) {
         match.playerCancellations = [];
       }
+      const hoursBeforeMatch = (new Date(match.dateTime).getTime() - Date.now()) / (1000 * 60 * 60);
+      const penaltyPoints = getReliabilityPenaltyPoints(hoursBeforeMatch);
+      let penalizedReliability = false;
+      if (penaltyPoints > 0) {
+        await User.findByIdAndUpdate(req.user.id, {
+          $inc: { reliabilityScore: -penaltyPoints }
+        });
+        await User.findByIdAndUpdate(req.user.id, {
+          $max: { reliabilityScore: 0 }
+        });
+        penalizedReliability = true;
+      }
+
       match.playerCancellations.push({
         playerId: req.user.id,
         comment: comment || '',
-        cancelledAt: new Date()
+        cancelledAt: new Date(),
+        penalizedReliability
       });
 
       // Remove player from match
@@ -526,8 +576,7 @@ function matchesRoutesFactory(io) {
       const minPlayersValue = match.minPlayers || match.playersNeeded || 1;
       if (match.players.length < minPlayersValue) {
         match.status = 'open';
-        // Return courtApproval to 'pending' since minimum requirement is no longer met
-        if (match.courtApproval === 'approved') {
+        if (!match.isInformal && match.courtApproval === 'approved') {
           match.courtApproval = 'pending';
           match.courtApprovedAt = undefined;
         }
@@ -536,12 +585,12 @@ function matchesRoutesFactory(io) {
       await match.save();
       const populated = await Match.findById(match._id)
         .populate('fieldId')
-        .populate('players', 'name')
-        .populate('createdBy', 'name')
+        .populate('players', PLAYER_PUBLIC_FIELDS)
+        .populate('createdBy', PLAYER_PUBLIC_FIELDS)
         .populate('playerCancellations.playerId', 'name');
 
-      // Check if populated match has valid fieldId
-      if (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng) {
+      // Check if populated match has valid location
+      if (!populated.isInformal && (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng)) {
         return res.status(500).json({ message: 'Teren meča je nevažeći' });
       }
 
@@ -550,6 +599,180 @@ function matchesRoutesFactory(io) {
     } catch (e) {
       console.error('Cancel attendance error:', e);
       res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Organizer confirms informal match was played, with optional no-show list
+  router.post('/:id/complete', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      if (match.createdBy.toString() !== req.user.id) {
+        return res.status(403).json({ message: 'Samo organizator može potvrditi termin' });
+      }
+      if (!match.isInformal) {
+        return res.status(400).json({ message: 'Ova akcija je dostupna samo za privatne mečeve' });
+      }
+      if (match.status === 'completed') {
+        return res.status(400).json({ message: 'Termin je već potvrđen' });
+      }
+      if (match.status === 'failed' || match.status === 'otkazano') {
+        return res.status(400).json({ message: 'Meč je otkazan i ne može biti potvrđen' });
+      }
+      if (new Date() < new Date(match.dateTime)) {
+        return res.status(400).json({ message: 'Ne možete potvrditi termin pre nego što počne meč' });
+      }
+
+      const noShowIds = (req.body.noShows || []).map(id => id.toString());
+
+      // Process no-shows: penalize reliability, record cancellation, remove from players
+      for (const userId of noShowIds) {
+        const isInMatch = match.players.some(p => p.toString() === userId);
+        if (!isInMatch) continue;
+
+        if (!match.playerCancellations) match.playerCancellations = [];
+        match.playerCancellations.push({
+          playerId: userId,
+          comment: 'Nije došao na termin',
+          cancelledAt: new Date(),
+          penalizedReliability: true
+        });
+
+        // Penalize reliability (15 points for no-show), floor at 0
+        await User.findByIdAndUpdate(userId, { $inc: { reliabilityScore: -15 } });
+        await User.findByIdAndUpdate(userId, { $max: { reliabilityScore: 0 } });
+      }
+
+      // Remove no-shows from players
+      if (noShowIds.length > 0) {
+        match.players = match.players.filter(p => !noShowIds.includes(p.toString()));
+        match.noShows = noShowIds;
+      }
+
+      match.status = 'completed';
+      await match.save();
+
+      const populated = await Match.findById(match._id)
+        .populate('fieldId')
+        .populate('players', PLAYER_PUBLIC_FIELDS)
+        .populate('createdBy', PLAYER_PUBLIC_FIELDS)
+        .populate('playerCancellations.playerId', 'name');
+
+      io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
+      res.json(populated);
+    } catch (e) {
+      console.error('Complete match error:', e);
+      res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Pending ratings for completed match participants
+  router.get('/:id/rating-status', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id)
+        .populate('players', PLAYER_PUBLIC_FIELDS)
+        .populate('createdBy', PLAYER_PUBLIC_FIELDS);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      if (match.status !== 'completed') {
+        return res.json({ shouldPrompt: false, pendingUsers: [] });
+      }
+
+      const isParticipant = match.players.some((p) => p._id.toString() === req.user.id.toString());
+      if (!isParticipant) {
+        return res.status(403).json({ message: 'Samo učesnici mogu oceniti saigrače' });
+      }
+
+      const ratedUserIds = (match.ratings || [])
+        .filter((r) => r.raterId.toString() === req.user.id.toString())
+        .map((r) => r.ratedUserId.toString());
+
+      const pendingUsers = match.players
+        .filter((p) => p._id.toString() !== req.user.id.toString())
+        .filter((p) => !ratedUserIds.includes(p._id.toString()))
+        .map((p) => ({
+          _id: p._id,
+          name: p.name,
+          ratingAvg: p.ratingAvg || 0,
+          reliabilityScore: p.reliabilityScore ?? 100
+        }));
+
+      return res.json({
+        shouldPrompt: pendingUsers.length > 0,
+        pendingUsers
+      });
+    } catch (e) {
+      return res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Submit teammate ratings (1-5 stars + fair-play)
+  router.post('/:id/rate', auth(true), async (req, res) => {
+    try {
+      const { ratings } = req.body;
+      if (!Array.isArray(ratings) || ratings.length === 0) {
+        return res.status(400).json({ message: 'Morate poslati bar jednu ocenu' });
+      }
+
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      if (match.status !== 'completed') {
+        return res.status(400).json({ message: 'Ocene su moguće samo za završene mečeve' });
+      }
+
+      const isParticipant = match.players.some((p) => p.toString() === req.user.id.toString());
+      if (!isParticipant) {
+        return res.status(403).json({ message: 'Samo učesnici mogu oceniti saigrače' });
+      }
+
+      const participantIds = match.players.map((p) => p.toString());
+      const newRatings = [];
+      for (const item of ratings) {
+        const ratedUserId = item?.ratedUserId?.toString?.() || '';
+        const stars = Number(item?.stars);
+        const fairPlay = Boolean(item?.fairPlay);
+        const skillLevel = Number(item?.skillLevel);
+        if (!ratedUserId || ratedUserId === req.user.id.toString()) continue;
+        if (!participantIds.includes(ratedUserId)) continue;
+        if (Number.isNaN(stars) || stars < 1 || stars > 5) continue;
+
+        const alreadyExists = (match.ratings || []).some(
+          (r) => r.raterId.toString() === req.user.id.toString() && r.ratedUserId.toString() === ratedUserId
+        );
+        if (alreadyExists) continue;
+
+        newRatings.push({
+          raterId: req.user.id,
+          ratedUserId,
+          stars,
+          fairPlay,
+          sport: match.sport
+        });
+
+        if (!Number.isNaN(skillLevel) && skillLevel >= 1 && skillLevel <= 5) {
+          await User.findOneAndUpdate(
+            { _id: ratedUserId, 'sportSkillLevels.sport': match.sport },
+            { $set: { 'sportSkillLevels.$.skillLevel': skillLevel } }
+          );
+          await User.findOneAndUpdate(
+            { _id: ratedUserId, 'sportSkillLevels.sport': { $ne: match.sport } },
+            { $push: { sportSkillLevels: { sport: match.sport, skillLevel } } }
+          );
+        }
+      }
+
+      if (newRatings.length === 0) {
+        return res.status(400).json({ message: 'Nema novih validnih ocena za čuvanje' });
+      }
+
+      match.ratings = [...(match.ratings || []), ...newRatings];
+      await match.save();
+
+      const ratedUserIds = [...new Set(newRatings.map((r) => r.ratedUserId.toString()))];
+      await Promise.all(ratedUserIds.map((id) => recalculateUserRatings(id)));
+
+      return res.json({ message: 'Ocene su sačuvane', saved: newRatings.length });
+    } catch (e) {
+      return res.status(500).json({ message: 'Greška servera' });
     }
   });
 

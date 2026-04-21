@@ -5,6 +5,7 @@ const User = require('../models/User');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
+const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
 
 // Middleware to check if user is a court
 async function requireCourt(req, res, next) {
@@ -57,8 +58,8 @@ router.post('/matches/:id/approve', auth(true), requireCourt, async (req, res) =
     
     const populated = await Match.findById(match._id)
       .populate('fieldId')
-      .populate('players', 'name')
-      .populate('createdBy', 'name');
+      .populate('players', PLAYER_PUBLIC_FIELDS)
+      .populate('createdBy', PLAYER_PUBLIC_FIELDS);
     
     const io = req.app.get('io');
     if (io) {
@@ -157,8 +158,8 @@ router.post('/matches/:id/complete', auth(true), requireCourt, async (req, res) 
     await match.save();
     const populated = await Match.findById(match._id)
       .populate('fieldId')
-      .populate('players', 'name')
-      .populate('createdBy', 'name')
+      .populate('players', PLAYER_PUBLIC_FIELDS)
+      .populate('createdBy', PLAYER_PUBLIC_FIELDS)
       .populate('playerCancellations.playerId', 'name');
     
     const io = req.app.get('io');

@@ -146,11 +146,12 @@ router.get('/analytics/:id', async (req, res) => {
     const cancellationsWithComment = activeCancellations.filter(c => c.comment && c.comment.trim().length > 0);
     const totalCancelledWithComment = cancellationsWithComment.length;
 
-    // Reliability score calculation
-    // Reliability = ((total join - cancelled) / total join) * 100
-    const reliabilityScore = totalJoinMatch > 0 
-      ? (((totalJoinMatch - totalCancelled) / totalJoinMatch) * 100).toFixed(1)
-      : 100;
+    // Prefer stored reliability score, keep fallback for older users
+    const reliabilityScore = user.reliabilityScore !== undefined && user.reliabilityScore !== null
+      ? Number(user.reliabilityScore)
+      : Number(totalJoinMatch > 0 
+        ? (((totalJoinMatch - totalCancelled) / totalJoinMatch) * 100).toFixed(1)
+        : 100);
 
     // Organizer success rate: percentage of successfully completed matches out of all created matches
     const completedCreatedMatches = createdMatches.filter(m => m.status === 'completed');
@@ -164,7 +165,7 @@ router.get('/analytics/:id', async (req, res) => {
       totalReserved: totalReserved || 0,
       totalCancelled: totalCancelled || 0,
       totalCancelledWithComment: totalCancelledWithComment || 0,
-      reliabilityScore: parseFloat(reliabilityScore),
+      reliabilityScore,
       organizerSuccessRate: parseFloat(organizerSuccessRate)
     });
   } catch (e) {
@@ -225,11 +226,12 @@ router.get('/analytics', auth(true), async (req, res) => {
     const cancellationsWithComment = activeCancellations.filter(c => c.comment && c.comment.trim().length > 0);
     const totalCancelledWithComment = cancellationsWithComment.length;
 
-    // Reliability score calculation
-    // Reliability = ((total join - cancelled) / total join) * 100
-    const reliabilityScore = totalJoinMatch > 0 
-      ? (((totalJoinMatch - totalCancelled) / totalJoinMatch) * 100).toFixed(1)
-      : 100;
+    // Prefer stored reliability score, keep fallback for older users
+    const reliabilityScore = user.reliabilityScore !== undefined && user.reliabilityScore !== null
+      ? Number(user.reliabilityScore)
+      : Number(totalJoinMatch > 0 
+        ? (((totalJoinMatch - totalCancelled) / totalJoinMatch) * 100).toFixed(1)
+        : 100);
 
     // Organizer success rate: percentage of successfully completed matches out of all created matches
     const completedCreatedMatches = createdMatches.filter(m => m.status === 'completed');
@@ -243,7 +245,7 @@ router.get('/analytics', auth(true), async (req, res) => {
       totalReserved: totalReserved || 0,
       totalCancelled: totalCancelled || 0,
       totalCancelledWithComment: totalCancelledWithComment || 0,
-      reliabilityScore: parseFloat(reliabilityScore),
+      reliabilityScore,
       organizerSuccessRate: parseFloat(organizerSuccessRate)
     });
   } catch (e) {
@@ -446,7 +448,7 @@ router.get('/my-matches/created', auth(true), async (req, res) => {
     const matches = await Match.find({ createdBy: user._id })
       .populate('fieldId', 'name sport lat lng')
       .populate('createdBy', 'name avatarUrl')
-      .populate('players', 'name avatarUrl')
+      .populate('players', 'name avatarUrl reliabilityScore ratingAvg sportSkillLevels')
       .sort({ dateTime: -1 }); // Sort by date, newest first
 
     res.json(matches);
@@ -473,7 +475,7 @@ router.get('/my-matches/joined', auth(true), async (req, res) => {
     })
       .populate('fieldId', 'name sport lat lng')
       .populate('createdBy', 'name avatarUrl')
-      .populate('players', 'name avatarUrl')
+      .populate('players', 'name avatarUrl reliabilityScore ratingAvg sportSkillLevels')
       .sort({ dateTime: -1 }); // Sort by date, newest first
 
     res.json(matches);

@@ -7,6 +7,7 @@ const FacebookStrategy = require('passport-facebook').Strategy;
 const axios = require('axios');
 const User = require('../models/User');
 const { uploadImageFromUrl } = require('../utils/cloudinary');
+const auth = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -338,15 +339,9 @@ router.post('/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/me', async (req, res) => {
+router.get('/me', auth(true), async (req, res) => {
   try {
-    const token = req.cookies?.token;
-    console.log("1"+token);
-    if (!token) return res.status(401).json({ message: 'Niste autentifikovani' });
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev_secret');
-    console.log("2"+payload);
-    const user = await User.findById(payload.id).select('-password');
-    console.log("3"+user);
+    const user = await User.findById(req.user.id).select('-password');
     if (!user) return res.status(404).json({ message: 'Korisnik nije pronađen' });
     res.json(user);
   } catch (e) {
@@ -398,11 +393,10 @@ router.get('/google/callback',
       }
       // If role doesn't exist in session or user is not new, keep existing role (login)
       
-      const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
       setTokenCookie(res, user._id.toString());
-      // Redirect to frontend with token
+      // Redirect to frontend — token is in HttpOnly cookie, not in URL
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
-      res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
+      res.redirect(`${frontendUrl}/auth/callback?user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
         email: user.email,
@@ -463,12 +457,11 @@ router.get('/facebook/callback',
       }
       // If role doesn't exist in session or user is not new, keep existing role (login)
       
-      const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
       setTokenCookie(res, user._id.toString());
-      
-      // Redirect to frontend with token
+
+      // Redirect to frontend — token is in HttpOnly cookie, not in URL
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-      res.redirect(`${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify({
+      res.redirect(`${frontendUrl}/auth/callback?user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
         email: user.email,

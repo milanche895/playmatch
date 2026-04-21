@@ -91,6 +91,13 @@ export default function MojiMecevi() {
     return match.status;
   }
 
+  function getReliabilityColor(score?: number): string {
+    const value = score ?? 100;
+    if (value >= 80) return 'success.main';
+    if (value >= 60) return 'warning.main';
+    return 'error.main';
+  }
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
@@ -212,7 +219,19 @@ export default function MojiMecevi() {
                                           {player.name.charAt(0).toUpperCase()}
                                         </Avatar>
                                       }
-                                      label={player.name}
+                                      label={
+                                        <Stack direction="row" spacing={0.75} alignItems="center">
+                                          <span>{player.name}</span>
+                                          <Box
+                                            sx={{
+                                              width: 8,
+                                              height: 8,
+                                              borderRadius: '50%',
+                                              bgcolor: getReliabilityColor((player as any).reliabilityScore)
+                                            }}
+                                          />
+                                        </Stack>
+                                      }
                                       size="small"
                                       variant="outlined"
                                       sx={{ borderRadius: 2 }}
