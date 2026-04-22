@@ -247,7 +247,7 @@ function MatchCard({
           </Stack>
 
           {/* Join button for non-members - allow joining until maxPlayers is reached */}
-          {user && !isUserInMatch && user.role !== 'court' && (
+          {!isUserInMatch && user?.role !== 'court' && (
             <Button
               variant="outlined"
               fullWidth
@@ -463,12 +463,12 @@ export default function Home() {
       {/* Header Section */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h4" fontWeight={700} sx={{ mb: 1 }}>
-          {user ? 'Današnji mečevi' : 'Sportski tereni'}
+          Današnji mečevi
         </Typography>
         <Typography variant="body1" color="text.secondary">
           {user
             ? `Pronađite mečeve u vašoj blizini${userLocation ? ` (unutar ${effectiveRadius}km)` : ''}`
-            : 'Pregledajte dostupne terene i prijavite se da biste se pridružili mečevima'}
+            : 'Pregledajte dostupne mečeve i terene. Prijavite se da biste se pridružili meču.'}
         </Typography>
       </Box>
 
@@ -479,11 +479,11 @@ export default function Home() {
           sx={{ mb: 3, borderRadius: 3 }}
           icon={<InfoIcon />}
         >
-          Možete videti sve dostupne terene.{' '}
+          Možete pregledati sve mečeve i terene.{' '}
           <Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>
             Prijavite se
           </Link>{' '}
-          da biste videli mečeve i kreirali nove.
+          da biste se pridružili meču ili kreirali novi.
         </Alert>
       )}
       {locationError && user && (
@@ -500,9 +500,11 @@ export default function Home() {
       )}
 
       {/* No matches alert */}
-      {!loading && user && matches.length === 0 && (
+      {!loading && matches.length === 0 && (
         <Alert severity="info" sx={{ mb: 3, borderRadius: 3 }}>
-          Nema aktivnih mečeva unutar {effectiveRadius}km. Proširite pretragu ili kreirajte novi meč!
+          {user && userLocation
+            ? `Nema aktivnih mečeva unutar ${effectiveRadius}km. Proširite pretragu ili kreirajte novi meč!`
+            : 'Nema aktivnih mečeva u ovom trenutku.'}
         </Alert>
       )}
 
@@ -797,14 +799,26 @@ export default function Home() {
                                     Detalji
                                   </Button>
                                   {match.players.length < (match.maxPlayers || match.playersNeeded || 100) && !isUserInMatch(match) && user?.role !== 'court' && (
-                                    <Button
-                                      variant="contained"
-                                      size="small"
-                                      onClick={() => handleJoinMatch(match._id)}
-                                      fullWidth
-                                    >
-                                      Pridruži se
-                                    </Button>
+                                    !user ? (
+                                      <Button
+                                        variant="contained"
+                                        size="small"
+                                        component={Link}
+                                        to="/login"
+                                        fullWidth
+                                      >
+                                        Prijavi se
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        variant="contained"
+                                        size="small"
+                                        onClick={() => handleJoinMatch(match._id)}
+                                        fullWidth
+                                      >
+                                        Pridruži se
+                                      </Button>
+                                    )
                                   )}
                                 </Stack>
                               </Stack>
@@ -853,9 +867,15 @@ export default function Home() {
                           Detalji
                         </Button>
                         {match.players.length < (match.maxPlayers || match.playersNeeded || 100) && !isUserInMatch(match) && user?.role !== 'court' && (
-                          <Button variant="contained" size="small" onClick={() => handleJoinMatch(match._id)} fullWidth>
-                            Pridruži se
-                          </Button>
+                          !user ? (
+                            <Button variant="contained" size="small" component={Link} to="/login" fullWidth>
+                              Prijavi se
+                            </Button>
+                          ) : (
+                            <Button variant="contained" size="small" onClick={() => handleJoinMatch(match._id)} fullWidth>
+                              Pridruži se
+                            </Button>
+                          )
                         )}
                       </Stack>
                     </Stack>
@@ -866,37 +886,6 @@ export default function Home() {
           </MapContainer>
         </Box>
       </Paper>
-
-      {/* Match Cards Section */}
-      {upcomingInformalMatches.length > 0 && (
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
-            Privatni mečevi u blizini
-          </Typography>
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: 'repeat(2, 1fr)',
-                md: 'repeat(3, 1fr)',
-              },
-              gap: 3,
-            }}
-          >
-            {upcomingInformalMatches.slice(0, 6).map((match) => (
-              <MatchCard
-                key={match._id}
-                match={match}
-                user={user}
-                isUserInMatch={isUserInMatch(match)}
-                onJoin={handleJoinMatch}
-                userLocation={userLocation}
-              />
-            ))}
-          </Box>
-        </Box>
-      )}
       {todaysMatches.length > 0 && (
         <Box sx={{ mb: 4 }}>
           <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
