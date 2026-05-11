@@ -8,7 +8,7 @@ import api from './api';
  */
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
   if (!('Notification' in window)) {
-    throw new Error('This browser does not support notifications');
+    throw new Error('Vaš pretraživač ne podržava obaveštenja.');
   }
 
   if (Notification.permission === 'granted') {
@@ -16,7 +16,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   }
 
   if (Notification.permission === 'denied') {
-    throw new Error('Notification permission was previously denied. Please enable it in browser settings.');
+    throw new Error('Dozvola za obaveštenja je već odbijena u pretraživaču. Omogućite je u podešavanjima sajta.');
   }
 
   // Request permission
@@ -32,12 +32,32 @@ async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration
     throw new Error('Service Workers are not supported in this browser');
   }
 
-  const registration = await navigator.serviceWorker.ready;
-  if (!registration) {
-    throw new Error('Service Worker is not registered');
+  const existingRegistration = await navigator.serviceWorker.getRegistration();
+  if (existingRegistration) {
+    return existingRegistration;
   }
 
-  return registration;
+  try {
+    const readyRegistration = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<ServiceWorkerRegistration>((_, reject) => {
+        setTimeout(() => reject(new Error('timeout')), 12000);
+      })
+    ]);
+
+    if (readyRegistration) {
+      return readyRegistration;
+    }
+  } catch {
+    // fallback to explicit registration below
+  }
+
+  try {
+    const explicitRegistration = await navigator.serviceWorker.register('/sw.js');
+    return explicitRegistration;
+  } catch {
+    throw new Error('Service Worker nije spreman. Sačekajte par sekundi i pokušajte ponovo.');
+  }
 }
 
 /**
@@ -56,7 +76,7 @@ export async function subscribeToPushNotifications(): Promise<string | null> {
   const permission = await requestNotificationPermission();
   
   if (permission !== 'granted') {
-    throw new Error('Notification permission denied');
+    throw new Error('Dozvola za obaveštenja nije odobrena.');
   }
 
   try {

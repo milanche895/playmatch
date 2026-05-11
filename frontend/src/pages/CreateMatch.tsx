@@ -163,6 +163,20 @@ export default function CreateMatch() {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   }
 
+  function getAvailableInformalHours(date: string): string[] {
+    if (!date) return [];
+
+    const minAllowedDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    minAllowedDate.setMinutes(0, 0, 0);
+
+    return Array.from({ length: 24 }, (_, hour) => hour)
+      .map((hour) => `${String(hour).padStart(2, "0")}:00`)
+      .filter((time) => {
+        const candidate = new Date(`${date}T${time}`);
+        return !Number.isNaN(candidate.getTime()) && candidate >= minAllowedDate;
+      });
+  }
+
   function loadFields() {
     api.get("/api/fields").then((res) => setFields(res.data));
   }
@@ -550,8 +564,25 @@ export default function CreateMatch() {
   }
 
   function renderStep1Informal() {
-    // Minimum selectable time: now + 2h (backend enforces same)
-    const minDateTime = formatLocalDateTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+    const minAllowedDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    const minDate = formatLocalDateTime(minAllowedDate).split("T")[0];
+    const selectedInformalDate = selectedDateTime ? selectedDateTime.split("T")[0] : "";
+    const selectedInformalTime = selectedDateTime ? selectedDateTime.split("T")[1] : "";
+    const availableInformalHours = getAvailableInformalHours(selectedInformalDate);
+
+    const handleInformalDateChange = (date: string) => {
+      const availableHours = getAvailableInformalHours(date);
+      const nextTime = availableHours.includes(selectedInformalTime)
+        ? selectedInformalTime
+        : (availableHours[0] || "");
+      setSelectedDateTime(nextTime ? `${date}T${nextTime}` : "");
+    };
+
+    const handleInformalTimeChange = (time: string) => {
+      if (!selectedInformalDate) return;
+      setSelectedDateTime(`${selectedInformalDate}T${time}`);
+    };
+
     return (
       <Stack spacing={3}>
         {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
@@ -573,16 +604,34 @@ export default function CreateMatch() {
           <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1.5 }}>
             Datum i vreme meča
           </Typography>
-          <TextField
-            type="datetime-local"
-            value={selectedDateTime}
-            onChange={(e) => setSelectedDateTime(e.target.value)}
-            inputProps={{ min: minDateTime }}
-            InputLabelProps={{ shrink: true }}
-            required
-            fullWidth
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-          />
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <TextField
+              type="date"
+              label="Datum"
+              value={selectedInformalDate}
+              onChange={(e) => handleInformalDateChange(e.target.value)}
+              inputProps={{ min: minDate }}
+              InputLabelProps={{ shrink: true }}
+              required
+              fullWidth
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+            />
+            <TextField
+              select
+              label="Vreme"
+              value={selectedInformalTime}
+              onChange={(e) => handleInformalTimeChange(e.target.value)}
+              required
+              fullWidth
+              disabled={!selectedInformalDate}
+              helperText={selectedInformalDate ? "Možete izabrati samo pun sat" : "Prvo odaberite datum"}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+            >
+              {availableInformalHours.map((time) => (
+                <MenuItem key={time} value={time}>{time}</MenuItem>
+              ))}
+            </TextField>
+          </Stack>
         </Box>
         {selectedDateTime && (
           <Alert severity="success" icon={<CheckCircleIcon />} sx={{ borderRadius: 2 }}>

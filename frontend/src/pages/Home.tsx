@@ -15,6 +15,9 @@ import {
   IconButton,
   Tooltip,
   Fab,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from '@mui/material';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -31,6 +34,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 
 // Custom icons using HTML div icons for better customization
 function createCustomIcon(color: string) {
@@ -270,7 +274,7 @@ function MatchCard({
 }
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -279,12 +283,31 @@ export default function Home() {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [loading, setLoading] = useState(true);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [notificationChoice, setNotificationChoice] = useState<'enabled' | 'disabled'>('disabled');
+  const [savingNotificationPreference, setSavingNotificationPreference] = useState(false);
+  const [notificationPreferenceError, setNotificationPreferenceError] = useState<string | null>(null);
+  const [notificationPreferenceSuccess, setNotificationPreferenceSuccess] = useState<string | null>(null);
 
   // Use user's notification radius if available (convert km to meters for map), default 10km
   const effectiveRadius = user?.notificationRadius || 10;
 
   const defaultCenter: [number, number] = [44.7866, 20.4489]; // Belgrade as default
   const mapCenter = userLocation || defaultCenter;
+
+  const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  };
+
+  useEffect(() => {
+    if (user?.notificationEnabled === false) {
+      setNotificationChoice('disabled');
+    }
+  }, [user?.notificationEnabled]);
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -426,6 +449,50 @@ export default function Home() {
     }
   }
 
+  async function handleSaveNotificationPreference() {
+    if (!user || user.role !== 'player') return;
+
+    setSavingNotificationPreference(true);
+    setNotificationPreferenceError(null);
+    setNotificationPreferenceSuccess(null);
+
+    try {
+      if (notificationChoice === 'enabled') {
+        await withTimeout(
+          api.put('/api/players/profile', { notificationEnabled: true }),
+          12000,
+          'Čuvanje podešavanja traje predugo. Pokušajte ponovo.'
+        );
+        await withTimeout(
+          refreshUser(),
+          12000,
+          'Osvežavanje profila traje predugo. Pokušajte ponovo.'
+        );
+        setNotificationPreferenceSuccess('Obaveštenja su omogućena. Dobijaćete obaveštenja o novim mečevima u blizini.');
+      } else {
+        await withTimeout(
+          api.put('/api/players/profile', { notificationEnabled: false }),
+          12000,
+          'Čuvanje podešavanja traje predugo. Pokušajte ponovo.'
+        );
+        await withTimeout(
+          refreshUser(),
+          12000,
+          'Osvežavanje profila traje predugo. Pokušajte ponovo.'
+        );
+        setNotificationPreferenceSuccess('Obaveštenja su i dalje isključena.');
+      }
+    } catch (err: any) {
+      const message = err.response?.data?.message || err.message;
+      setNotificationPreferenceError(
+        message ||
+        'Greška pri čuvanju podešavanja obaveštenja.'
+      );
+    } finally {
+      setSavingNotificationPreference(false);
+    }
+  }
+
   function isUserInMatch(match: Match): boolean {
     if (!user) return false;
     return match.players.some(p => p._id === user._id);
@@ -490,6 +557,65 @@ export default function Home() {
         <Alert severity="warning" sx={{ mb: 3, borderRadius: 3 }}>
           {locationError}
         </Alert>
+      )}
+
+      {user && user.role === 'player' && user.notificationEnabled === false && (
+        <Card
+          elevation={0}
+          sx={{
+            mb: 3,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+          }}
+        >
+          <CardContent sx={{ p: 3 }}>
+            <Stack spacing={2}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <NotificationsActiveIcon color="primary" />
+                <Typography variant="h6" fontWeight={700}>
+                  Uključi obaveštenja o mečevima u blizini
+                </Typography>
+              </Stack>
+
+              <Typography variant="body2" color="text.secondary">
+                Da biste dobijali obaveštenja kada se kreira novi meč blizu vas, omogućite primanje obaveštenja.
+              </Typography>
+
+              <RadioGroup
+                row
+                value={notificationChoice}
+                onChange={(event) => setNotificationChoice(event.target.value as 'enabled' | 'disabled')}
+              >
+                <FormControlLabel value="enabled" control={<Radio />} label="Da, omogući" />
+                <FormControlLabel value="disabled" control={<Radio />} label="Ne za sada" />
+              </RadioGroup>
+
+              {notificationPreferenceError && (
+                <Alert severity="error" sx={{ borderRadius: 2 }}>
+                  {notificationPreferenceError}
+                </Alert>
+              )}
+
+              {notificationPreferenceSuccess && (
+                <Alert severity="success" sx={{ borderRadius: 2 }}>
+                  {notificationPreferenceSuccess}
+                </Alert>
+              )}
+
+              <Box>
+                <Button
+                  variant="contained"
+                  onClick={handleSaveNotificationPreference}
+                  disabled={savingNotificationPreference}
+                >
+                  {savingNotificationPreference ? 'Čuvanje...' : 'Sačuvaj izbor'}
+                </Button>
+              </Box>
+            </Stack>
+          </CardContent>
+        </Card>
       )}
 
       {/* Loading */}

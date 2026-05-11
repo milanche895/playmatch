@@ -98,6 +98,12 @@ export default function MojiMecevi() {
     return 'error.main';
   }
 
+  function canShowConfirmMatchButton(match: Match): boolean {
+    const isMatchInProgressState = match.status === 'open' || match.status === 'full';
+    const matchStarted = new Date() > new Date(match.dateTime);
+    return Boolean(match.isInformal && isMatchInProgressState && matchStarted);
+  }
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
@@ -248,14 +254,38 @@ export default function MojiMecevi() {
                             )}
                           </Stack>
 
-                          <Button
-                            variant="outlined"
-                            component={Link}
-                            to={`/matches/${match._id}`}
-                            sx={{ borderRadius: 3, alignSelf: 'flex-start' }}
+                          <Stack
+                            direction="row"
+                            spacing={1.5}
+                            sx={{
+                              alignSelf: 'stretch',
+                              width: '100%',
+                            }}
                           >
-                            Vidi detalje
-                          </Button>
+                            <Button
+                              variant="outlined"
+                              component={Link}
+                              to={`/matches/${match._id}`}
+                              fullWidth={!canShowConfirmMatchButton(match)}
+                              sx={{
+                                borderRadius: 3,
+                                flex: canShowConfirmMatchButton(match) ? 1 : undefined,
+                              }}
+                            >
+                              Vidi detalje
+                            </Button>
+                            {canShowConfirmMatchButton(match) && (
+                              <Button
+                                variant="contained"
+                                color="success"
+                                component={Link}
+                                to={`/matches/${match._id}?confirmMatch=1`}
+                                sx={{ borderRadius: 3, flex: 1 }}
+                              >
+                                Potvrdi meč
+                              </Button>
+                            )}
+                          </Stack>
                         </Stack>
                       </CardContent>
                     </Card>

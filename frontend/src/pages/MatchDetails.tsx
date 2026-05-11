@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Stack,
   Typography,
@@ -65,6 +65,7 @@ function formatPlayersCount(match: Match): string {
 export default function MatchDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [match, setMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,6 +80,12 @@ export default function MatchDetails() {
   const [noShowIds, setNoShowIds] = useState<Set<string>>(new Set());
   const [completing, setCompleting] = useState(false);
   const [loadingRatingStatus, setLoadingRatingStatus] = useState(false);
+  const [didAutoOpenCompleteDialog, setDidAutoOpenCompleteDialog] = useState(false);
+
+  const shouldAutoOpenCompleteDialog = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('confirmMatch') === '1';
+  }, [location.search]);
 
   useEffect(() => {
     if (!id) return;
@@ -311,6 +318,23 @@ export default function MatchDetails() {
     }
   }
 
+  const canCompleteMatch = useMemo(() => {
+    if (!match || !user) return false;
+    return (
+      match.isInformal &&
+      match.createdBy._id === user._id &&
+      (match.status === 'open' || match.status === 'full') &&
+      new Date() > new Date(match.dateTime)
+    );
+  }, [match, user]);
+
+  useEffect(() => {
+    if (!shouldAutoOpenCompleteDialog || didAutoOpenCompleteDialog || !canCompleteMatch) return;
+    setNoShowIds(new Set());
+    setCompleteDialogOpen(true);
+    setDidAutoOpenCompleteDialog(true);
+  }, [shouldAutoOpenCompleteDialog, didAutoOpenCompleteDialog, canCompleteMatch]);
+
   if (loading) {
     return (
       <Box sx={{ maxWidth: 800, mx: 'auto' }}>
@@ -343,12 +367,6 @@ export default function MatchDetails() {
 
   const statusConfig = getStatusConfig();
   const isDeadlinePassed = new Date() > new Date(match.registrationDeadline);
-  const canCompleteMatch =
-    match.isInformal &&
-    user !== null &&
-    match.createdBy._id === user._id &&
-    (match.status === 'open' || match.status === 'full') &&
-    new Date() > new Date(match.dateTime);
 
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto' }}>
