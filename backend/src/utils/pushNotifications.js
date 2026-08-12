@@ -33,21 +33,10 @@ function getVapidPublicKey() {
   return VAPID_PUBLIC_KEY;
 }
 
-function normalizePushSubscription(subscription) {
-  if (!subscription) return null;
-  const plain = typeof subscription.toObject === 'function'
-    ? subscription.toObject()
-    : (typeof subscription.toJSON === 'function' ? subscription.toJSON() : subscription);
-  const endpoint = plain?.endpoint;
-  const keys = plain?.keys || {};
-  if (!endpoint || !keys.p256dh || !keys.auth) return null;
-  return {
-    endpoint,
-    keys: {
-      p256dh: String(keys.p256dh),
-      auth: String(keys.auth)
-    }
-  };
+function hasPushEndpoint(subscription) {
+  if (!subscription) return false;
+  const raw = typeof subscription.toObject === 'function' ? subscription.toObject() : subscription;
+  return Boolean(raw?.endpoint || subscription.endpoint);
 }
 
 /**
@@ -57,9 +46,8 @@ function normalizePushSubscription(subscription) {
  * @returns {Promise<void>}
  */
 async function sendPushNotification(subscription, payload) {
-  const normalized = normalizePushSubscription(subscription);
-  if (!normalized) {
-    throw new Error('Invalid push subscription: endpoint and keys required');
+  if (!subscription || !subscription.endpoint) {
+    throw new Error('Invalid push subscription: endpoint required');
   }
 
   const { title, body, url, image, matchId, tag, requireInteraction } = payload;
@@ -79,7 +67,7 @@ async function sendPushNotification(subscription, payload) {
   });
 
   try {
-    await webpush.sendNotification(normalized, notificationPayload);
+    await webpush.sendNotification(subscription, notificationPayload);
     console.log('✅ Push notification sent');
     return { success: 1, failed: 0 };
   } catch (error) {
@@ -109,15 +97,8 @@ async function sendPushNotifications(subscriptions, payload) {
   let success = 0;
   let failed = 0;
   const expiredSubscriptions = [];
-  const validSubscriptions = subscriptions
-    .map(normalizePushSubscription)
-    .filter(Boolean);
 
-  if (validSubscriptions.length === 0) {
-    return { success: 0, failed: subscriptions.length, expiredSubscriptions: [] };
-  }
-
-  const promises = validSubscriptions.map(async (subscription) => {
+  const promises = subscriptions.map(async (subscription) => {
     try {
       const result = await sendPushNotification(subscription, payload);
       if (result.success > 0) {
@@ -131,7 +112,7 @@ async function sendPushNotifications(subscriptions, payload) {
     } catch (error) {
       failed++;
       console.error('Failed to send push notification:', error.message);
-      
+
       // Check if subscription is expired
       if (error.statusCode === 410 || error.statusCode === 404) {
         expiredSubscriptions.push(subscription);
@@ -154,5 +135,5 @@ module.exports = {
   getVapidPublicKey,
   sendPushNotification,
   sendPushNotifications,
-  normalizePushSubscription
+  hasPushEndpoint
 };

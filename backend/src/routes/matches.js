@@ -5,7 +5,7 @@ const Field = require('../models/Field');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const { calculateDistance } = require('../utils/notifications');
-const { sendPushNotifications, normalizePushSubscription } = require('../utils/pushNotifications');
+const { sendPushNotifications, hasPushEndpoint } = require('../utils/pushNotifications');
 const { processExpiredMatches } = require('../utils/matchStatus');
 const {
   getReliabilityPenaltyPoints,
@@ -1126,7 +1126,7 @@ function matchesRoutesFactory(io) {
           avatarUrl: player.avatarUrl || null,
           reliabilityScore: player.reliabilityScore ?? 100,
           distance,
-          hasPush: Boolean(normalizePushSubscription(player.pushSubscription))
+          hasPush: hasPushEndpoint(player.pushSubscription)
         }))
       );
     } catch (e) {
@@ -1188,9 +1188,8 @@ function matchesRoutesFactory(io) {
           skipped += 1;
           continue;
         }
-        const sub = normalizePushSubscription(player.pushSubscription);
-        if (sub) {
-          subscriptions.push(sub);
+        if (hasPushEndpoint(player.pushSubscription)) {
+          subscriptions.push(player.pushSubscription);
         } else {
           skipped += 1;
         }
@@ -1281,8 +1280,8 @@ function matchesRoutesFactory(io) {
       }
 
       const subscriptions = nearby
-        .map(({ player }) => normalizePushSubscription(player.pushSubscription))
-        .filter(Boolean);
+        .map(({ player }) => player.pushSubscription)
+        .filter((sub) => hasPushEndpoint(sub));
 
       if (subscriptions.length === 0) {
         return res.status(400).json({
