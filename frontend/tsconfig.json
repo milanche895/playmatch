@@ -11,10 +11,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "esModuleInterop": true,
-    "strict": true,
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0"
+    "strict": true
   },
   "include": ["src"]
 }
-
