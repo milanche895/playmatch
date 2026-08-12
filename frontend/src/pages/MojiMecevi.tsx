@@ -27,6 +27,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { Match } from '../types';
+import { getTrustBadge } from '../lib/reliability';
 
 export default function MojiMecevi() {
   const { user: currentUser } = useAuth();
@@ -89,13 +90,6 @@ export default function MojiMecevi() {
     if (match.status === 'open') return 'Otvoren';
     if (match.status === 'otkazano') return 'Otkazan';
     return match.status;
-  }
-
-  function getReliabilityColor(score?: number): string {
-    const value = score ?? 100;
-    if (value >= 80) return 'success.main';
-    if (value >= 60) return 'warning.main';
-    return 'error.main';
   }
 
   function canShowConfirmMatchButton(match: Match): boolean {
@@ -217,7 +211,9 @@ export default function MojiMecevi() {
                                   Prijavljeni igrači ({match.players.length}):
                                 </Typography>
                                 <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
-                                  {match.players.map((player) => (
+                                  {match.players.map((player) => {
+                                    const badge = getTrustBadge(player.reliabilityScore);
+                                    return (
                                     <Chip
                                       key={player._id}
                                       avatar={
@@ -229,20 +225,20 @@ export default function MojiMecevi() {
                                         <Stack direction="row" spacing={0.75} alignItems="center">
                                           <span>{player.name}</span>
                                           <Box
-                                            sx={{
-                                              width: 8,
-                                              height: 8,
-                                              borderRadius: '50%',
-                                              bgcolor: getReliabilityColor((player as any).reliabilityScore)
-                                            }}
-                                          />
+                                            component="span"
+                                            sx={{ fontSize: '0.75rem', lineHeight: 1 }}
+                                            title={`${badge.label} (${player.reliabilityScore ?? 100}%)`}
+                                          >
+                                            {badge.emoji}
+                                          </Box>
                                         </Stack>
                                       }
                                       size="small"
                                       variant="outlined"
                                       sx={{ borderRadius: 2 }}
                                     />
-                                  ))}
+                                    );
+                                  })}
                                 </Stack>
                               </Paper>
                             )}

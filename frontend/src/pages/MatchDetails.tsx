@@ -19,6 +19,10 @@ import {
   IconButton,
   Skeleton,
   Alert,
+  Checkbox,
+  CircularProgress,
+  MenuItem,
+  FormControlLabel,
 } from '@mui/material';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -34,12 +38,16 @@ import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
 import ShareIcon from '@mui/icons-material/Share';
 import StarIcon from '@mui/icons-material/Star';
+import PaymentsIcon from '@mui/icons-material/Payments';
+import HourglassTopIcon from '@mui/icons-material/HourglassTop';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import api from '../lib/api';
 import { Match, MatchRatingStatus } from '../types';
 import { socket } from '../lib/socket';
 import { useAuth } from '../context/AuthContext';
+import { getTrustBadge } from '../lib/reliability';
+import MatchQuickChat from '../components/MatchQuickChat';
 
 // Fix default Leaflet icon URLs
 // @ts-ignore
@@ -62,11 +70,31 @@ function formatPlayersCount(match: Match): string {
   return `${current}/${min}`;
 }
 
+function paymentPlayerId(playerId: { _id: string } | string): string {
+  return typeof playerId === 'object' ? playerId._id : playerId;
+}
+
+function isPlayerPaid(match: Match, playerId: string): boolean {
+  return (match.playerPayments || []).some(
+    (p) => paymentPlayerId(p.playerId) === playerId && p.paid
+  );
+}
+
+function formatRsd(amount: number): string {
+  return `${amount.toLocaleString('sr-RS')} RSD`;
+}
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'Gotovina',
+  transfer: 'Prenos / IPS',
+  other: 'Ostalo',
+};
+
 export default function MatchDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [match, setMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -81,6 +109,12 @@ export default function MatchDetails() {
   const [completing, setCompleting] = useState(false);
   const [loadingRatingStatus, setLoadingRatingStatus] = useState(false);
   const [didAutoOpenCompleteDialog, setDidAutoOpenCompleteDialog] = useState(false);
+  const [priceDraft, setPriceDraft] = useState<number | ''>('');
+  const [savingPrice, setSavingPrice] = useState(false);
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
+  const [paymentMethodDraft, setPaymentMethodDraft] = useState<'cash' | 'transfer' | 'other'>('cash');
+  const [celebrationOpen, setCelebrationOpen] = useState(false);
+  const [celebrationRating, setCelebrationRating] = useState<number | null>(null);
 
   const shouldAutoOpenCompleteDialog = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -92,6 +126,7 @@ export default function MatchDetails() {
     setLoading(true);
     api.get(`/api/matches/${id}`).then((res) => {
       setMatch(res.data);
+      setPriceDraft(res.data.pricePerPlayer ?? '');
       setLoading(false);
     }).catch(() => {
       setLoading(false);
@@ -124,7 +159,12 @@ export default function MatchDetails() {
     if (!id) return;
     socket.connect();
     socket.emit('join_match_room', id);
-    const handler = (updated: Match) => { if (updated._id === id) setMatch(updated); };
+    const handler = (updated: Match) => {
+      if (updated._id === id) {
+        setMatch(updated);
+        setPriceDraft(updated.pricePerPlayer ?? '');
+      }
+    };
     socket.on('match_updated', handler);
     return () => {
       socket.emit('leave_match_room', id);
@@ -137,9 +177,35 @@ export default function MatchDetails() {
     if (!match || !user) return false;
     const deadlinePassed = new Date() > new Date(match.registrationDeadline);
     const isAlreadyJoined = match.players.some(p => p._id === user._id);
-    const maxPlayersReached = match.players.length >= (match.maxPlayers || match.playersNeeded || 100);
-    return !isAlreadyJoined && match.status !== 'failed' && !deadlinePassed && !maxPlayersReached;
+    const maxPlayersReached = match.players.length >= (match.maxPlayers || 100);
+    return !isAlreadyJoined && match.status !== 'failed' && match.status !== 'otkazano' && match.status !== 'completed' && !deadlinePassed && !maxPlayersReached;
   }, [match, user]);
+
+  const isOnWaitlist = useMemo(() => {
+    if (!match || !user) return false;
+    return (match.waitlist || []).some((p) => p._id === user._id);
+  }, [match, user]);
+
+  const waitlistPosition = useMemo(() => {
+    if (!match || !user || !isOnWaitlist) return null;
+    const idx = (match.waitlist || []).findIndex((p) => p._id === user._id);
+    return idx >= 0 ? idx + 1 : null;
+  }, [match, user, isOnWaitlist]);
+
+  const canJoinWaitlist = useMemo(() => {
+    if (!match || !user) return false;
+    if (user.role === 'court') return false;
+    const deadlinePassed = new Date() > new Date(match.registrationDeadline);
+    const isAlreadyJoined = match.players.some((p) => p._id === user._id);
+    const maxPlayersReached = match.players.length >= (match.maxPlayers || 100);
+    return (
+      !isAlreadyJoined &&
+      !isOnWaitlist &&
+      maxPlayersReached &&
+      !deadlinePassed &&
+      (match.status === 'open' || match.status === 'full')
+    );
+  }, [match, user, isOnWaitlist]);
 
   const canLeave = useMemo(() => {
     if (!match || !user) return false;
@@ -156,6 +222,32 @@ export default function MatchDetails() {
       setMatch(res.data);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Neuspešno pridruživanje meču');
+      if (id) {
+        api.get(`/api/matches/${id}`).then((res) => setMatch(res.data));
+      }
+    }
+  }
+
+  async function joinWaitlist() {
+    if (!id) return;
+    try {
+      const res = await api.post(`/api/matches/${id}/waitlist`);
+      setMatch(res.data);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Neuspešno stajanje u red');
+      if (id) {
+        api.get(`/api/matches/${id}`).then((res) => setMatch(res.data));
+      }
+    }
+  }
+
+  async function leaveWaitlist() {
+    if (!id) return;
+    try {
+      const res = await api.post(`/api/matches/${id}/waitlist/leave`);
+      setMatch(res.data);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Neuspešno napuštanje liste čekanja');
       if (id) {
         api.get(`/api/matches/${id}`).then((res) => setMatch(res.data));
       }
@@ -202,13 +294,6 @@ export default function MatchDetails() {
     });
   }
 
-  function getReliabilityMeta(score?: number) {
-    const value = score ?? 100;
-    if (value >= 80) return { color: 'success.main', label: 'Pouzdan' };
-    if (value >= 60) return { color: 'warning.main', label: 'Srednja pouzdanost' };
-    return { color: 'error.main', label: 'Česta otkazivanja' };
-  }
-
   async function handleShare() {
     if (!match || !id) return;
     const freeSlots = (match.maxPlayers || match.playersNeeded || 100) - match.players.length;
@@ -222,6 +307,7 @@ export default function MatchDetails() {
       `Vreme: ${formatDateTime(match.dateTime)}`,
       `Lokacija: ${locationName}`,
       `Slobodna mesta: ${Math.max(freeSlots, 0)}`,
+      ...(match.pricePerPlayer != null ? [`Cena po igraču: ${formatRsd(match.pricePerPlayer)}`] : []),
       `Link: ${shareUrl}`
     ].join('\n');
 
@@ -297,6 +383,40 @@ export default function MatchDetails() {
     }
   }
 
+  async function handleSavePricePerPlayer() {
+    if (!id) return;
+    try {
+      setSavingPrice(true);
+      const payload = {
+        pricePerPlayer: priceDraft === '' ? null : Number(priceDraft)
+      };
+      const res = await api.put(`/api/matches/${id}/price-per-player`, payload);
+      setMatch(res.data);
+      setPriceDraft(res.data.pricePerPlayer ?? '');
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Neuspešno čuvanje cene');
+    } finally {
+      setSavingPrice(false);
+    }
+  }
+
+  async function handleTogglePaid(playerId: string, paid: boolean) {
+    if (!id) return;
+    try {
+      setMarkingPaidId(playerId);
+      const res = await api.post(`/api/matches/${id}/mark-paid`, {
+        playerId,
+        paid,
+        method: paid ? paymentMethodDraft : undefined
+      });
+      setMatch(res.data);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Neuspešno ažuriranje plaćanja');
+    } finally {
+      setMarkingPaidId(null);
+    }
+  }
+
   async function handleSubmitRatings() {
     if (!id) return;
     try {
@@ -311,6 +431,12 @@ export default function MatchDetails() {
       await api.post(`/api/matches/${id}/rate`, { ratings });
       setRatingDialogOpen(false);
       setPendingRatingUsers([]);
+
+      await refreshUser();
+      const me = await api.get('/api/auth/me');
+      const avg = typeof me.data?.ratingAvg === 'number' ? me.data.ratingAvg : user?.ratingAvg ?? null;
+      setCelebrationRating(avg);
+      setCelebrationOpen(true);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Neuspešno slanje ocena');
     } finally {
@@ -429,7 +555,7 @@ export default function MatchDetails() {
                 if (!isLastMinute) return null;
                 return (
                   <Chip
-                    label="Last Minute"
+                    label="Hitno traže se igrači"
                     size="small"
                     color="error"
                     sx={{ bgcolor: 'rgba(255,255,255,0.95)', fontWeight: 700 }}
@@ -514,6 +640,20 @@ export default function MatchDetails() {
                   {match.createdBy.name}
                 </Typography>
               </Stack>
+
+              {match.pricePerPlayer != null && (
+                <Stack spacing={1}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <PaymentsIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
+                    <Typography variant="body2" color="text.secondary">
+                      Cena po igraču
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body1" fontWeight={600}>
+                    {formatRsd(match.pricePerPlayer)}
+                  </Typography>
+                </Stack>
+              )}
             </Box>
 
             <Divider />
@@ -530,10 +670,10 @@ export default function MatchDetails() {
                   gap: 1.5,
                 }}
               >
-                {match.players.map((p) => (
-                  (() => {
-                    const reliability = getReliabilityMeta((p as any).reliabilityScore);
-                    return (
+                {match.players.map((p) => {
+                  const badge = getTrustBadge(p.reliabilityScore);
+                  const paid = match.pricePerPlayer != null && isPlayerPaid(match, p._id);
+                  return (
                   <Chip
                     key={p._id}
                     avatar={
@@ -545,15 +685,21 @@ export default function MatchDetails() {
                       <Stack direction="row" spacing={0.75} alignItems="center">
                         <span>{p.name}</span>
                         <Box
-                          sx={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            bgcolor: reliability.color,
-                            display: 'inline-block'
-                          }}
-                          title={reliability.label}
-                        />
+                          component="span"
+                          sx={{ fontSize: '0.75rem', lineHeight: 1 }}
+                          title={`${badge.label} (${p.reliabilityScore ?? 100}%)`}
+                        >
+                          {badge.emoji}
+                        </Box>
+                        {match.pricePerPlayer != null && (
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            sx={{ fontWeight: 700, color: paid ? 'success.main' : 'text.secondary' }}
+                          >
+                            · {paid ? 'plaćeno' : 'duguje'}
+                          </Typography>
+                        )}
                       </Stack>
                     }
                     sx={{
@@ -565,11 +711,192 @@ export default function MatchDetails() {
                       },
                     }}
                   />
-                    );
-                  })()
-                ))}
+                  );
+                })}
               </Box>
             </Box>
+
+            {/* Instant chat — samo prijavljeni igrači */}
+            {user && match.players.some((p) => p._id === user._id) && (
+              <>
+                <Divider />
+                <MatchQuickChat
+                  matchId={match._id}
+                  currentUserId={user._id}
+                  canSend={match.status === 'open' || match.status === 'full'}
+                />
+              </>
+            )}
+
+            {/* Cost splitter — organizer tracks who paid */}
+            {user && match.createdBy._id === user._id && (
+              <>
+                <Divider />
+                <Box>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                    <PaymentsIcon color="primary" />
+                    <Typography variant="subtitle1" fontWeight={700}>
+                      Podela troškova
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Označite ko vam je platio udeo (gotovina na terenu, prenos na račun ili IPS).
+                  </Typography>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }} alignItems={{ sm: 'center' }}>
+                    <TextField
+                      type="number"
+                      label="Cena po igraču (RSD)"
+                      size="small"
+                      value={priceDraft}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') { setPriceDraft(''); return; }
+                        const n = Number(raw);
+                        if (!Number.isNaN(n) && n >= 0) setPriceDraft(n);
+                      }}
+                      inputProps={{ min: 0, step: 50 }}
+                      sx={{ maxWidth: 220 }}
+                    />
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={handleSavePricePerPlayer}
+                      disabled={savingPrice}
+                      startIcon={savingPrice ? <CircularProgress size={16} color="inherit" /> : null}
+                      sx={{ borderRadius: 2, fontWeight: 600 }}
+                    >
+                      Sačuvaj cenu
+                    </Button>
+                  </Stack>
+
+                  {match.pricePerPlayer != null && (
+                    <>
+                      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }} flexWrap="wrap">
+                        <Typography variant="body2" fontWeight={600}>
+                          Naplaćeno:{' '}
+                          {match.players.filter((p) => isPlayerPaid(match, p._id)).length}/{match.players.length}
+                          {' · '}
+                          {formatRsd(
+                            match.players.filter((p) => isPlayerPaid(match, p._id)).length * match.pricePerPlayer
+                          )}
+                          {' / '}
+                          {formatRsd(match.players.length * match.pricePerPlayer)}
+                        </Typography>
+                        <TextField
+                          select
+                          size="small"
+                          label="Način plaćanja"
+                          value={paymentMethodDraft}
+                          onChange={(e) => setPaymentMethodDraft(e.target.value as 'cash' | 'transfer' | 'other')}
+                          sx={{ minWidth: 160 }}
+                        >
+                          <MenuItem value="cash">Gotovina</MenuItem>
+                          <MenuItem value="transfer">Prenos / IPS</MenuItem>
+                          <MenuItem value="other">Ostalo</MenuItem>
+                        </TextField>
+                      </Stack>
+                      <Stack spacing={0.5}>
+                        {match.players.map((p) => {
+                          const paid = isPlayerPaid(match, p._id);
+                          const payment = (match.playerPayments || []).find(
+                            (entry) => paymentPlayerId(entry.playerId) === p._id && entry.paid
+                          );
+                          const isOrganizerRow = p._id === match.createdBy._id;
+                          return (
+                            <Paper
+                              key={p._id}
+                              elevation={0}
+                              sx={{
+                                px: 1.5,
+                                py: 0.5,
+                                borderRadius: 2,
+                                border: '1px solid',
+                                borderColor: paid ? 'success.light' : 'divider',
+                                bgcolor: paid ? 'success.light' : 'background.paper',
+                              }}
+                            >
+                              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                                <FormControlLabel
+                                  control={
+                                    <Checkbox
+                                      checked={paid}
+                                      disabled={markingPaidId === p._id}
+                                      onChange={(e) => handleTogglePaid(p._id, e.target.checked)}
+                                      color="success"
+                                    />
+                                  }
+                                  label={
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                      <Typography variant="body2" fontWeight={600}>
+                                        {p.name}
+                                        {isOrganizerRow ? ' (organizator)' : ''}
+                                      </Typography>
+                                      {paid && payment?.method && (
+                                        <Typography variant="caption" color="text.secondary">
+                                          {PAYMENT_METHOD_LABELS[payment.method] || payment.method}
+                                        </Typography>
+                                      )}
+                                    </Stack>
+                                  }
+                                />
+                                <Typography variant="body2" fontWeight={600} color={paid ? 'success.dark' : 'text.secondary'}>
+                                  {formatRsd(match.pricePerPlayer!)}
+                                </Typography>
+                              </Stack>
+                            </Paper>
+                          );
+                        })}
+                      </Stack>
+                    </>
+                  )}
+                </Box>
+              </>
+            )}
+
+            {user && match.createdBy._id !== user._id && match.pricePerPlayer != null && match.players.some((p) => p._id === user._id) && (
+              <>
+                <Divider />
+                <Alert
+                  severity={isPlayerPaid(match, user._id) ? 'success' : 'info'}
+                  icon={<PaymentsIcon />}
+                  sx={{ borderRadius: 2 }}
+                >
+                  {isPlayerPaid(match, user._id)
+                    ? `Organizator je označio da ste platili svoj udeo (${formatRsd(match.pricePerPlayer)}).`
+                    : `Cena po igraču: ${formatRsd(match.pricePerPlayer)}. Platite organizatoru gotovinom, prenosom ili IPS-om.`}
+                </Alert>
+              </>
+            )}
+
+            {/* Waitlist Section */}
+            {(match.waitlist?.length ?? 0) > 0 && (
+              <>
+                <Divider />
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+                    <HourglassTopIcon sx={{ fontSize: 18, mr: 0.5, verticalAlign: 'middle' }} />
+                    Lista čekanja ({match.waitlist!.length})
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+                    {match.waitlist!.map((p, index) => (
+                      <Chip
+                        key={p._id}
+                        avatar={
+                          <Avatar sx={{ bgcolor: 'warning.main' }}>
+                            {index + 1}
+                          </Avatar>
+                        }
+                        label={p.name}
+                        variant={user?._id === p._id ? 'filled' : 'outlined'}
+                        color={user?._id === p._id ? 'warning' : 'default'}
+                        sx={{ borderRadius: 2 }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              </>
+            )}
 
             {/* Cancellations Section */}
             {match.playerCancellations && match.playerCancellations.length > 0 && (
@@ -669,7 +996,7 @@ export default function MatchDetails() {
           fullWidth
           sx={{ borderRadius: 3, fontWeight: 600 }}
         >
-          Podeli / Share
+          Podeli meč
         </Button>
         {match.status === 'completed' && user && match.players.some((p) => p._id === user._id) && (
           <Button
@@ -769,6 +1096,47 @@ export default function MatchDetails() {
           }}
         >
           Pridruži se meču
+        </Button>
+      ) : isOnWaitlist ? (
+        <Stack spacing={1.5}>
+          <Alert severity="info" icon={<HourglassTopIcon />}>
+            Na listi čekanja — pozicija #{waitlistPosition}
+            {(match.waitlist?.length ?? 0) > 1 ? ` od ${match.waitlist!.length}` : ''}.
+            Kada se mesto oslobodi, automatski ćete biti prijavljeni.
+          </Alert>
+          <Button
+            variant="outlined"
+            color="warning"
+            onClick={leaveWaitlist}
+            fullWidth
+            size="large"
+            sx={{
+              py: 1.5,
+              fontSize: '1rem',
+              fontWeight: 600,
+              borderRadius: 3,
+              borderWidth: 2,
+            }}
+          >
+            Napusti listu čekanja
+          </Button>
+        </Stack>
+      ) : canJoinWaitlist ? (
+        <Button
+          variant="contained"
+          color="warning"
+          onClick={joinWaitlist}
+          fullWidth
+          size="large"
+          startIcon={<HourglassTopIcon />}
+          sx={{
+            py: 1.5,
+            fontSize: '1rem',
+            fontWeight: 600,
+            borderRadius: 3,
+          }}
+        >
+          Stani u red
         </Button>
       ) : null}
       </Stack>
@@ -956,7 +1324,7 @@ export default function MatchDetails() {
                   />
                   <TextField
                     type="number"
-                    label={`Skill (${match.sport}) 1-5`}
+                    label={`Veština (${match.sport}) 1-5`}
                     value={ratingValues[p._id]?.skillLevel ?? 3}
                     inputProps={{ min: 1, max: 5 }}
                     onChange={(e) =>
@@ -983,7 +1351,7 @@ export default function MatchDetails() {
                       }))
                     }
                   >
-                    Fair-play: {ratingValues[p._id]?.fairPlay !== false ? 'Da' : 'Ne'}
+                    Fer-plej: {ratingValues[p._id]?.fairPlay !== false ? 'Da' : 'Ne'}
                   </Button>
                 </Stack>
               </Paper>
@@ -996,6 +1364,93 @@ export default function MatchDetails() {
             {submittingRatings ? 'Slanje...' : 'Sačuvaj ocene'}
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Achievement celebration after rating */}
+      <Dialog
+        open={celebrationOpen}
+        onClose={() => setCelebrationOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            overflow: 'hidden',
+            textAlign: 'center',
+            background: (t) =>
+              `linear-gradient(160deg, ${t.palette.success.dark} 0%, ${t.palette.primary.main} 100%)`,
+            color: 'common.white',
+          },
+        }}
+      >
+        <DialogContent sx={{ py: 5, px: 3 }}>
+          <Box
+            sx={{
+              '@keyframes celebratePop': {
+                '0%': { transform: 'scale(0.4)', opacity: 0 },
+                '60%': { transform: 'scale(1.12)', opacity: 1 },
+                '100%': { transform: 'scale(1)' },
+              },
+              '@keyframes starPulse': {
+                '0%, 100%': { transform: 'scale(1)' },
+                '50%': { transform: 'scale(1.15)' },
+              },
+              animation: 'celebratePop 0.55s ease-out',
+            }}
+          >
+            <StarIcon
+              sx={{
+                fontSize: 72,
+                color: '#fbbf24',
+                mb: 1,
+                animation: 'starPulse 1.4s ease-in-out infinite',
+                filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))',
+              }}
+            />
+            <Typography variant="h4" fontWeight={800} sx={{ mb: 1 }}>
+              Meč završen!
+            </Typography>
+            <Typography variant="h6" fontWeight={600} sx={{ opacity: 0.95, mb: 2 }}>
+              {celebrationRating != null && celebrationRating > 0
+                ? `Tvoj rating je ${celebrationRating.toFixed(1)} ⭐`
+                : 'Hvala što si ocenio saigrače!'}
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.85, mb: 3 }}>
+              Svaka ocena pomaže zajednici da nađe pouzdane igrače.
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="center">
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setCelebrationOpen(false);
+                  navigate('/profil');
+                }}
+                sx={{
+                  bgcolor: 'common.white',
+                  color: 'success.dark',
+                  fontWeight: 700,
+                  borderRadius: 3,
+                  '&:hover': { bgcolor: 'grey.100' },
+                }}
+              >
+                Pogledaj profil
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => setCelebrationOpen(false)}
+                sx={{
+                  borderColor: 'rgba(255,255,255,0.7)',
+                  color: 'common.white',
+                  fontWeight: 700,
+                  borderRadius: 3,
+                  '&:hover': { borderColor: 'common.white', bgcolor: 'rgba(255,255,255,0.1)' },
+                }}
+              >
+                Ostani ovde
+              </Button>
+            </Stack>
+          </Box>
+        </DialogContent>
       </Dialog>
     </Box>
   );

@@ -36,6 +36,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { User } from '../types';
+import { getTrustBadge } from '../lib/reliability';
 
 interface PlayerMatch {
   _id: string;
@@ -51,6 +52,7 @@ interface Player {
   avatarUrl?: string;
   experience?: 'beginner' | 'intermediate' | 'advanced' | 'professional';
   preferredSports?: string[];
+  reliabilityScore?: number;
   matchesJoined: number;
   matches: PlayerMatch[];
 }
@@ -222,7 +224,19 @@ export default function MojiIgraci() {
                         <Typography variant="body2" color="text.secondary">
                           {player.email}
                         </Typography>
-                        <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                        <Stack direction="row" spacing={1} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
+                          {(() => {
+                            const badge = getTrustBadge(player.reliabilityScore);
+                            return (
+                              <Chip
+                                label={`${badge.emoji} ${badge.label}`}
+                                size="small"
+                                color={badge.chipColor}
+                                variant="outlined"
+                                title={`Pouzdanost: ${player.reliabilityScore ?? 100}%`}
+                              />
+                            );
+                          })()}
                           {player.experience && (
                             <Chip
                               label={experienceLabels[player.experience]}

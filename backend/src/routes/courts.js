@@ -3,6 +3,7 @@ const Match = require('../models/Match');
 const Field = require('../models/Field');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
+const { rewardReliabilityForCompletedMatch } = require('../utils/reliability');
 
 const router = express.Router();
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
@@ -156,6 +157,10 @@ router.post('/matches/:id/complete', auth(true), requireCourt, async (req, res) 
     
     match.status = 'completed';
     await match.save();
+
+    // Reward players who successfully played (+2, capped at 100)
+    await rewardReliabilityForCompletedMatch(match.players, User);
+
     const populated = await Match.findById(match._id)
       .populate('fieldId')
       .populate('players', PLAYER_PUBLIC_FIELDS)

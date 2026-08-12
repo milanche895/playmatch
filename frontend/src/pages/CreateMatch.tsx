@@ -35,15 +35,13 @@ import L from "leaflet";
 import api from "../lib/api";
 import { Field, Match } from "../types";
 import { useAuth } from "../context/AuthContext";
-import SportsSoccerIcon from "@mui/icons-material/SportsSoccer";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
-import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import AddIcon from "@mui/icons-material/Add";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
-import HomeIcon from "@mui/icons-material/Home";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 
 // Fix Leaflet icon issue
 // @ts-ignore
@@ -64,6 +62,22 @@ const SPORTS = [
   { value: "badminton", label: "Badminton" },
   { value: "tabletennis", label: "Stoni tenis" },
 ];
+
+const LAST_MATCH_PRESET_KEY = "playmatch_lastMatchPreset";
+
+type LastMatchPreset = {
+  sport: string;
+  isInformal: boolean;
+  fieldId?: string;
+  fieldName?: string;
+  informalLocationName?: string;
+  informalLat?: number;
+  informalLng?: number;
+  minPlayers: number;
+  maxPlayers: number | "";
+  pricePerPlayer: number | "";
+  informalRegistrationDeadlineHours?: number;
+};
 
 function useQuery() {
   const { search } = useLocation();
@@ -109,7 +123,10 @@ export default function CreateMatch() {
   const [selectedDateTime, setSelectedDateTime] = useState<string>("");
   const [minPlayers, setMinPlayers] = useState<number>(10);
   const [maxPlayers, setMaxPlayers] = useState<number | "">("");
+  const [pricePerPlayer, setPricePerPlayer] = useState<number | "">("");
   const [error, setError] = useState<string | null>(null);
+  const [lastPreset, setLastPreset] = useState<LastMatchPreset | null>(null);
+  const [presetApplied, setPresetApplied] = useState(false);
 
   // ── Add Field dialog ──
   const [openAddField, setOpenAddField] = useState(false);
@@ -121,12 +138,22 @@ export default function CreateMatch() {
   const [dialogMapCenter, setDialogMapCenter] = useState<[number, number]>([44.7866, 20.4489]);
   const [dialogMarkerPosition, setDialogMarkerPosition] = useState<[number, number] | null>(null);
 
+  // 2 koraka: lokacija → termin + igrači
   const steps = isInformal
-    ? ["Opiši lokaciju", "Odaberi termin", "Broj igrača"]
-    : ["Izaberi teren", "Odaberi termin", "Broj igrača"];
+    ? ["Lokacija", "Termin i igrači"]
+    : ["Teren", "Termin i igrači"];
 
   // ── Init ──
   useEffect(() => { loadFields(); }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LAST_MATCH_PRESET_KEY);
+      if (raw) setLastPreset(JSON.parse(raw) as LastMatchPreset);
+    } catch {
+      // ignore corrupt preset
+    }
+  }, []);
 
   useEffect(() => {
     const dateTimeParam = query.get("dateTime");
@@ -298,6 +325,54 @@ export default function CreateMatch() {
     setSelectedDateTime("");
     setSelectedDate("");
     setInformalRegistrationDeadlineHours(1);
+    setPresetApplied(false);
+  }
+
+  function applyLastPreset() {
+    if (!lastPreset) return;
+    setIsInformal(lastPreset.isInformal);
+    setSport(lastPreset.sport);
+    setMinPlayers(lastPreset.minPlayers);
+    setMaxPlayers(lastPreset.maxPlayers);
+    setPricePerPlayer(lastPreset.pricePerPlayer);
+    setSelectedDateTime("");
+    setSelectedDate("");
+    setError(null);
+    setPresetApplied(true);
+
+    if (lastPreset.isInformal) {
+      setInformalLocationName(lastPreset.informalLocationName || "");
+      if (lastPreset.informalLat != null && lastPreset.informalLng != null) {
+        const pos: [number, number] = [lastPreset.informalLat, lastPreset.informalLng];
+        setInformalMarkerPosition(pos);
+        setInformalMapCenter(pos);
+      }
+      setInformalRegistrationDeadlineHours(lastPreset.informalRegistrationDeadlineHours || 1);
+      setFieldId("");
+      setActiveStep(1);
+    } else if (lastPreset.fieldId) {
+      setFieldId(lastPreset.fieldId);
+      setActiveStep(1);
+    } else {
+      setActiveStep(0);
+    }
+  }
+
+  function saveLastPreset() {
+    const preset: LastMatchPreset = {
+      sport,
+      isInformal,
+      fieldId: isInformal ? undefined : fieldId,
+      fieldName: isInformal ? undefined : selectedField?.name,
+      informalLocationName: isInformal ? informalLocationName.trim() : undefined,
+      informalLat: isInformal ? informalMarkerPosition?.[0] : undefined,
+      informalLng: isInformal ? informalMarkerPosition?.[1] : undefined,
+      minPlayers,
+      maxPlayers,
+      pricePerPlayer,
+      informalRegistrationDeadlineHours: isInformal ? informalRegistrationDeadlineHours : undefined,
+    };
+    localStorage.setItem(LAST_MATCH_PRESET_KEY, JSON.stringify(preset));
   }
 
   // ── Navigation ──
@@ -315,16 +390,16 @@ export default function CreateMatch() {
         }
       }
     }
-    if (activeStep === 1 && !selectedDateTime) {
-      setError("Molimo odaberite termin");
+    if (activeStep === 1) {
+      if (!selectedDateTime) {
+        setError("Molimo odaberite termin");
+        return;
+      }
+      onSubmit();
       return;
     }
     setError(null);
-    if (activeStep === steps.length - 1) {
-      onSubmit();
-    } else {
-      setActiveStep((prev) => prev + 1);
-    }
+    setActiveStep((prev) => prev + 1);
   };
 
   const handleBack = () => { setActiveStep((prev) => prev - 1); setError(null); };
@@ -346,6 +421,10 @@ export default function CreateMatch() {
         maxPlayers: maxPlayers === "" ? undefined : maxPlayers,
       };
 
+      if (pricePerPlayer !== "" && Number(pricePerPlayer) >= 0) {
+        payload.pricePerPlayer = Number(pricePerPlayer);
+      }
+
       if (isInformal) {
         payload = {
           ...payload,
@@ -362,6 +441,7 @@ export default function CreateMatch() {
       }
 
       const res = await api.post<Match>("/api/matches", payload);
+      saveLastPreset();
       navigate(`/matches/${res.data._id}`);
     } catch (err: any) {
       if (err.response?.status === 401) {
@@ -427,13 +507,71 @@ export default function CreateMatch() {
       case 0:
         return isInformal ? renderStep0Informal() : renderStep0Formal();
       case 1:
-        return isInformal ? renderStep1Informal() : renderStep1Formal();
-      case 2:
-        return renderStep2();
+        return renderStep1Combined();
       default:
         return null;
     }
   };
+
+  function renderPlayersAndPriceFields() {
+    return (
+      <>
+        <Divider sx={{ my: 1 }} />
+        <Typography variant="subtitle2" fontWeight={600}>Broj igrača</Typography>
+        <TextField
+          type="number" label="Minimalni broj igrača" value={minPlayers}
+          inputProps={{ min: 1 }} required fullWidth
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === "") { setMinPlayers(1); return; }
+            const value = Number(raw);
+            if (value >= 1) {
+              setMinPlayers(value);
+              if (typeof maxPlayers === "number" && maxPlayers < value) setMaxPlayers("");
+            }
+          }}
+        />
+        <TextField
+          type="number" label="Maksimalni broj igrača (opciono)" value={maxPlayers}
+          inputProps={{ min: minPlayers }} fullWidth
+          onChange={(e) => {
+            const value = e.target.value === "" ? "" : parseInt(e.target.value);
+            if (value === "" || (!isNaN(value as number) && (value as number) >= minPlayers)) setMaxPlayers(value);
+          }}
+          helperText={maxPlayers === "" ? "Ostavite prazno ako nema maksimuma" : `Maksimum: ${maxPlayers} igrača`}
+        />
+        <Typography variant="subtitle2" fontWeight={600}>Podela troškova (opciono)</Typography>
+        <TextField
+          type="number"
+          label="Cena po igraču (RSD)"
+          value={pricePerPlayer}
+          inputProps={{ min: 0, step: 50 }}
+          fullWidth
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === "") { setPricePerPlayer(""); return; }
+            const value = Number(raw);
+            if (!Number.isNaN(value) && value >= 0) setPricePerPlayer(value);
+          }}
+          helperText="Npr. 400 — prikazuje se u detaljima meča"
+          placeholder="npr. 400"
+        />
+      </>
+    );
+  }
+
+  function renderStep1Combined() {
+    return (
+      <Stack spacing={3}>
+        {isInformal ? renderStep1Informal() : renderStep1Formal()}
+        <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
+          <Stack spacing={2}>
+            {renderPlayersAndPriceFields()}
+          </Stack>
+        </Paper>
+      </Stack>
+    );
+  }
 
   function renderStep0Informal() {
     return (
@@ -743,82 +881,6 @@ export default function CreateMatch() {
     );
   }
 
-  function renderStep2() {
-    return (
-      <Stack spacing={3}>
-        {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-        <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
-          <Typography variant="h6" fontWeight={700} sx={{ mb: 3 }}>Pregled meča</Typography>
-          <Stack spacing={2} sx={{ mb: 4 }}>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: isInformal ? "warning.main" : "primary.main", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
-                {isInformal ? <HomeIcon /> : <LocationOnIcon />}
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary">
-                  {isInformal ? "Privatni teren" : "Teren"}
-                </Typography>
-                <Typography variant="subtitle1" fontWeight={600}>
-                  {isInformal ? informalLocationName : selectedField?.name}
-                </Typography>
-              </Box>
-            </Stack>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
-                <SportsSoccerIcon />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary">Sport</Typography>
-                <Typography variant="subtitle1" fontWeight={600}>
-                  {SPORTS.find((s) => s.value === sport)?.label || sport}
-                </Typography>
-              </Box>
-            </Stack>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: "primary.main", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
-                <AccessTimeIcon />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary">Termin</Typography>
-                <Typography variant="subtitle1" fontWeight={600}>
-                  {isInformal
-                    ? new Date(selectedDateTime).toLocaleString("sr-RS", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-                    : availableTimeSlots.find((s) => s.datetime === selectedDateTime)?.display}
-                </Typography>
-              </Box>
-            </Stack>
-          </Stack>
-          <Divider sx={{ my: 3 }} />
-          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>Broj igrača</Typography>
-          <Stack spacing={3}>
-            <TextField
-              type="number" label="Minimalni broj igrača" value={minPlayers}
-              inputProps={{ min: 1 }} required fullWidth
-              onChange={(e) => {
-                const raw = e.target.value;
-                if (raw === "") { setMinPlayers(1); return; }
-                const value = Number(raw);
-                if (value >= 1) {
-                  setMinPlayers(value);
-                  if (typeof maxPlayers === "number" && maxPlayers < value) setMaxPlayers("");
-                }
-              }}
-            />
-            <TextField
-              type="number" label="Maksimalni broj igrača (opciono)" value={maxPlayers}
-              inputProps={{ min: minPlayers }} fullWidth
-              onChange={(e) => {
-                const value = e.target.value === "" ? "" : parseInt(e.target.value);
-                if (value === "" || (!isNaN(value as number) && (value as number) >= minPlayers)) setMaxPlayers(value);
-              }}
-              helperText={maxPlayers === "" ? "Ostavite prazno ako nema maksimuma" : `Maksimum: ${maxPlayers} igrača`}
-            />
-          </Stack>
-        </Paper>
-      </Stack>
-    );
-  }
-
   return (
     <Box sx={{ maxWidth: 600, mx: "auto" }}>
       {/* Header */}
@@ -854,6 +916,53 @@ export default function CreateMatch() {
           }
         />
       </Paper>
+
+      {/* Clone last match preset */}
+      {lastPreset && !presetApplied && (
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2,
+            mb: 3,
+            borderRadius: 3,
+            border: "1px solid",
+            borderColor: "primary.light",
+            bgcolor: "action.hover",
+          }}
+        >
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }} justifyContent="space-between">
+            <Stack spacing={0.5}>
+              <Typography variant="subtitle2" fontWeight={700}>
+                Kloniraj prošli meč
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {(SPORTS.find((s) => s.value === lastPreset.sport)?.label || lastPreset.sport)}
+                {" · "}
+                {lastPreset.isInformal
+                  ? (lastPreset.informalLocationName || "Privatni teren")
+                  : (lastPreset.fieldName || "Teren")}
+                {" · "}
+                {lastPreset.minPlayers}
+                {lastPreset.maxPlayers !== "" ? `–${lastPreset.maxPlayers}` : "+"} igrača
+              </Typography>
+            </Stack>
+            <Button
+              variant="contained"
+              startIcon={<ContentCopyIcon />}
+              onClick={applyLastPreset}
+              sx={{ borderRadius: 2, fontWeight: 700, flexShrink: 0 }}
+            >
+              Primeni postavke
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+
+      {presetApplied && (
+        <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setPresetApplied(false)}>
+          Postavke prethodnog meča su primenjene — samo odaberi novi termin.
+        </Alert>
+      )}
 
       {/* Stepper */}
       <Stepper activeStep={activeStep} sx={{ mb: 4 }}>

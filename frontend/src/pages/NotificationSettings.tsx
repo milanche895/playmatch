@@ -20,7 +20,6 @@ import {
   ArrowBack as ArrowBackIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
 import {
   subscribeToPushNotifications,
@@ -30,7 +29,6 @@ import {
 } from '../lib/notifications';
 
 export default function NotificationSettings() {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
@@ -147,7 +145,6 @@ export default function NotificationSettings() {
   }
 
   const isSubscribed = status?.subscribed ?? false;
-  const permissionGranted = status?.permission === 'granted';
 
   return (
     <Box sx={{ maxWidth: 600, mx: 'auto' }}>
@@ -238,7 +235,7 @@ export default function NotificationSettings() {
                 variant="contained"
                 startIcon={<NotificationsIcon />}
                 onClick={handleEnableNotifications}
-                disabled={subscribing || !permissionGranted}
+                disabled={subscribing || status?.permission === 'denied'}
                 fullWidth
                 size="large"
                 sx={{ py: 1.5, borderRadius: 3 }}
@@ -274,11 +271,14 @@ export default function NotificationSettings() {
               </>
             )}
 
-            {!permissionGranted && (
+            {status?.permission === 'denied' && (
               <Alert severity="warning" sx={{ mt: 2, borderRadius: 2 }}>
-                {status?.permission === 'denied' 
-                  ? 'Dozvola za obaveštenja je odbijena. Molimo omogućite je u postavkama pretraživača.'
-                  : 'Prvo morate dozvoliti obaveštenja u vašem pretraživaču.'}
+                Dozvola za obaveštenja je odbijena. Omogućite je u postavkama pretraživača za ovaj sajt.
+              </Alert>
+            )}
+            {status?.permission === 'default' && !isSubscribed && (
+              <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
+                Kliknite „Omogući obaveštenja“ — pretraživač će tražiti dozvolu za prikaz obaveštenja.
               </Alert>
             )}
           </Stack>

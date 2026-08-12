@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Paper,
@@ -12,12 +12,14 @@ import {
   Divider,
   Card,
   CardContent,
-  IconButton,
-  Tooltip,
   Fab,
   RadioGroup,
   FormControlLabel,
   Radio,
+  ToggleButton,
+  ToggleButtonGroup,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -25,9 +27,12 @@ import L from 'leaflet';
 import api from '../lib/api';
 import { Match, Field } from '../types';
 import { useAuth } from '../context/AuthContext';
+import {
+  subscribeToPushNotifications,
+  unsubscribeFromPushNotifications,
+} from '../lib/notifications';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import PeopleIcon from '@mui/icons-material/People';
 import AddIcon from '@mui/icons-material/Add';
 import InfoIcon from '@mui/icons-material/Info';
@@ -35,6 +40,8 @@ import MyLocationIcon from '@mui/icons-material/MyLocation';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
+import MapIcon from '@mui/icons-material/Map';
+import ViewListIcon from '@mui/icons-material/ViewList';
 
 // Custom icons using HTML div icons for better customization
 function createCustomIcon(color: string) {
@@ -94,32 +101,93 @@ function formatPlayersCount(match: Match): string {
   return `${current}/${min}`;
 }
 
-// Match Card Component
+function formatRelativeMatchTime(dateTimeString: string): string {
+  const matchDate = new Date(dateTimeString);
+  const now = new Date();
+  const timeStr = matchDate.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit' });
+
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfMatchDay = new Date(matchDate.getFullYear(), matchDate.getMonth(), matchDate.getDate());
+  const dayDiff = Math.round((startOfMatchDay.getTime() - startOfToday.getTime()) / (24 * 60 * 60 * 1000));
+
+  if (dayDiff === 0) return `Danas u ${timeStr}`;
+  if (dayDiff === 1) return `Sutra u ${timeStr}`;
+  if (dayDiff === -1) return `Juče u ${timeStr}`;
+
+  const dateStr = matchDate.toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit' });
+  return `${dateStr} u ${timeStr}`;
+}
+
+function getMatchLocationName(match: Match): string {
+  if (match.isInformal) return match.informalLocation?.name || 'Privatni teren';
+  return typeof match.fieldId === 'object' && match.fieldId?.name ? match.fieldId.name : 'Nepoznat teren';
+}
+
+function getMatchCoords(match: Match): { lat: number; lng: number } | null {
+  if (match.isInformal) {
+    if (match.informalLocation?.lat == null || match.informalLocation?.lng == null) return null;
+    return { lat: match.informalLocation.lat, lng: match.informalLocation.lng };
+  }
+  if (typeof match.fieldId === 'object' && match.fieldId?.lat != null && match.fieldId?.lng != null) {
+    return { lat: match.fieldId.lat, lng: match.fieldId.lng };
+  }
+  return null;
+}
+
+function getSpotsNeededLabel(match: Match): string {
+  const current = match.players.length;
+  const min = match.minPlayers ?? match.playersNeeded ?? 0;
+  const max = match.maxPlayers;
+  const target = max || min;
+  const remaining = Math.max(0, target - current);
+
+  if (remaining === 0) return 'Meč je popunjen';
+  if (remaining === 1) return 'Fali još 1 igrač!';
+  return `Fali još ${remaining} igrača!`;
+}
+
+function translateMatchStatus(status: string, courtApproval?: string): string {
+  if (courtApproval === 'pending') return 'Na čekanju';
+  switch (status) {
+    case 'open': return 'Otvoren';
+    case 'full': return 'Pun';
+    case 'completed': return 'Završen';
+    case 'failed': return 'Neuspešan';
+    case 'otkazano': return 'Otkazan';
+    default: return status;
+  }
+}
+
+const VIEW_MODE_KEY = 'playmatch_home_view';
+
+// Match Card Component — optimized for list "first screen action"
 function MatchCard({
   match,
   user,
   isUserInMatch,
+  isOnWaitlist,
   onJoin,
+  onJoinWaitlist,
   userLocation,
+  joiningId,
 }: {
   match: Match;
   user: any;
   isUserInMatch: boolean;
+  isOnWaitlist: boolean;
   onJoin: (id: string) => void;
+  onJoinWaitlist: (id: string) => void;
   userLocation: [number, number] | null;
+  joiningId?: string | null;
 }) {
   const navigate = useNavigate();
+  const isFull = match.players.length >= (match.maxPlayers || 100);
+  const isJoining = joiningId === match._id;
 
   const getStatusColor = () => {
     if (match.status === 'full') return 'warning';
     if (match.courtApproval === 'pending') return 'default';
     return 'success';
-  };
-
-  const getStatusLabel = () => {
-    if (match.courtApproval === 'pending') return 'Na čekanju';
-    if (match.status === 'full') return 'Pun';
-    return 'Otvoren';
   };
 
   const isLastMinute = (() => {
@@ -128,12 +196,23 @@ function MatchCard({
     return startsInMs > 0 && startsInMs <= 4 * 60 * 60 * 1000 && freeSlots > 0;
   })();
 
+  const coords = getMatchCoords(match);
+  const locationName = getMatchLocationName(match);
+  const distanceKm =
+    userLocation && coords
+      ? getDistance(userLocation[0], userLocation[1], coords.lat, coords.lng)
+      : null;
+  const locationLine =
+    distanceKm != null
+      ? `${locationName} · ${distanceKm.toFixed(1)} km`
+      : locationName;
+
   return (
     <Card
       elevation={0}
       sx={{
         border: '1px solid',
-        borderColor: 'divider',
+        borderColor: isLastMinute ? 'error.light' : 'divider',
         borderRadius: 3,
         overflow: 'hidden',
         transition: 'all 0.2s ease',
@@ -144,129 +223,108 @@ function MatchCard({
       }}
     >
       <CardContent sx={{ p: 2.5 }}>
-        <Stack spacing={2}>
-          {/* Header */}
-          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-            <Box>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+        <Stack spacing={1.75}>
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }} flexWrap="wrap" useFlexGap>
                 <SportsSoccerIcon sx={{ color: 'primary.main', fontSize: 18 }} />
-                <Typography variant="body2" fontWeight={600} color="primary.main" sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <Typography variant="body2" fontWeight={700} color="primary.main" sx={{ textTransform: 'capitalize' }}>
                   {match.sport}
                 </Typography>
+                <Typography variant="body2" color="text.secondary">·</Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {formatRelativeMatchTime(match.dateTime)}
+                </Typography>
               </Stack>
-              <Typography variant="subtitle1" fontWeight={700}>
-                {match.isInformal
-                  ? (match.informalLocation?.name || 'Privatni teren')
-                  : (typeof match.fieldId === 'object' ? match.fieldId.name : 'Nepoznat teren')}
-              </Typography>
+              <Stack direction="row" spacing={0.75} alignItems="center">
+                <LocationOnIcon sx={{ color: 'text.secondary', fontSize: 18, flexShrink: 0 }} />
+                <Typography variant="subtitle1" fontWeight={700} noWrap>
+                  {locationLine}
+                </Typography>
+              </Stack>
             </Box>
-            {userLocation && (() => {
-              const lat = match.isInformal ? match.informalLocation?.lat : (typeof match.fieldId === 'object' ? match.fieldId?.lat : undefined);
-              const lng = match.isInformal ? match.informalLocation?.lng : (typeof match.fieldId === 'object' ? match.fieldId?.lng : undefined);
-              if (!lat || !lng) return null;
-              return (
-              <Chip
-                icon={<LocationOnIcon sx={{ fontSize: 14 }} />}
-                label={`${getDistance(
-                  userLocation[0],
-                  userLocation[1],
-                  lat,
-                  lng
-                ).toFixed(1)} km`}
-                size="small"
-                sx={{
-                  bgcolor: 'action.hover',
-                  fontWeight: 600,
-                  '& .MuiChip-icon': {
-                    color: 'text.secondary',
-                  },
-                }}
-              />
-              );
-            })()}
+            <Chip
+              label={translateMatchStatus(match.status, match.courtApproval)}
+              size="small"
+              color={getStatusColor() as any}
+              sx={{ fontWeight: 600, flexShrink: 0 }}
+            />
           </Stack>
 
-          {/* Meta info */}
-          <Stack spacing={1}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <AccessTimeIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
-              <Typography variant="body2" color="text.secondary">
-                {new Date(match.dateTime).toLocaleString('sr-RS', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </Typography>
-            </Stack>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <PeopleIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
-              <Typography variant="body2" color="text.secondary">
-                {formatPlayersCount(match)} igrača
-              </Typography>
-            </Stack>
-          </Stack>
-
-          {/* Status and Actions */}
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-            <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Chip
+              icon={<PeopleIcon sx={{ fontSize: 16 }} />}
+              label={getSpotsNeededLabel(match)}
+              size="small"
+              color={isFull ? 'default' : 'warning'}
+              sx={{ fontWeight: 700 }}
+            />
+            <Typography variant="caption" color="text.secondary">
+              {formatPlayersCount(match)}
+            </Typography>
+            {isLastMinute && (
+              <Chip label="Hitno traže se igrači" size="small" color="error" sx={{ fontWeight: 700 }} />
+            )}
+            {isUserInMatch && (
               <Chip
-                label={getStatusLabel()}
+                icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
+                label="Pridružen"
                 size="small"
-                color={getStatusColor() as any}
+                color="success"
                 sx={{ fontWeight: 600 }}
               />
-              {isLastMinute && (
-                <Chip
-                  label="Last Minute"
-                  size="small"
-                  color="error"
-                  sx={{ fontWeight: 700 }}
-                />
-              )}
-              {isUserInMatch && (
-                <Chip
-                  icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
-                  label="Pridružen"
-                  size="small"
-                  color="success"
-                  sx={{ fontWeight: 600 }}
-                />
-              )}
-            </Stack>
+            )}
+            {isOnWaitlist && (
+              <Chip label="Na listi čekanja" size="small" color="warning" sx={{ fontWeight: 600 }} />
+            )}
+          </Stack>
 
+          <Stack direction="row" spacing={1}>
+            {!isUserInMatch && user?.role !== 'court' && (
+              isOnWaitlist ? (
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  fullWidth
+                  onClick={() => navigate(`/matches/${match._id}`)}
+                  sx={{ borderRadius: 2, fontWeight: 700 }}
+                >
+                  Na listi čekanja
+                </Button>
+              ) : isFull ? (
+                <Button
+                  variant="contained"
+                  color="warning"
+                  fullWidth
+                  disabled={isJoining}
+                  onClick={() => onJoinWaitlist(match._id)}
+                  sx={{ borderRadius: 2, fontWeight: 700 }}
+                >
+                  {isJoining ? 'Prijavljivanje...' : 'Stani u red'}
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  fullWidth
+                  disabled={isJoining}
+                  onClick={() => onJoin(match._id)}
+                  sx={{ borderRadius: 2, fontWeight: 700 }}
+                >
+                  {isJoining ? 'Prijavljivanje...' : 'Prijavi se'}
+                </Button>
+              )
+            )}
             <Button
-              variant="contained"
-              size="small"
+              variant="outlined"
+              size="medium"
               endIcon={<ArrowForwardIcon />}
               onClick={() => navigate(`/matches/${match._id}`)}
-              sx={{
-                borderRadius: 2,
-                textTransform: 'none',
-                fontWeight: 600,
-              }}
+              sx={{ borderRadius: 2, fontWeight: 600, flexShrink: 0, minWidth: isUserInMatch || user?.role === 'court' ? '100%' : undefined }}
+              fullWidth={isUserInMatch || user?.role === 'court'}
             >
               Detalji
             </Button>
           </Stack>
-
-          {/* Join button for non-members - allow joining until maxPlayers is reached */}
-          {!isUserInMatch && user?.role !== 'court' && (
-            <Button
-              variant="outlined"
-              fullWidth
-              onClick={() => onJoin(match._id)}
-              disabled={match.players.length >= (match.maxPlayers || match.playersNeeded || 100)}
-              sx={{
-                borderRadius: 2,
-                fontWeight: 600,
-              }}
-            >
-              {match.players.length >= (match.maxPlayers || match.playersNeeded || 100) 
-                ? 'Meč je pun' 
-                : 'Pridruži se meču'}
-            </Button>
-          )}
         </Stack>
       </CardContent>
     </Card>
@@ -276,6 +334,8 @@ function MatchCard({
 export default function Home() {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [allFieldMatches, setAllFieldMatches] = useState<Record<string, Match[]>>({});
@@ -287,6 +347,12 @@ export default function Home() {
   const [savingNotificationPreference, setSavingNotificationPreference] = useState(false);
   const [notificationPreferenceError, setNotificationPreferenceError] = useState<string | null>(null);
   const [notificationPreferenceSuccess, setNotificationPreferenceSuccess] = useState<string | null>(null);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'map'>(() => {
+    const saved = localStorage.getItem(VIEW_MODE_KEY);
+    if (saved === 'map' || saved === 'list') return saved;
+    return 'list';
+  });
 
   // Use user's notification radius if available (convert km to meters for map), default 10km
   const effectiveRadius = user?.notificationRadius || 10;
@@ -405,48 +471,68 @@ export default function Home() {
       return;
     }
     try {
+      setJoiningId(matchId);
       const res = await api.post(`/api/matches/${matchId}/join`);
-      const updatedMatch = res.data;
-
-      const updatedAllMatches = allMatches.map(m => m._id === matchId ? updatedMatch : m);
-      setAllMatches(updatedAllMatches);
-
-      if (updatedMatch.fieldId) {
-        const fieldId = typeof updatedMatch.fieldId === 'object' ? updatedMatch.fieldId._id : updatedMatch.fieldId;
-        setAllFieldMatches(prev => {
-          const updated = { ...prev };
-          if (!updated[fieldId]) {
-            updated[fieldId] = [];
-          }
-          const fieldMatches = updated[fieldId];
-          const matchIndex = fieldMatches.findIndex(m => m._id === matchId);
-          if (matchIndex >= 0) {
-            fieldMatches[matchIndex] = updatedMatch;
-          } else {
-            if (updatedMatch.status !== 'otkazano' && updatedMatch.courtApproval !== 'rejected') {
-              fieldMatches.push(updatedMatch);
-            }
-          }
-          return updated;
-        });
-      }
-
-      const filteredMatches = updatedAllMatches.filter((m: Match) => {
-        if ((m.status !== 'open' && m.status !== 'full') || m.courtApproval === 'rejected') return false;
-        const lat = m.isInformal ? m.informalLocation?.lat : m.fieldId?.lat;
-        const lng = m.isInformal ? m.informalLocation?.lng : m.fieldId?.lng;
-        if (!lat || !lng) return false;
-        if (userLocation) {
-          const distance = getDistance(userLocation[0], userLocation[1], lat, lng);
-          return distance <= effectiveRadius;
-        }
-        return true;
-      });
-      setMatches(filteredMatches);
+      applyUpdatedMatch(res.data);
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || 'Neuspešno pridruživanje meču';
       alert(errorMsg);
+    } finally {
+      setJoiningId(null);
     }
+  }
+
+  async function handleJoinWaitlist(matchId: string) {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    try {
+      setJoiningId(matchId);
+      const res = await api.post(`/api/matches/${matchId}/waitlist`);
+      applyUpdatedMatch(res.data);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Neuspešno stajanje u red');
+    } finally {
+      setJoiningId(null);
+    }
+  }
+
+  function applyUpdatedMatch(updatedMatch: Match) {
+    const matchId = updatedMatch._id;
+    const updatedAllMatches = allMatches.map((m) => (m._id === matchId ? updatedMatch : m));
+    setAllMatches(updatedAllMatches);
+
+    if (updatedMatch.fieldId) {
+      const fieldId = typeof updatedMatch.fieldId === 'object' ? updatedMatch.fieldId._id : updatedMatch.fieldId;
+      setAllFieldMatches((prev) => {
+        const updated = { ...prev };
+        if (!updated[fieldId]) {
+          updated[fieldId] = [];
+        }
+        const fieldMatches = updated[fieldId];
+        const matchIndex = fieldMatches.findIndex((m) => m._id === matchId);
+        if (matchIndex >= 0) {
+          fieldMatches[matchIndex] = updatedMatch;
+        } else if (updatedMatch.status !== 'otkazano' && updatedMatch.courtApproval !== 'rejected') {
+          fieldMatches.push(updatedMatch);
+        }
+        return updated;
+      });
+    }
+
+    const filteredMatches = updatedAllMatches.filter((m: Match) => {
+      if ((m.status !== 'open' && m.status !== 'full') || m.courtApproval === 'rejected') return false;
+      const lat = m.isInformal ? m.informalLocation?.lat : m.fieldId?.lat;
+      const lng = m.isInformal ? m.informalLocation?.lng : m.fieldId?.lng;
+      if (!lat || !lng) return false;
+      if (userLocation) {
+        const distance = getDistance(userLocation[0], userLocation[1], lat, lng);
+        return distance <= effectiveRadius;
+      }
+      return true;
+    });
+    setMatches(filteredMatches);
   }
 
   async function handleSaveNotificationPreference() {
@@ -463,24 +549,41 @@ export default function Home() {
           12000,
           'Čuvanje podešavanja traje predugo. Pokušajte ponovo.'
         );
+        try {
+          await subscribeToPushNotifications();
+          setNotificationPreferenceSuccess(
+            'Obaveštenja su omogućena. Dobijaćete push obaveštenja o novim mečevima u blizini.'
+          );
+        } catch (pushErr: any) {
+          setNotificationPreferenceSuccess(
+            'Preferenca je sačuvana. Za push obaveštenja u pozadini, omogućite dozvolu u pretraživaču ili na stranici postavki obaveštenja.'
+          );
+          if (pushErr?.message && !pushErr.message.includes('odbijena')) {
+            setNotificationPreferenceError(pushErr.message);
+          }
+        }
         await withTimeout(
           refreshUser(),
           12000,
           'Osvežavanje profila traje predugo. Pokušajte ponovo.'
         );
-        setNotificationPreferenceSuccess('Obaveštenja su omogućena. Dobijaćete obaveštenja o novim mečevima u blizini.');
       } else {
         await withTimeout(
           api.put('/api/players/profile', { notificationEnabled: false }),
           12000,
           'Čuvanje podešavanja traje predugo. Pokušajte ponovo.'
         );
+        try {
+          await unsubscribeFromPushNotifications();
+        } catch {
+          // Nema aktivne pretplate — ignoriši
+        }
         await withTimeout(
           refreshUser(),
           12000,
           'Osvežavanje profila traje predugo. Pokušajte ponovo.'
         );
-        setNotificationPreferenceSuccess('Obaveštenja su i dalje isključena.');
+        setNotificationPreferenceSuccess('Obaveštenja su isključena.');
       }
     } catch (err: any) {
       const message = err.response?.data?.message || err.message;
@@ -498,6 +601,11 @@ export default function Home() {
     return match.players.some(p => p._id === user._id);
   }
 
+  function isUserOnWaitlist(match: Match): boolean {
+    if (!user) return false;
+    return (match.waitlist || []).some((p) => p._id === user._id);
+  }
+
   function isToday(dateTimeString: string): boolean {
     const matchDate = new Date(dateTimeString);
     const today = new Date();
@@ -508,35 +616,68 @@ export default function Home() {
     );
   }
 
-  const formatDateTimeForURL = (dateTimeString: string): string => {
-    const date = new Date(dateTimeString);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = '00';
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
-
   const todaysMatches = matches.filter(m => isToday(m.dateTime));
-  const upcomingInformalMatches = matches
-    .filter((m) => m.isInformal && m.informalLocation?.lat && m.informalLocation?.lng)
-    .filter((m) => (m.status === 'open' || m.status === 'full') && m.courtApproval !== 'rejected')
-    .filter((m) => new Date(m.dateTime).getTime() > Date.now())
+  const upcomingMatches = [...matches]
+    .filter((m) => new Date(m.dateTime).getTime() > Date.now() - 60 * 60 * 1000)
     .sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
+
+  const handleViewModeChange = (_: MouseEvent<HTMLElement>, next: 'list' | 'map' | null) => {
+    if (!next) return;
+    setViewMode(next);
+    localStorage.setItem(VIEW_MODE_KEY, next);
+  };
 
   return (
     <Box sx={{ position: 'relative' }}>
       {/* Header Section */}
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" fontWeight={700} sx={{ mb: 1 }}>
-          Današnji mečevi
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          {user
-            ? `Pronađite mečeve u vašoj blizini${userLocation ? ` (unutar ${effectiveRadius}km)` : ''}`
-            : 'Pregledajte dostupne mečeve i terene. Prijavite se da biste se pridružili meču.'}
-        </Typography>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'stretch', sm: 'flex-start' }}
+          spacing={2}
+        >
+          <Box>
+            <Typography variant="h4" fontWeight={700} sx={{ mb: 1 }}>
+              Mečevi u blizini
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              {user
+                ? `Pronađite mečeve u vašoj blizini${userLocation ? ` (unutar ${effectiveRadius} km)` : ''}`
+                : 'Pregledajte dostupne mečeve i terene. Prijavite se da biste se pridružili meču.'}
+            </Typography>
+          </Box>
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={handleViewModeChange}
+            size="small"
+            sx={{
+              alignSelf: { xs: 'stretch', sm: 'flex-start' },
+              bgcolor: 'background.paper',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 2,
+              '& .MuiToggleButton-root': {
+                px: 2,
+                py: 1,
+                textTransform: 'none',
+                fontWeight: 700,
+                border: 0,
+                borderRadius: 2,
+              },
+            }}
+          >
+            <ToggleButton value="list" aria-label="Prikaz liste">
+              <ViewListIcon sx={{ mr: 1, fontSize: 20 }} />
+              Lista
+            </ToggleButton>
+            <ToggleButton value="map" aria-label="Prikaz mape">
+              <MapIcon sx={{ mr: 1, fontSize: 20 }} />
+              Mapa
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
       </Box>
 
       {/* Alerts */}
@@ -629,12 +770,50 @@ export default function Home() {
       {!loading && matches.length === 0 && (
         <Alert severity="info" sx={{ mb: 3, borderRadius: 3 }}>
           {user && userLocation
-            ? `Nema aktivnih mečeva unutar ${effectiveRadius}km. Proširite pretragu ili kreirajte novi meč!`
+            ? `Nema aktivnih mečeva unutar ${effectiveRadius} km. Proširite pretragu ili kreirajte novi meč!`
             : 'Nema aktivnih mečeva u ovom trenutku.'}
         </Alert>
       )}
 
+      {/* List View — first-screen action */}
+      {!loading && viewMode === 'list' && upcomingMatches.length > 0 && (
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
+            {todaysMatches.length > 0
+              ? `Danas (${todaysMatches.length}) · ukupno ${upcomingMatches.length}`
+              : `Predstojeći mečevi (${upcomingMatches.length})`}
+          </Typography>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: '1fr',
+                sm: 'repeat(2, 1fr)',
+                md: 'repeat(2, 1fr)',
+                lg: 'repeat(3, 1fr)',
+              },
+              gap: 2,
+            }}
+          >
+            {upcomingMatches.map((match) => (
+              <MatchCard
+                key={match._id}
+                match={match}
+                user={user}
+                isUserInMatch={isUserInMatch(match)}
+                isOnWaitlist={isUserOnWaitlist(match)}
+                onJoin={handleJoinMatch}
+                onJoinWaitlist={handleJoinWaitlist}
+                userLocation={userLocation}
+                joiningId={joiningId}
+              />
+            ))}
+          </Box>
+        </Box>
+      )}
+
       {/* Map Section */}
+      {!loading && viewMode === 'map' && (
       <Paper
         elevation={0}
         sx={{
@@ -653,7 +832,7 @@ export default function Home() {
             </Typography>
           </Stack>
         </Box>
-        <Box sx={{ height: { xs: '50vh', md: '60vh' } }}>
+        <Box sx={{ height: { xs: isMobile ? '55vh' : '50vh', md: '60vh' } }}>
           <MapContainer
             center={mapCenter}
             zoom={userLocation ? 13 : 12}
@@ -810,7 +989,7 @@ export default function Home() {
                                       color={match.status === 'full' ? 'warning' : 'primary'}
                                     />
                                     <Chip
-                                      label={match.courtApproval === 'pending' ? 'Na čekanju' : match.status}
+                                      label={match.courtApproval === 'pending' ? 'Na čekanju' : translateMatchStatus(match.status)}
                                       size="small"
                                       color={match.courtApproval === 'pending' ? 'default' : 'success'}
                                     />
@@ -924,7 +1103,7 @@ export default function Home() {
                                   >
                                     Detalji
                                   </Button>
-                                  {match.players.length < (match.maxPlayers || match.playersNeeded || 100) && !isUserInMatch(match) && user?.role !== 'court' && (
+                                  {!isUserInMatch(match) && user?.role !== 'court' && (
                                     !user ? (
                                       <Button
                                         variant="contained"
@@ -934,6 +1113,27 @@ export default function Home() {
                                         fullWidth
                                       >
                                         Prijavi se
+                                      </Button>
+                                    ) : isUserOnWaitlist(match) ? (
+                                      <Button
+                                        variant="outlined"
+                                        color="warning"
+                                        size="small"
+                                        component={Link}
+                                        to={`/matches/${match._id}`}
+                                        fullWidth
+                                      >
+                                        Na listi
+                                      </Button>
+                                    ) : match.players.length >= (match.maxPlayers || 100) ? (
+                                      <Button
+                                        variant="contained"
+                                        color="warning"
+                                        size="small"
+                                        onClick={() => handleJoinWaitlist(match._id)}
+                                        fullWidth
+                                      >
+                                        Stani u red
                                       </Button>
                                     ) : (
                                       <Button
@@ -992,10 +1192,18 @@ export default function Home() {
                         <Button variant="outlined" size="small" component={Link} to={`/matches/${match._id}`} fullWidth>
                           Detalji
                         </Button>
-                        {match.players.length < (match.maxPlayers || match.playersNeeded || 100) && !isUserInMatch(match) && user?.role !== 'court' && (
+                        {!isUserInMatch(match) && user?.role !== 'court' && (
                           !user ? (
                             <Button variant="contained" size="small" component={Link} to="/login" fullWidth>
                               Prijavi se
+                            </Button>
+                          ) : isUserOnWaitlist(match) ? (
+                            <Button variant="outlined" color="warning" size="small" component={Link} to={`/matches/${match._id}`} fullWidth>
+                              Na listi
+                            </Button>
+                          ) : match.players.length >= (match.maxPlayers || 100) ? (
+                            <Button variant="contained" color="warning" size="small" onClick={() => handleJoinWaitlist(match._id)} fullWidth>
+                              Stani u red
                             </Button>
                           ) : (
                             <Button variant="contained" size="small" onClick={() => handleJoinMatch(match._id)} fullWidth>
@@ -1012,41 +1220,13 @@ export default function Home() {
           </MapContainer>
         </Box>
       </Paper>
-      {todaysMatches.length > 0 && (
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
-            Današnji mečevi u blizini
-          </Typography>
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: 'repeat(2, 1fr)',
-                md: 'repeat(3, 1fr)',
-              },
-              gap: 3,
-            }}
-          >
-            {todaysMatches.slice(0, 6).map((match) => (
-              <MatchCard
-                key={match._id}
-                match={match}
-                user={user}
-                isUserInMatch={isUserInMatch(match)}
-                onJoin={handleJoinMatch}
-                userLocation={userLocation}
-              />
-            ))}
-          </Box>
-        </Box>
       )}
 
       {/* Floating Action Button for creating matches */}
       {user && user.role === 'player' && (
         <Fab
           color="primary"
-          aria-label="add"
+          aria-label="Kreiraj meč"
           onClick={() => navigate('/create')}
           sx={{
             position: 'fixed',

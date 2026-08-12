@@ -40,6 +40,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { User, PlayerAnalytics } from '../types';
+import { getTrustBadge } from '../lib/reliability';
 
 export default function PlayerProfile() {
   const { user: currentUser, refreshUser } = useAuth();
@@ -159,7 +160,7 @@ export default function PlayerProfile() {
 
       setSuccess('Slika profila je uspešno ažurirana!');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Greška pri upload-u slike');
+      setError(err.response?.data?.message || 'Greška pri otpremanju slike');
     } finally {
       setUploadingAvatar(false);
       // Reset file input
@@ -195,7 +196,7 @@ export default function PlayerProfile() {
         <span>
           Nema aktivne pretplate na push notifikacije.{' '}
           <Link to="/notification-settings" style={{ color: 'inherit', fontWeight: 600, textDecoration: 'underline' }}>
-            Otvori Notification Settings
+            Otvori postavke obaveštenja
           </Link>{' '}
           da se pretplatiš.
         </span>
@@ -489,12 +490,15 @@ export default function PlayerProfile() {
                   </Paper>
 
                   {/* Reliability Score */}
+                  {(() => {
+                    const badge = getTrustBadge(analytics.reliabilityScore);
+                    return (
                   <Paper
                     elevation={0}
                     sx={{
                       p: 2.5,
                       borderRadius: 3,
-                      bgcolor: analytics.reliabilityScore >= 80 ? 'success.light' : analytics.reliabilityScore >= 60 ? 'warning.light' : 'error.light',
+                      bgcolor: badge.bgColor,
                       color: 'white',
                     }}
                   >
@@ -504,7 +508,12 @@ export default function PlayerProfile() {
                     <Typography variant="h3" fontWeight={700}>
                       {analytics.reliabilityScore}%
                     </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, opacity: 0.95 }}>
+                      {badge.emoji} {badge.label}
+                    </Typography>
                   </Paper>
+                    );
+                  })()}
 
                   {/* Stats Grid */}
                   <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
@@ -654,7 +663,7 @@ export default function PlayerProfile() {
                   {formData.notificationEnabled && (
                     <Box>
                       <Typography variant="body2" color="text.secondary" gutterBottom>
-                        Radius obaveštenja: {formData.notificationRadius} km
+                        Radijus obaveštenja: {formData.notificationRadius} km
                       </Typography>
                       <Slider
                         value={formData.notificationRadius}
@@ -734,11 +743,11 @@ export default function PlayerProfile() {
                   <Box>
                     <Typography variant="caption" color="text.secondary">Obaveštenja</Typography>
                     <Typography variant="body1">
-                      {user.notificationEnabled ? `Omogućena (${user.notificationRadius || 10} km radius)` : 'Onemogućena'}
+                      {user.notificationEnabled ? `Omogućena (${user.notificationRadius || 10} km radijus)` : 'Onemogućena'}
                     </Typography>
                   </Box>
                   <Box>
-                    <Typography variant="caption" color="text.secondary">Skill level po sportu</Typography>
+                    <Typography variant="caption" color="text.secondary">Nivo veštine po sportu</Typography>
                     <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.75, gap: 1 }}>
                       {(user.sportSkillLevels || []).length > 0 ? (
                         user.sportSkillLevels?.map((entry) => (

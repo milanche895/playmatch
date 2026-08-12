@@ -21,7 +21,7 @@ const fieldRoutes = require('./routes/fields');
 const matchRoutesFactory = require('./routes/matches');
 const courtRoutes = require('./routes/courts');
 const playerRoutes = require('./routes/players');
-const Match = require('./models/Match');
+const { processExpiredMatches } = require('./utils/matchStatus');
 
 const app = express();
 const server = http.createServer(app);
@@ -109,42 +109,17 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 5050;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/playmatch';
 
-// Function to check and mark cancelled matches (otkazano)
+// Function to check and mark expired matches (failed / otkazano)
 async function checkCancelledMatches() {
   try {
-    const now = new Date();
-    // Pronađi aktivne mečeve gde je registrationDeadline prošao
-    // Proverava: ako je now > registrationDeadline, onda je deadline prošao
-    // Filtrirati samo mečeve koji imaju registrationDeadline field
-    const matches = await Match.find({
-      status: { $in: ['open'] },
-      registrationDeadline: { $exists: true, $ne: null} // Proverava da field postoji, nije null, i da je prošao
-    });
-    
-    if (matches.length > 0) {
-      console.log(`🔍 Pronađeno ${matches.length} meč(ev)a sa isteklim rokom za prijavu`);
-      
-      let cancelledCount = 0;
-      // Proveri svaki meč eksplicitno i označi kao otkazano
-      for (const match of matches) {
-        // Proveri da li registrationDeadline postoji i da li je prošao
-        if (match.registrationDeadline && now > match.registrationDeadline) {
-          match.status = 'otkazano';
-          await match.save();
-          io.to(`match:${match._id.toString()}`).emit('match_updated', match);
-          console.log(`  ✓ Meč ${match._id} označen kao otkazano (deadline: ${match.registrationDeadline.toISOString()})`);
-          cancelledCount++;
-        } else {
-          console.log(`  ⚠ Meč ${match._id} nema validan registrationDeadline`);
-        }
-      }
-      
-      console.log(`✅ ${cancelledCount} meč(ev)a označen(o) kao otkazano zbog isteka roka za prijavu`);
+    const { failedCount, cancelledCount, total } = await processExpiredMatches(io);
+    if (total > 0) {
+      console.log(`✅ ${failedCount} meč(ev)a označeno kao failed, ${cancelledCount} kao otkazano`);
     } else {
       console.log('ℹ️  Nema mečeva sa isteklim rokom za prijavu');
     }
   } catch (error) {
-    console.error('❌ Greška pri proveri otkazanih mečeva:', error);
+    console.error('❌ Greška pri proveri isteklih mečeva:', error);
   }
 }
 

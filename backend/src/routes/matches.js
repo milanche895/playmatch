@@ -6,13 +6,148 @@ const User = require('../models/User');
 const auth = require('../middleware/auth');
 const { calculateDistance } = require('../utils/notifications');
 const { sendPushNotifications } = require('../utils/pushNotifications');
+const { processExpiredMatches } = require('../utils/matchStatus');
+const {
+  getReliabilityPenaltyPoints,
+  penalizeReliability,
+  rewardReliabilityForCompletedMatch
+} = require('../utils/reliability');
+const {
+  QUICK_MESSAGE_PRESETS,
+  QUICK_MESSAGE_MAX_LENGTH,
+  QUICK_MESSAGE_MAX_STORED,
+  QUICK_MESSAGE_RATE_LIMIT_MS,
+  isParticipant,
+  formatQuickMessage,
+} = require('../utils/quickMessages');
 
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
 
-function getReliabilityPenaltyPoints(hoursBeforeMatch) {
-  if (hoursBeforeMatch >= 2) return 0;
-  if (hoursBeforeMatch >= 1) return 10;
-  return 15;
+function removePlayerPayment(match, playerId) {
+  if (!match.playerPayments || match.playerPayments.length === 0) return;
+  const id = playerId.toString();
+  match.playerPayments = match.playerPayments.filter(
+    (p) => (p.playerId?._id || p.playerId).toString() !== id
+  );
+}
+
+function getMaxPlayersValue(match) {
+  return match.maxPlayers || 100;
+}
+
+function isMatchAtCapacity(match) {
+  return match.players.length >= getMaxPlayersValue(match);
+}
+
+function getMinPlayersValue(match) {
+  return match.minPlayers || match.playersNeeded || 1;
+}
+
+function applyFullStatus(match) {
+  if (match.players.length >= getMinPlayersValue(match)) {
+    match.status = 'full';
+    if (match.courtApproval === 'pending') {
+      match.courtApproval = 'approved';
+      match.courtApprovedAt = new Date();
+    }
+  }
+}
+
+function applyOpenStatusIfBelowMin(match) {
+  if (match.players.length < getMinPlayersValue(match)) {
+    match.status = 'open';
+    if (!match.isInformal && match.courtApproval === 'approved') {
+      match.courtApproval = 'pending';
+      match.courtApprovedAt = undefined;
+    }
+  }
+}
+
+async function notifyWaitlistPromotion(user, match) {
+  try {
+    if (!user?.pushSubscription?.endpoint) return;
+
+    const locationName = match.isInformal
+      ? (match.informalLocation?.name || 'Privatni teren')
+      : (match.fieldId?.name || 'Teren');
+    const matchDate = new Date(match.dateTime);
+    const dateStr = matchDate.toLocaleDateString('sr-RS', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const result = await sendPushNotifications([user.pushSubscription], {
+      title: 'Mesto se oslobodilo! ⚽',
+      body: `Automatski ste prijavljeni na meč: ${locationName} — ${dateStr}`,
+      url: `/matches/${match._id}`,
+      matchId: match._id.toString(),
+      image: '/icons/icon-192.png'
+    });
+
+    if (result.expiredSubscriptions?.length > 0) {
+      await User.findByIdAndUpdate(user._id, { $unset: { pushSubscription: 1 } });
+    }
+  } catch (error) {
+    console.error('[Waitlist] Failed to notify promoted player:', error.message);
+  }
+}
+
+/**
+ * Promote the first eligible waitlisted player into players[].
+ * Mutates match in memory; caller must save.
+ * @returns {Promise<string|null>} promoted user id or null
+ */
+async function promoteFromWaitlist(match) {
+  if (!Array.isArray(match.waitlist) || match.waitlist.length === 0) return null;
+  if (isMatchAtCapacity(match)) return null;
+
+  const creator = await User.findById(match.createdBy).select('blockedPlayers');
+  const blocked = new Set((creator?.blockedPlayers || []).map((id) => id.toString()));
+
+  while (match.waitlist.length > 0 && !isMatchAtCapacity(match)) {
+    const nextId = match.waitlist.shift();
+    const nextIdStr = nextId.toString();
+
+    if (match.players.some((p) => p.toString() === nextIdStr)) continue;
+    if (blocked.has(nextIdStr)) continue;
+
+    const user = await User.findById(nextId);
+    if (!user || user.role === 'court') continue;
+
+    match.players.push(nextId);
+    applyFullStatus(match);
+
+    if (match.playerCancellations?.length > 0) {
+      match.playerCancellations = match.playerCancellations.filter(
+        (c) => c.playerId.toString() !== nextIdStr
+      );
+    }
+
+    let matchForNotify = match;
+    if (!match.isInformal && match.fieldId) {
+      const field = await Field.findById(match.fieldId).select('name');
+      matchForNotify = { ...match.toObject(), fieldId: field };
+    }
+
+    await notifyWaitlistPromotion(user, matchForNotify);
+    return nextIdStr;
+  }
+
+  return null;
+}
+
+async function findPopulatedMatch(matchId) {
+  return Match.findById(matchId)
+    .select('-quickMessages')
+    .populate('fieldId')
+    .populate('players', PLAYER_PUBLIC_FIELDS)
+    .populate('waitlist', PLAYER_PUBLIC_FIELDS)
+    .populate('createdBy', PLAYER_PUBLIC_FIELDS)
+    .populate('playerCancellations.playerId', 'name')
+    .populate('playerPayments.playerId', PLAYER_PUBLIC_FIELDS);
 }
 
 async function recalculateUserRatings(userId) {
@@ -154,20 +289,7 @@ function matchesRoutesFactory(io) {
   const router = express.Router();
 
   router.get('/', auth(false), async (req, res) => {
-    // Check for failed matches before returning
-    const now = new Date();
-    await Match.updateMany(
-      {
-        status: { $in: ['open', 'full'] },
-        registrationDeadline: { $lt: now },
-        $expr: {
-          $or: [
-            { $lt: [{ $size: '$players' }, { $ifNull: ['$minPlayers', '$playersNeeded'] }] }
-          ]
-        }
-      },
-      { status: 'failed' }
-    );
+    await processExpiredMatches(io);
 
     // Build query - if user is authenticated, exclude matches from creators who blocked them
     let query = {};
@@ -187,8 +309,10 @@ function matchesRoutesFactory(io) {
     const skip = parseInt(req.query.skip) || 0;
 
     const matches = await Match.find(query)
+      .select('-quickMessages')
       .populate('fieldId')
       .populate('players', PLAYER_PUBLIC_FIELDS)
+      .populate('waitlist', PLAYER_PUBLIC_FIELDS)
       .populate('createdBy', PLAYER_PUBLIC_FIELDS)
       .populate('playerCancellations.playerId', 'name')
       .sort({ dateTime: 1 })
@@ -208,7 +332,7 @@ function matchesRoutesFactory(io) {
 
   router.post('/', auth(true), async (req, res) => {
     try {
-      const { sport, fieldId, dateTime, minPlayers, maxPlayers, playersNeeded, isInformal, informalLocation, informalRegistrationDeadlineHours } = req.body;
+      const { sport, fieldId, dateTime, minPlayers, maxPlayers, playersNeeded, isInformal, informalLocation, informalRegistrationDeadlineHours, pricePerPlayer } = req.body;
 
       // Support both old (playersNeeded) and new (minPlayers) format for backward compatibility
       const minPlayersValue = minPlayers !== undefined ? minPlayers : playersNeeded;
@@ -345,6 +469,13 @@ function matchesRoutesFactory(io) {
         courtApproval = field.courtOwner ? 'pending' : 'approved';
       }
 
+      if (pricePerPlayer !== undefined && pricePerPlayer !== null && pricePerPlayer !== '') {
+        const price = Number(pricePerPlayer);
+        if (Number.isNaN(price) || price < 0) {
+          return res.status(400).json({ message: 'Cena po igraču mora biti broj veći ili jednak 0' });
+        }
+      }
+
       const matchData = {
         sport,
         dateTime: matchDate,
@@ -357,7 +488,15 @@ function matchesRoutesFactory(io) {
         status: 'open',
         courtApproval,
         isInformal: !!isInformal,
+        // Organizer paid for the field — mark themselves as paid by default when tracking costs
+        playerPayments: pricePerPlayer !== undefined && pricePerPlayer !== null && pricePerPlayer !== ''
+          ? [{ playerId: req.user.id, paid: true, paidAt: new Date(), method: 'other' }]
+          : [],
       };
+
+      if (pricePerPlayer !== undefined && pricePerPlayer !== null && pricePerPlayer !== '') {
+        matchData.pricePerPlayer = Number(pricePerPlayer);
+      }
 
       if (isInformal) {
         matchData.informalLocation = {
@@ -373,11 +512,7 @@ function matchesRoutesFactory(io) {
       }
 
       const match = await Match.create(matchData);
-      const populated = await Match.findById(match._id)
-        .populate('fieldId')
-        .populate('players', PLAYER_PUBLIC_FIELDS)
-        .populate('createdBy', PLAYER_PUBLIC_FIELDS)
-        .populate('playerCancellations.playerId', 'name');
+      const populated = await findPopulatedMatch(match._id);
 
       // Send push notifications to nearby players (non-blocking)
       notifyNearbyPlayers(match, field).catch(err =>
@@ -392,11 +527,7 @@ function matchesRoutesFactory(io) {
   });
 
   router.get('/:id', async (req, res) => {
-    const match = await Match.findById(req.params.id)
-      .populate('fieldId')
-      .populate('players', PLAYER_PUBLIC_FIELDS)
-      .populate('createdBy', PLAYER_PUBLIC_FIELDS)
-      .populate('playerCancellations.playerId', 'name');
+    const match = await findPopulatedMatch(req.params.id);
     if (!match) return res.status(404).json({ message: 'Nije pronađeno' });
     if (match.isInformal) {
       if (!match.informalLocation || match.informalLocation.lat == null || match.informalLocation.lng == null) {
@@ -443,6 +574,11 @@ function matchesRoutesFactory(io) {
     const already = match.players.some((p) => p.toString() === req.user.id);
     if (!already) {
       match.players.push(req.user.id);
+
+      // If they were on the waitlist, remove them
+      if (match.waitlist?.length > 0) {
+        match.waitlist = match.waitlist.filter((id) => id.toString() !== req.user.id.toString());
+      }
       
       // If player had cancelled before, remove the cancellation record
       if (match.playerCancellations && match.playerCancellations.length > 0) {
@@ -452,21 +588,9 @@ function matchesRoutesFactory(io) {
       }
     }
     // Check if minimum players requirement is met - reserve the slot when minPlayers is reached
-    const minPlayersValue = match.minPlayers || match.playersNeeded || 1;
-    if (match.players.length >= minPlayersValue) {
-      match.status = 'full';
-      // Automatski postavi courtApproval na 'approved' (rezervisano) kada je dostignut minPlayers
-      if (match.courtApproval === 'pending') {
-        match.courtApproval = 'approved';
-        match.courtApprovedAt = new Date();
-      }
-    }
+    applyFullStatus(match);
     await match.save();
-    const populated = await Match.findById(match._id)
-      .populate('fieldId')
-      .populate('players', PLAYER_PUBLIC_FIELDS)
-      .populate('createdBy', PLAYER_PUBLIC_FIELDS)
-      .populate('playerCancellations.playerId', 'name');
+    const populated = await findPopulatedMatch(match._id);
 
     // Check if populated match has valid location
     if (!populated.isInformal && (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng)) {
@@ -495,23 +619,15 @@ function matchesRoutesFactory(io) {
 
       // Remove player from match
       match.players.splice(playerIndex, 1);
+      removePlayerPayment(match, req.user.id);
 
-      // Check if player count dropped below minPlayers - unreserve the slot
-      const minPlayersValue = match.minPlayers || match.playersNeeded || 1;
-      if (match.players.length < minPlayersValue) {
-        match.status = 'open';
-        // Return courtApproval to 'pending' since minimum requirement is no longer met (formal only)
-        if (!match.isInformal && match.courtApproval === 'approved') {
-          match.courtApproval = 'pending';
-          match.courtApprovedAt = undefined;
-        }
+      const promoted = await promoteFromWaitlist(match);
+      if (!promoted) {
+        applyOpenStatusIfBelowMin(match);
       }
 
       await match.save();
-      const populated = await Match.findById(match._id)
-        .populate('fieldId')
-        .populate('players', 'name')
-        .populate('createdBy', 'name');
+      const populated = await findPopulatedMatch(match._id);
 
       // Check if populated match has valid location
       if (!populated.isInformal && (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng)) {
@@ -553,12 +669,7 @@ function matchesRoutesFactory(io) {
       const penaltyPoints = getReliabilityPenaltyPoints(hoursBeforeMatch);
       let penalizedReliability = false;
       if (penaltyPoints > 0) {
-        await User.findByIdAndUpdate(req.user.id, {
-          $inc: { reliabilityScore: -penaltyPoints }
-        });
-        await User.findByIdAndUpdate(req.user.id, {
-          $max: { reliabilityScore: 0 }
-        });
+        await penalizeReliability(req.user.id, penaltyPoints, User);
         penalizedReliability = true;
       }
 
@@ -571,23 +682,15 @@ function matchesRoutesFactory(io) {
 
       // Remove player from match
       match.players.splice(playerIndex, 1);
+      removePlayerPayment(match, req.user.id);
 
-      // Check if player count dropped below minPlayers - unreserve the slot
-      const minPlayersValue = match.minPlayers || match.playersNeeded || 1;
-      if (match.players.length < minPlayersValue) {
-        match.status = 'open';
-        if (!match.isInformal && match.courtApproval === 'approved') {
-          match.courtApproval = 'pending';
-          match.courtApprovedAt = undefined;
-        }
+      const promoted = await promoteFromWaitlist(match);
+      if (!promoted) {
+        applyOpenStatusIfBelowMin(match);
       }
 
       await match.save();
-      const populated = await Match.findById(match._id)
-        .populate('fieldId')
-        .populate('players', PLAYER_PUBLIC_FIELDS)
-        .populate('createdBy', PLAYER_PUBLIC_FIELDS)
-        .populate('playerCancellations.playerId', 'name');
+      const populated = await findPopulatedMatch(match._id);
 
       // Check if populated match has valid location
       if (!populated.isInformal && (!populated.fieldId || !populated.fieldId.lat || !populated.fieldId.lng)) {
@@ -598,6 +701,176 @@ function matchesRoutesFactory(io) {
       res.json(populated);
     } catch (e) {
       console.error('Cancel attendance error:', e);
+      res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Join waitlist when match is at capacity
+  router.post('/:id/waitlist', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+
+      const user = await User.findById(req.user.id);
+      if (user && user.role === 'court') {
+        return res.status(403).json({ message: 'Tereni ne mogu da stanu u red za meč' });
+      }
+
+      const creator = await User.findById(match.createdBy);
+      if (creator && creator.blockedPlayers && creator.blockedPlayers.includes(req.user.id)) {
+        return res.status(403).json({ message: 'Organizator meča vam je zabranio pristup' });
+      }
+
+      if (match.status === 'failed' || match.status === 'otkazano' || match.status === 'completed') {
+        return res.status(400).json({ message: `Ne možete stati u red za meč sa statusom: ${match.status}` });
+      }
+
+      if (new Date() > match.registrationDeadline) {
+        return res.status(400).json({ message: 'Rok za prijavu je istekao' });
+      }
+
+      if (match.players.some((p) => p.toString() === req.user.id)) {
+        return res.status(400).json({ message: 'Već ste prijavljeni na ovaj meč' });
+      }
+
+      if (!isMatchAtCapacity(match)) {
+        return res.status(400).json({ message: 'Meč nije pun — možete se direktno pridružiti' });
+      }
+
+      if (!match.waitlist) match.waitlist = [];
+      const alreadyOnWaitlist = match.waitlist.some((id) => id.toString() === req.user.id);
+      if (!alreadyOnWaitlist) {
+        match.waitlist.push(req.user.id);
+        await match.save();
+      }
+
+      const populated = await findPopulatedMatch(match._id);
+      io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
+      res.json(populated);
+    } catch (e) {
+      console.error('Join waitlist error:', e);
+      res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Leave waitlist
+  router.post('/:id/waitlist/leave', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+
+      if (!match.waitlist?.some((id) => id.toString() === req.user.id)) {
+        return res.status(400).json({ message: 'Niste na listi čekanja' });
+      }
+
+      match.waitlist = match.waitlist.filter((id) => id.toString() !== req.user.id);
+      await match.save();
+
+      const populated = await findPopulatedMatch(match._id);
+      io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
+      res.json(populated);
+    } catch (e) {
+      console.error('Leave waitlist error:', e);
+      res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Organizer sets / updates price per player (RSD)
+  router.put('/:id/price-per-player', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      if (match.createdBy.toString() !== req.user.id) {
+        return res.status(403).json({ message: 'Samo organizator može postaviti cenu po igraču' });
+      }
+
+      const { pricePerPlayer } = req.body;
+      if (pricePerPlayer === null || pricePerPlayer === '' || pricePerPlayer === undefined) {
+        match.pricePerPlayer = undefined;
+        match.playerPayments = [];
+      } else {
+        const price = Number(pricePerPlayer);
+        if (Number.isNaN(price) || price < 0) {
+          return res.status(400).json({ message: 'Cena po igraču mora biti broj veći ili jednak 0' });
+        }
+        const wasUnset = match.pricePerPlayer == null;
+        match.pricePerPlayer = price;
+        if (wasUnset) {
+          // Seed organizer as paid when cost tracking starts
+          if (!match.playerPayments) match.playerPayments = [];
+          const organizerPaid = match.playerPayments.some(
+            (p) => p.playerId.toString() === req.user.id
+          );
+          if (!organizerPaid) {
+            match.playerPayments.push({
+              playerId: req.user.id,
+              paid: true,
+              paidAt: new Date(),
+              method: 'other'
+            });
+          }
+        }
+      }
+
+      await match.save();
+      const populated = await findPopulatedMatch(match._id);
+      io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
+      res.json(populated);
+    } catch (e) {
+      console.error('Set price-per-player error:', e);
+      res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Organizer marks a player as paid / unpaid (cash, transfer, IPS, etc.)
+  router.post('/:id/mark-paid', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      if (match.createdBy.toString() !== req.user.id) {
+        return res.status(403).json({ message: 'Samo organizator može označiti plaćanja' });
+      }
+      if (match.pricePerPlayer == null) {
+        return res.status(400).json({ message: 'Prvo postavite cenu po igraču' });
+      }
+
+      const { playerId, paid, method } = req.body;
+      if (!playerId || typeof paid !== 'boolean') {
+        return res.status(400).json({ message: 'Potrebni su playerId i paid (true/false)' });
+      }
+
+      const isInMatch = match.players.some((p) => p.toString() === playerId.toString());
+      if (!isInMatch) {
+        return res.status(400).json({ message: 'Igrač nije prijavljen na ovaj meč' });
+      }
+
+      const validMethods = ['cash', 'transfer', 'other'];
+      const paymentMethod = validMethods.includes(method) ? method : 'cash';
+
+      if (!match.playerPayments) match.playerPayments = [];
+      const existing = match.playerPayments.find(
+        (p) => p.playerId.toString() === playerId.toString()
+      );
+
+      if (existing) {
+        existing.paid = paid;
+        existing.paidAt = paid ? new Date() : undefined;
+        if (paid) existing.method = paymentMethod;
+      } else {
+        match.playerPayments.push({
+          playerId,
+          paid,
+          paidAt: paid ? new Date() : undefined,
+          method: paymentMethod
+        });
+      }
+
+      await match.save();
+      const populated = await findPopulatedMatch(match._id);
+      io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
+      res.json(populated);
+    } catch (e) {
+      console.error('Mark paid error:', e);
       res.status(500).json({ message: 'Greška servera' });
     }
   });
@@ -639,30 +912,131 @@ function matchesRoutesFactory(io) {
         });
 
         // Penalize reliability (15 points for no-show), floor at 0
-        await User.findByIdAndUpdate(userId, { $inc: { reliabilityScore: -15 } });
-        await User.findByIdAndUpdate(userId, { $max: { reliabilityScore: 0 } });
+        await penalizeReliability(userId, 15, User);
       }
 
       // Remove no-shows from players
       if (noShowIds.length > 0) {
         match.players = match.players.filter(p => !noShowIds.includes(p.toString()));
         match.noShows = noShowIds;
+        noShowIds.forEach((id) => removePlayerPayment(match, id));
       }
+
+      // Reward players who successfully played (+2, capped at 100)
+      await rewardReliabilityForCompletedMatch(match.players, User);
 
       match.status = 'completed';
       await match.save();
 
-      const populated = await Match.findById(match._id)
-        .populate('fieldId')
-        .populate('players', PLAYER_PUBLIC_FIELDS)
-        .populate('createdBy', PLAYER_PUBLIC_FIELDS)
-        .populate('playerCancellations.playerId', 'name');
+      const populated = await findPopulatedMatch(match._id);
 
       io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
       res.json(populated);
     } catch (e) {
       console.error('Complete match error:', e);
       res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Instant chat — brze poruke / preset reakcije (samo prijavljeni igrači)
+  router.get('/:id/messages', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id)
+        .select('players quickMessages')
+        .populate('quickMessages.userId', 'name');
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+
+      if (!isParticipant(match, req.user.id)) {
+        return res.status(403).json({ message: 'Samo prijavljeni igrači mogu videti poruke' });
+      }
+
+      const messages = (match.quickMessages || []).map(formatQuickMessage);
+      return res.json(messages);
+    } catch (e) {
+      console.error('Get match messages error:', e);
+      return res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  router.post('/:id/messages', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+
+      if (!isParticipant(match, req.user.id)) {
+        return res.status(403).json({ message: 'Samo prijavljeni igrači mogu slati poruke' });
+      }
+
+      if (match.status !== 'open' && match.status !== 'full') {
+        return res.status(400).json({ message: 'Poruke se mogu slati samo dok je meč otvoren' });
+      }
+
+      const { text, preset } = req.body || {};
+      let messageText = '';
+      let isPreset = false;
+
+      if (preset != null && String(preset).trim()) {
+        const presetText = String(preset).trim();
+        if (!QUICK_MESSAGE_PRESETS.includes(presetText)) {
+          return res.status(400).json({ message: 'Nepoznata brza poruka' });
+        }
+        messageText = presetText;
+        isPreset = true;
+      } else if (text != null) {
+        messageText = String(text).trim();
+        if (!messageText) {
+          return res.status(400).json({ message: 'Poruka ne sme biti prazna' });
+        }
+        if (messageText.length > QUICK_MESSAGE_MAX_LENGTH) {
+          return res.status(400).json({
+            message: `Poruka može imati najviše ${QUICK_MESSAGE_MAX_LENGTH} karaktera`,
+          });
+        }
+      } else {
+        return res.status(400).json({ message: 'Nedostaje tekst poruke' });
+      }
+
+      const userIdStr = req.user.id.toString();
+      const ownMessages = (match.quickMessages || []).filter(
+        (m) => m.userId.toString() === userIdStr
+      );
+      if (ownMessages.length > 0) {
+        const last = ownMessages[ownMessages.length - 1];
+        const elapsed = Date.now() - new Date(last.createdAt).getTime();
+        if (elapsed < QUICK_MESSAGE_RATE_LIMIT_MS) {
+          return res.status(429).json({ message: 'Sačekajte trenutak pre sledeće poruke' });
+        }
+      }
+
+      match.quickMessages = match.quickMessages || [];
+      match.quickMessages.push({
+        userId: req.user.id,
+        text: messageText,
+        isPreset,
+        createdAt: new Date(),
+      });
+
+      if (match.quickMessages.length > QUICK_MESSAGE_MAX_STORED) {
+        match.quickMessages = match.quickMessages.slice(-QUICK_MESSAGE_MAX_STORED);
+      }
+
+      await match.save();
+
+      const saved = match.quickMessages[match.quickMessages.length - 1];
+      await match.populate({ path: 'quickMessages.userId', select: 'name' });
+      const populatedMsg = formatQuickMessage(
+        match.quickMessages.id(saved._id) || match.quickMessages[match.quickMessages.length - 1]
+      );
+
+      io.to(`match:${match._id.toString()}`).emit('match_message', {
+        matchId: match._id.toString(),
+        message: populatedMsg,
+      });
+
+      return res.status(201).json(populatedMsg);
+    } catch (e) {
+      console.error('Post match message error:', e);
+      return res.status(500).json({ message: 'Greška servera' });
     }
   });
 

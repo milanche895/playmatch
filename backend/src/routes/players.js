@@ -546,7 +546,7 @@ router.get('/my-players', auth(true), async (req, res) => {
     const matches = await Match.find({
       createdBy: user._id,
       players: { $exists: true, $not: { $size: 0 } } // Matches with at least one player
-    }).populate('players', '_id name email avatarUrl experience preferredSports');
+    }).populate('players', '_id name email avatarUrl experience preferredSports reliabilityScore');
 
     // Extract unique players
     const uniquePlayers = new Map();

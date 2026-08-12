@@ -17,6 +17,8 @@ const matchSchema = new mongoose.Schema(
     maxPlayers: { type: Number }, // Optional
     playersNeeded: { type: Number, required: true }, // Keep for backward compatibility, will be set to minPlayers
     players: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    // FIFO waitlist — players waiting for a spot when the match is at capacity
+    waitlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     status: { type: String, enum: ['open', 'full', 'completed', 'failed', 'otkazano'], default: 'open' },
     courtApproval: { 
@@ -35,12 +37,27 @@ const matchSchema = new mongoose.Schema(
       penalizedReliability: { type: Boolean, default: false }
     }],
     noShows: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    // Cost splitter — organizer tracks who paid their share (cash / transfer / IPS)
+    pricePerPlayer: { type: Number, min: 0 }, // RSD; optional
+    playerPayments: [{
+      playerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      paid: { type: Boolean, default: false },
+      paidAt: { type: Date },
+      method: { type: String, enum: ['cash', 'transfer', 'other'], default: 'cash' }
+    }],
     ratings: [{
       raterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
       ratedUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
       stars: { type: Number, required: true, min: 1, max: 5 },
       fairPlay: { type: Boolean, default: true },
       sport: { type: String, required: true },
+      createdAt: { type: Date, default: Date.now }
+    }],
+    // Instant chat / brze reakcije — only exposed via /:id/messages
+    quickMessages: [{
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      text: { type: String, required: true, maxlength: 200 },
+      isPreset: { type: Boolean, default: false },
       createdAt: { type: Date, default: Date.now }
     }]
   },

@@ -40,7 +40,7 @@ const userSchema = new mongoose.Schema(
     experience: { type: String, enum: ['beginner', 'intermediate', 'advanced', 'professional'], default: 'beginner' }, // Nivo iskustva
     ratingAvg: { type: Number, default: 0, min: 0, max: 5 }, // Prosečna ocena igrača (1-5)
     ratingsCount: { type: Number, default: 0, min: 0 }, // Broj pristiglih ocena
-    reliabilityScore: { type: Number, default: 100, min: 0, max: 100 }, // Pouzdanost igrača (0-100)
+    reliabilityScore: { type: Number, default: 100, min: 0, max: 100 }, // 0-100; -penalty on cancel/no-show, +2 on completed match
     sportSkillLevels: [{
       sport: { type: String, required: true },
       skillLevel: { type: Number, min: 1, max: 5, required: true }

@@ -71,10 +71,25 @@ export type PlayerCancellation = {
   cancelledAt: string;
 };
 
+export type PlayerPayment = {
+  playerId: Pick<User, '_id' | 'name'> | string;
+  paid: boolean;
+  paidAt?: string;
+  method?: 'cash' | 'transfer' | 'other';
+};
+
 export type InformalLocation = {
   name: string;
   lat: number;
   lng: number;
+};
+
+export type MatchQuickMessage = {
+  _id: string;
+  text: string;
+  isPreset: boolean;
+  createdAt: string;
+  userId: Pick<User, '_id' | 'name'>;
 };
 
 export type Match = {
@@ -90,6 +105,7 @@ export type Match = {
   maxPlayers?: number;
   playersNeeded: number; // Keep for backward compatibility
   players: Pick<User, '_id' | 'name' | 'reliabilityScore' | 'ratingAvg'>[];
+  waitlist?: Pick<User, '_id' | 'name' | 'reliabilityScore' | 'ratingAvg'>[];
   createdBy: Pick<User, '_id' | 'name' | 'reliabilityScore' | 'ratingAvg'>;
   status: 'open' | 'full' | 'completed' | 'failed' | 'otkazano';
   courtApproval?: 'pending' | 'approved' | 'rejected';
@@ -98,6 +114,8 @@ export type Match = {
   description?: string; // Opis rezervacije
   playerCancellations?: PlayerCancellation[];
   noShows?: string[];
+  pricePerPlayer?: number; // RSD
+  playerPayments?: PlayerPayment[];
 };
 
 export type PendingRatingUser = Pick<User, '_id' | 'name' | 'ratingAvg' | 'reliabilityScore'>;

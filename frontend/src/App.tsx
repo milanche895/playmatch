@@ -16,6 +16,7 @@ import PlayerProfile from './pages/PlayerProfile';
 import MojiMecevi from './pages/MojiMecevi';
 import MojiIgraci from './pages/MojiIgraci';
 import NotificationSettings from './pages/NotificationSettings';
+import PublicPlayerProfile from './pages/PublicPlayerProfile';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -41,7 +42,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   }
 }
 
-function ProtectedRoute({ children }: { children: JSX.Element }) {
+function PlayerRoute({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
   if (loading) {
     return (
@@ -51,6 +52,21 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'player') return <Navigate to="/" replace />;
+  return children;
+}
+
+function CourtRoute({ children }: { children: JSX.Element }) {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'court') return <Navigate to="/" replace />;
   return children;
 }
 
@@ -99,58 +115,59 @@ function AppContent() {
               <Route
                 path="/create"
                 element={
-                  <ProtectedRoute>
+                  <PlayerRoute>
                     <CreateMatch />
-                  </ProtectedRoute>
+                  </PlayerRoute>
                 }
               />
               <Route path="/matches/:id" element={<MatchDetails />} />
               <Route
                 path="/manage-fields"
                 element={
-                  <ProtectedRoute>
+                  <CourtRoute>
                     <ManageFields />
-                  </ProtectedRoute>
+                  </CourtRoute>
                 }
               />
               <Route
                 path="/moji-termini"
                 element={
-                  <ProtectedRoute>
+                  <CourtRoute>
                     <MojTermine />
-                  </ProtectedRoute>
+                  </CourtRoute>
                 }
               />
               <Route
                 path="/profil"
                 element={
-                  <ProtectedRoute>
+                  <PlayerRoute>
                     <PlayerProfile />
-                  </ProtectedRoute>
+                  </PlayerRoute>
                 }
               />
+              <Route path="/profil/:id" element={<PublicPlayerProfile />} />
               <Route
                 path="/moji-mecevi"
                 element={
-                  <ProtectedRoute>
+                  <PlayerRoute>
                     <MojiMecevi />
-                  </ProtectedRoute>
+                  </PlayerRoute>
                 }
               />
               <Route
                 path="/moji-igraci"
                 element={
-                  <ProtectedRoute>
+                  <PlayerRoute>
                     <MojiIgraci />
-                  </ProtectedRoute>
+                  </PlayerRoute>
                 }
               />
               <Route
                 path="/notification-settings"
                 element={
-                  <ProtectedRoute>
+                  <PlayerRoute>
                     <NotificationSettings />
-                  </ProtectedRoute>
+                  </PlayerRoute>
                 }
               />
               <Route path="/login" element={<Login />} />
