@@ -5,7 +5,7 @@ const Field = require('../models/Field');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const { calculateDistance } = require('../utils/notifications');
-const { sendPushNotifications, hasPushEndpoint } = require('../utils/pushNotifications');
+const { sendPushNotifications, hasPushEndpoint, describeSubscription } = require('../utils/pushNotifications');
 const { processExpiredMatches } = require('../utils/matchStatus');
 const {
   getReliabilityPenaltyPoints,
@@ -178,15 +178,24 @@ async function recalculateUserRatings(userId) {
 // Helper function to notify nearby players about a new match
 async function notifyNearbyPlayers(match, field) {
   try {
+    console.log('[PushDebug] notifyNearbyPlayers start', {
+      matchId: match?._id?.toString(),
+      sport: match?.sport,
+      isInformal: !!match?.isInformal,
+      createdBy: idString(match?.createdBy)
+    });
+
     // Resolve coordinates — informal matches use their own location, formal matches use the field
     const fieldLat = match.isInformal ? match.informalLocation?.lat : field?.lat;
     const fieldLng = match.isInformal ? match.informalLocation?.lng : field?.lng;
     const locationName = match.isInformal ? (match.informalLocation?.name || 'Privatni teren') : (field?.name || 'Teren');
 
     if (fieldLat == null || fieldLng == null) {
-      console.log('[Push Notifications] No coordinates available, skipping notifications');
+      console.log('[PushDebug] skip: no match coordinates', { isInformal: !!match.isInformal, fieldLat, fieldLng });
       return { success: 0, failed: 0 };
     }
+
+    console.log('[PushDebug] match location', { locationName, fieldLat, fieldLng });
 
     // Build query for players with PWA push subscriptions
     const playersQuery = {
@@ -200,18 +209,18 @@ async function notifyNearbyPlayers(match, field) {
     // Get all players with notifications enabled and valid location
     const players = await User.find(playersQuery);
 
-    console.log(`[Push Notifications] Found ${players.length} players with notifications enabled`);
+    console.log(`[PushDebug] candidates with push+location+enabled: ${players.length}`);
 
     if (players.length === 0) {
-      console.log('[Push Notifications] No players to notify - check if players have notifications enabled and are subscribed');
+      console.log('[PushDebug] skip: no players have notificationEnabled + lastKnownLocation + pushSubscription');
       return { success: 0, failed: 0 };
     }
     const nearbyPlayers = [];
 
     // Filter players by distance
     for (const player of players) {
-      // Skip if player is the creator
       if (idString(player._id) === idString(match.createdBy)) {
+        console.log('[PushDebug] skip candidate: creator', { name: player.name, id: idString(player._id) });
         continue;
       }
 
@@ -220,16 +229,37 @@ async function notifyNearbyPlayers(match, field) {
       const radius = player.notificationRadius || 10; // Default 10km
 
       const distance = calculateDistance(fieldLat, fieldLng, playerLat, playerLng);
+      const subInfo = describeSubscription(player.pushSubscription);
 
-      if (distance <= radius && player.pushSubscription) {
-        nearbyPlayers.push(player);
+      if (distance > radius) {
+        console.log('[PushDebug] skip candidate: outside radius', {
+          name: player.name,
+          distanceKm: Number(distance.toFixed(2)),
+          radiusKm: radius,
+          playerLat,
+          playerLng
+        });
+        continue;
       }
+
+      if (!player.pushSubscription) {
+        console.log('[PushDebug] skip candidate: no pushSubscription', { name: player.name });
+        continue;
+      }
+
+      console.log('[PushDebug] nearby candidate OK', {
+        name: player.name,
+        distanceKm: Number(distance.toFixed(2)),
+        radiusKm: radius,
+        subscription: subInfo
+      });
+      nearbyPlayers.push(player);
     }
 
-    console.log(`[Push Notifications] Found ${nearbyPlayers.length} nearby players within radius`);
+    console.log(`[PushDebug] nearby after filters: ${nearbyPlayers.length}`);
 
     if (nearbyPlayers.length === 0) {
-      console.log('[Push Notifications] No nearby players to notify - players are outside notification radius');
+      console.log('[PushDebug] skip: nobody in radius (or all were creator)');
       return { success: 0, failed: 0 };
     }
 
@@ -257,15 +287,17 @@ async function notifyNearbyPlayers(match, field) {
       .filter(player => player.pushSubscription && player.pushSubscription.endpoint)
       .map(player => player.pushSubscription);
 
-    console.log(`[Push Notifications] Prepared ${subscriptions.length} subscriptions to send`);
+    console.log('[PushDebug] subscriptions with endpoint', {
+      nearby: nearbyPlayers.length,
+      withEndpoint: subscriptions.length
+    });
 
     if (subscriptions.length === 0) {
-      console.log('[Push Notifications] No valid subscriptions to send notifications to');
+      console.log('[PushDebug] skip: nearby players exist but none have subscription.endpoint');
       return { success: 0, failed: 0 };
     }
 
-    // Send notifications
-    console.log(`[Push Notifications] Sending notifications to ${subscriptions.length} subscriptions...`);
+    console.log('[PushDebug] sending create-match pushes', { count: subscriptions.length, payload });
     const result = await sendPushNotifications(subscriptions, payload);
 
     // Remove expired subscriptions
@@ -280,10 +312,10 @@ async function notifyNearbyPlayers(match, field) {
       }
     }
 
-    console.log(`✅ Sent ${result.success} push notifications, ${result.failed} failed`);
+    console.log('[PushDebug] notifyNearbyPlayers done', result);
     return { success: result.success, failed: result.failed };
   } catch (error) {
-    console.error('Error notifying nearby players:', error);
+    console.error('[PushDebug] notifyNearbyPlayers error:', error);
     throw error;
   }
 }
@@ -342,7 +374,19 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
   } = options;
 
   const { lat, lng } = getMatchCoords(match, field);
-  if (lat == null || lng == null) return [];
+  console.log('[PushDebug] findNearbyPlayerCandidates', {
+    matchId: idString(match._id),
+    lat,
+    lng,
+    requirePush,
+    matchSportOrCategory,
+    minRadiusKm,
+    excludeJoined: (match.players || []).length
+  });
+  if (lat == null || lng == null) {
+    console.log('[PushDebug] findNearby: no coords');
+    return [];
+  }
 
   const creatorId = idString(match.createdBy);
   const creator = await User.findById(creatorId).select('blockedPlayers');
@@ -364,6 +408,7 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
   const players = await User.find(query).select(
     'name avatarUrl reliabilityScore preferredSports notificationRadius lastKnownLocation pushSubscription blockedPlayers notificationEnabled'
   );
+  console.log('[PushDebug] findNearby DB hits', { count: players.length, requirePush, requireNotificationEnabled });
 
   const matchSport = match.sport;
   const matchCategory = GAME_TYPES[matchSport]?.category;
@@ -371,9 +416,18 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
   const results = [];
   for (const player of players) {
     const playerId = idString(player._id);
-    if (exclude.has(playerId)) continue;
-    if (creatorBlocked.has(playerId)) continue;
-    if ((player.blockedPlayers || []).some((id) => idString(id) === creatorId)) continue;
+    if (exclude.has(playerId)) {
+      console.log('[PushDebug] findNearby skip: already in match/creator', { name: player.name, id: playerId });
+      continue;
+    }
+    if (creatorBlocked.has(playerId)) {
+      console.log('[PushDebug] findNearby skip: blocked by creator', { name: player.name });
+      continue;
+    }
+    if ((player.blockedPlayers || []).some((id) => idString(id) === creatorId)) {
+      console.log('[PushDebug] findNearby skip: player blocked creator', { name: player.name });
+      continue;
+    }
 
     const distance = calculateDistance(
       lat,
@@ -382,7 +436,14 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
       Number(player.lastKnownLocation.lng)
     );
     const radius = Math.max(Number(player.notificationRadius) || 10, minRadiusKm);
-    if (distance > radius) continue;
+    if (distance > radius) {
+      console.log('[PushDebug] findNearby skip: too far', {
+        name: player.name,
+        distanceKm: Number(distance.toFixed(2)),
+        radiusKm: radius
+      });
+      continue;
+    }
 
     if (matchSportOrCategory) {
       const prefs = player.preferredSports || [];
@@ -393,12 +454,26 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
       if (!prefs.length) {
         // Legacy / incomplete profiles: still eligible so promotion is not empty
       } else if (!matchesSport && !matchesCategory) {
+        console.log('[PushDebug] findNearby skip: sport/category mismatch', {
+          name: player.name,
+          prefs,
+          matchSport,
+          matchCategory
+        });
         continue;
       }
     }
 
+    console.log('[PushDebug] findNearby keep', {
+      name: player.name,
+      distanceKm: Number(distance.toFixed(2)),
+      hasPush: hasPushEndpoint(player.pushSubscription),
+      prefs: player.preferredSports || []
+    });
     results.push({ player, distance: Number(distance.toFixed(2)) });
   }
+
+  console.log('[PushDebug] findNearby result count', results.length);
 
   results.sort((a, b) => a.distance - b.distance);
   return results;
@@ -672,8 +747,13 @@ function matchesRoutesFactory(io) {
       const populated = await findPopulatedMatch(match._id);
 
       // Send push notifications to nearby players (non-blocking)
+      console.log('[PushDebug] match created, triggering nearby push', {
+        matchId: match._id.toString(),
+        isInformal: !!match.isInformal,
+        sport: match.sport
+      });
       notifyNearbyPlayers(match, field).catch(err =>
-        console.error('Error sending push notifications:', err)
+        console.error('[PushDebug] Error sending push notifications after create:', err)
       );
 
       res.status(201).json(populated);
@@ -1119,6 +1199,15 @@ function matchesRoutesFactory(io) {
       }
 
       const nearby = await findNearbyPlayerCandidates(match, field, { minRadiusKm: 25 });
+      console.log('[PushDebug] GET nearby-players', {
+        matchId: req.params.id,
+        count: nearby.length,
+        names: nearby.map(({ player, distance }) => ({
+          name: player.name,
+          distance,
+          hasPush: hasPushEndpoint(player.pushSubscription)
+        }))
+      });
       return res.json(
         nearby.map(({ player, distance }) => ({
           _id: player._id,
@@ -1195,7 +1284,19 @@ function matchesRoutesFactory(io) {
         }
       }
 
+      console.log('[PushDebug] POST invite-players', {
+        matchId: req.params.id,
+        requested: playerIds,
+        found: targets.map((p) => ({
+          name: p.name,
+          sub: describeSubscription(p.pushSubscription)
+        })),
+        withPush: subscriptions.length,
+        skipped
+      });
+
       if (subscriptions.length === 0) {
+        console.log('[PushDebug] invite abort: no push endpoints');
         return res.status(400).json({
           message: 'Izabrani igrači trenutno nemaju uključena obaveštenja, pa pozivnice nisu poslate'
         });
@@ -1267,23 +1368,41 @@ function matchesRoutesFactory(io) {
         field = await Field.findById(match.fieldId);
       }
 
+      console.log('[PushDebug] POST boost start', {
+        matchId: req.params.id,
+        credits: currentCredits,
+        isInformal: !!match.isInformal
+      });
+
       let nearby = await findNearbyPlayerCandidates(match, field, {
         requirePush: true,
         matchSportOrCategory: true,
         minRadiusKm: 25
       });
+      console.log('[PushDebug] boost nearby (sport filter)', nearby.length);
       if (nearby.length === 0) {
         nearby = await findNearbyPlayerCandidates(match, field, {
           requirePush: true,
           minRadiusKm: 25
         });
+        console.log('[PushDebug] boost nearby (fallback no sport filter)', nearby.length);
       }
 
       const subscriptions = nearby
         .map(({ player }) => player.pushSubscription)
         .filter((sub) => hasPushEndpoint(sub));
 
+      console.log('[PushDebug] boost subscriptions', {
+        nearby: nearby.map(({ player, distance }) => ({
+          name: player.name,
+          distance,
+          sub: describeSubscription(player.pushSubscription)
+        })),
+        withEndpoint: subscriptions.length
+      });
+
       if (subscriptions.length === 0) {
+        console.log('[PushDebug] boost abort: no nearby push endpoints');
         return res.status(400).json({
           message: 'Nema igrača u blizini sa uključenim obaveštenjima'
         });

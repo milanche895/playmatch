@@ -7,7 +7,7 @@ import { precacheAndRoute } from 'workbox-precaching';
 precacheAndRoute(self.__WB_MANIFEST || []);
 
 self.addEventListener('push', function(event) {
-  console.log('[Service Worker] Push Received.');
+  console.log('[PushDebug][SW] Push Received');
   console.log('[Service Worker] Push had this data: ', event.data);
 
   // Default notification data
@@ -85,16 +85,14 @@ self.addEventListener('push', function(event) {
   // so we try to show and handle the error gracefully
   const promiseChain = self.registration.showNotification(notificationData.title, notificationData)
     .then(function() {
-      console.log('[Service Worker] ✅ Notification shown successfully');
+      console.log('[PushDebug][SW] notification shown', notificationData.title);
     })
     .catch(function(error) {
       // Permission denied or other error
       if (error.message && (error.message.includes('permission') || error.name === 'NotAllowedError')) {
-        console.warn('[Service Worker] ⚠️ Notification permission not granted.');
-        console.warn('[Service Worker] User needs to grant notification permission in the app.');
-        console.warn('[Service Worker] Go to Player Profile page and allow notifications when prompted.');
+        console.warn('[PushDebug][SW] notification permission missing');
       } else {
-        console.error('[Service Worker] ❌ Failed to show notification:', error);
+        console.error('[PushDebug][SW] showNotification failed', error);
       }
       // Don't throw - gracefully handle the error
     });

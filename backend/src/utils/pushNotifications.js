@@ -33,10 +33,31 @@ function getVapidPublicKey() {
   return VAPID_PUBLIC_KEY;
 }
 
-function hasPushEndpoint(subscription) {
-  if (!subscription) return false;
+function describeSubscription(subscription) {
+  if (!subscription) return { present: false };
   const raw = typeof subscription.toObject === 'function' ? subscription.toObject() : subscription;
-  return Boolean(raw?.endpoint || subscription.endpoint);
+  const endpoint = raw?.endpoint || subscription.endpoint || null;
+  const keys = raw?.keys || subscription.keys || {};
+  let endpointHost = null;
+  if (endpoint) {
+    try {
+      endpointHost = new URL(endpoint).host;
+    } catch {
+      endpointHost = 'invalid-url';
+    }
+  }
+  return {
+    present: true,
+    hasEndpoint: Boolean(endpoint),
+    endpointHost,
+    hasP256dh: Boolean(keys && keys.p256dh),
+    hasAuth: Boolean(keys && keys.auth),
+    fields: Object.keys(raw || {})
+  };
+}
+
+function hasPushEndpoint(subscription) {
+  return describeSubscription(subscription).hasEndpoint === true;
 }
 
 /**
@@ -46,7 +67,17 @@ function hasPushEndpoint(subscription) {
  * @returns {Promise<void>}
  */
 async function sendPushNotification(subscription, payload) {
+  const subInfo = describeSubscription(subscription);
+  console.log('[PushDebug] sendPushNotification start', {
+    title: payload?.title,
+    matchId: payload?.matchId,
+    tag: payload?.tag,
+    vapidConfigured: Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY),
+    subscription: subInfo
+  });
+
   if (!subscription || !subscription.endpoint) {
+    console.warn('[PushDebug] abort: missing endpoint', subInfo);
     throw new Error('Invalid push subscription: endpoint required');
   }
 
@@ -68,14 +99,23 @@ async function sendPushNotification(subscription, payload) {
 
   try {
     await webpush.sendNotification(subscription, notificationPayload);
-    console.log('✅ Push notification sent');
+    console.log('[PushDebug] web-push accepted notification', {
+      title,
+      endpointHost: subInfo.endpointHost
+    });
     return { success: 1, failed: 0 };
   } catch (error) {
-    console.error('❌ Error sending push notification:', error);
+    console.error('[PushDebug] web-push rejected notification', {
+      title,
+      endpointHost: subInfo.endpointHost,
+      statusCode: error.statusCode,
+      message: error.message,
+      body: error.body
+    });
 
     // Handle expired/invalid subscriptions
     if (error.statusCode === 410 || error.statusCode === 404) {
-      // Subscription expired or not found
+      console.warn('[PushDebug] subscription expired/not found — will be cleared');
       return { success: 0, failed: 1, expired: true };
     }
 
@@ -90,7 +130,14 @@ async function sendPushNotification(subscription, payload) {
  * @returns {Promise<{ success: number, failed: number, expiredSubscriptions: Array }>}
  */
 async function sendPushNotifications(subscriptions, payload) {
+  console.log('[PushDebug] sendPushNotifications batch', {
+    count: Array.isArray(subscriptions) ? subscriptions.length : 0,
+    title: payload?.title,
+    matchId: payload?.matchId
+  });
+
   if (!Array.isArray(subscriptions) || subscriptions.length === 0) {
+    console.warn('[PushDebug] batch empty — nothing to send');
     return { success: 0, failed: 0, expiredSubscriptions: [] };
   }
 
@@ -122,7 +169,7 @@ async function sendPushNotifications(subscriptions, payload) {
 
   await Promise.allSettled(promises);
 
-  console.log(`✅ Sent ${success} push notifications, ${failed} failed`);
+  console.log('[PushDebug] batch finished', { success, failed, expired: expiredSubscriptions.length });
 
   return {
     success,
@@ -135,5 +182,6 @@ module.exports = {
   getVapidPublicKey,
   sendPushNotification,
   sendPushNotifications,
-  hasPushEndpoint
+  hasPushEndpoint,
+  describeSubscription
 };

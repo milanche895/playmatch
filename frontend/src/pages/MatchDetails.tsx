@@ -496,6 +496,7 @@ export default function MatchDetails() {
       setBoosting(true);
       setPromoError(null);
       const res = await api.post(`/api/matches/${id}/boost`, {}, { timeout: 30000 });
+      console.log('[PushDebug] boost response', res.data);
       setBoostDialogOpen(false);
       const sent = res.data?.sent ?? 0;
       setPromoMessage(
@@ -505,6 +506,7 @@ export default function MatchDetails() {
       );
       await refreshUser();
     } catch (err: any) {
+      console.error('[PushDebug] boost failed', err.response?.status, err.response?.data || err.message);
       setPromoError(err.response?.data?.message || 'Neuspešan boost');
     } finally {
       setBoosting(false);
@@ -519,8 +521,10 @@ export default function MatchDetails() {
       setPromoError(null);
       setSelectedInviteIds(new Set());
       const res = await api.get(`/api/matches/${id}/nearby-players`);
+      console.log('[PushDebug] nearby-players response', res.data);
       setNearbyPlayers(Array.isArray(res.data) ? res.data : []);
     } catch (err: any) {
+      console.error('[PushDebug] nearby-players failed', err.response?.status, err.response?.data || err.message);
       setNearbyPlayers([]);
       setPromoError(err.response?.data?.message || 'Neuspešno učitavanje igrača u blizini');
     } finally {
@@ -549,12 +553,14 @@ export default function MatchDetails() {
       const res = await api.post(`/api/matches/${id}/invite-players`, {
         playerIds: [...selectedInviteIds],
       }, { timeout: 30000 });
+      console.log('[PushDebug] invite-players response', res.data);
       setInviteModalOpen(false);
       setPromoMessage(
         `Pozivnice poslate: ${res.data?.sent ?? 0}. Preostalo kredita: ${res.data?.creditsRemaining ?? 0}.`
       );
       await refreshUser();
     } catch (err: any) {
+      console.error('[PushDebug] invite-players failed', err.response?.status, err.response?.data || err.message);
       setPromoError(err.response?.data?.message || 'Neuspešno slanje pozivnica');
     } finally {
       setSendingInvites(false);

@@ -290,6 +290,11 @@ router.post('/location', auth(true), async (req, res) => {
     }
 
     res.json({ message: 'Lokacija ažurirana', location: updatedUser.lastKnownLocation });
+    console.log('[PushDebug] location updated', {
+      userId: req.user.id,
+      lat: updatedUser.lastKnownLocation?.lat,
+      lng: updatedUser.lastKnownLocation?.lng
+    });
   } catch (e) {
     console.error('Location update error:', e);
     res.status(500).json({ message: 'Greška servera' });
@@ -330,6 +335,13 @@ router.post('/push-subscription', auth(true), async (req, res) => {
 
     res.json({ 
       message: 'Push subscription sačuvana'
+    });
+    console.log('[PushDebug] push subscription saved', {
+      userId: req.user.id,
+      endpointHost: (() => {
+        try { return new URL(subscription.endpoint).host; } catch { return 'invalid'; }
+      })(),
+      hasKeys: Boolean(subscription.keys?.p256dh && subscription.keys?.auth)
     });
   } catch (e) {
     console.error('Push subscription error:', e);
