@@ -18,6 +18,7 @@ import {
   Slider,
   Grid,
   IconButton,
+  LinearProgress,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -35,6 +36,7 @@ import {
   Email as EmailIcon,
   ArrowBack as ArrowBackIcon,
   PhotoCamera as PhotoCameraIcon,
+  MilitaryTech as BadgeIcon,
 } from '@mui/icons-material';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../lib/api';
@@ -43,6 +45,7 @@ import { User, PlayerAnalytics } from '../types';
 import { getTrustBadge } from '../lib/reliability';
 import PreferredGamesPicker from '../components/PreferredGamesPicker';
 import { getGameTypeName } from '../constants/games';
+import { BADGE_CATALOG, getXpProgress, getCreditsDisplay } from '../lib/gamification';
 
 export default function PlayerProfile() {
   const { user: currentUser, refreshUser } = useAuth();
@@ -418,10 +421,143 @@ export default function PlayerProfile() {
                 color={getExperienceColor(user.experience || 'beginner') as any}
                 sx={{ mt: 2, fontWeight: 600 }}
               />
+              {(() => {
+                const xpInfo = getXpProgress(user.xp || 0);
+                const level = user.level || xpInfo.level;
+                const credits = getCreditsDisplay(user.credits);
+                return (
+                  <Box sx={{ mt: 2.5, textAlign: 'left' }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ mb: 0.75 }}>
+                      <Typography variant="subtitle2" fontWeight={700}>
+                        Nivo {level}
+                      </Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                        {xpInfo.currentLevelXp} / {xpInfo.nextLevelXp} XP
+                      </Typography>
+                    </Stack>
+                    <LinearProgress
+                      variant="determinate"
+                      value={xpInfo.progressPct}
+                      sx={{
+                        height: 8,
+                        borderRadius: 4,
+                        bgcolor: 'rgba(255,255,255,0.25)',
+                        '& .MuiLinearProgress-bar': { borderRadius: 4, bgcolor: 'common.white' },
+                      }}
+                    />
+                    <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', mt: 0.75 }}>
+                      Ukupno {xpInfo.totalXp} XP
+                    </Typography>
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        mt: 1.5,
+                        px: 1.5,
+                        py: 1.25,
+                        borderRadius: 2,
+                        bgcolor: 'rgba(255,255,255,0.18)',
+                        border: '1px solid rgba(255,255,255,0.35)',
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ opacity: 0.9, display: 'block' }}>
+                        Trenutni krediti
+                      </Typography>
+                      <Typography variant="h5" fontWeight={800} sx={{ lineHeight: 1.2 }}>
+                        {credits}
+                      </Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.85 }}>
+                        Koristi za hitan signal ili pozivnice igračima
+                      </Typography>
+                    </Paper>
+                  </Box>
+                );
+              })()}
             </Box>
 
             <CardContent sx={{ p: 3 }}>
               <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                    Kako zaraditi kredite
+                  </Typography>
+                  <Stack spacing={0.75}>
+                    {[
+                      { title: 'Odigraj meč', detail: '+50 XP po odigranom meču' },
+                      { title: 'Organizuj meč', detail: '+80 XP i +1 kredit organizatoru' },
+                      { title: 'Dovedi prijatelja', detail: '+2 kredita tebi i njemu posle prvog meča' },
+                    ].map((tip) => (
+                      <Paper
+                        key={tip.title}
+                        elevation={0}
+                        sx={{
+                          px: 1.5,
+                          py: 1,
+                          borderRadius: 2,
+                          bgcolor: 'action.hover',
+                          border: '1px solid',
+                          borderColor: 'divider',
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight={600}>
+                          {tip.title}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {tip.detail}
+                        </Typography>
+                      </Paper>
+                    ))}
+                  </Stack>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    sx={{ mt: 1.5, borderRadius: 2, fontWeight: 600 }}
+                    onClick={async () => {
+                      const link = `${window.location.origin}/register?ref=${user._id}`;
+                      try {
+                        await navigator.clipboard.writeText(link);
+                        setSuccess('Link za pozivnicu je kopiran!');
+                      } catch {
+                        setSuccess(link);
+                      }
+                    }}
+                  >
+                    Kopiraj link za prijatelja
+                  </Button>
+                </Box>
+
+                <Stack direction="row" spacing={2} alignItems="flex-start">
+                  <Box sx={{ color: 'text.secondary', pt: 0.25 }}><BadgeIcon /></Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Bedževi
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.75 }}>
+                      {Object.values(BADGE_CATALOG).map((badge) => {
+                        const unlocked = (user.badges || []).some((b) => b.id === badge.id);
+                        return (
+                          <Chip
+                            key={badge.id}
+                            label={`${badge.emoji} ${badge.name}`}
+                            size="small"
+                            variant={unlocked ? 'filled' : 'outlined'}
+                            color={unlocked ? 'primary' : 'default'}
+                            title={badge.description}
+                            sx={{
+                              opacity: unlocked ? 1 : 0.45,
+                              fontWeight: unlocked ? 600 : 400,
+                            }}
+                          />
+                        );
+                      })}
+                    </Box>
+                    {(user.badges || []).length === 0 && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+                        Igraj mečeve da otključaš bedževe
+                      </Typography>
+                    )}
+                  </Box>
+                </Stack>
+
                 <Stack direction="row" spacing={2} alignItems="center">
                   <Box sx={{ color: 'text.secondary' }}><SportsIcon /></Box>
                   <Box>

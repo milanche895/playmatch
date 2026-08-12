@@ -18,7 +18,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import RoleSelectionModal from '../components/RoleSelectionModal';
 import PersonIcon from '@mui/icons-material/Person';
@@ -37,6 +37,8 @@ import { CategoryId } from '../constants/games';
 export default function Register() {
   const { register, loginWithGoogle, loginWithFacebook } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const referralId = searchParams.get('ref') || undefined;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -64,7 +66,7 @@ export default function Register() {
     try {
       const preferredSports =
         role === 'player' && preferredGameType ? [preferredGameType] : [];
-      await register(name, email, password, role, preferredSports);
+      await register(name, email, password, role, preferredSports, referralId);
       await new Promise(resolve => setTimeout(resolve, 100));
       navigate('/');
     } catch (e: any) {
@@ -142,6 +144,12 @@ export default function Register() {
             sx={{ mb: 3, borderRadius: 2 }}
           >
             {error}
+          </Alert>
+        )}
+
+        {referralId && (
+          <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
+            Registrovan si preko pozivnice — ti i prijatelj dobijate +2 kredita posle tvog prvog odigranog meča.
           </Alert>
         )}
 

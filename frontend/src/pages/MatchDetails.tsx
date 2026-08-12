@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Stack,
@@ -23,6 +23,11 @@ import {
   CircularProgress,
   MenuItem,
   FormControlLabel,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemButton,
+  ListItemText,
 } from '@mui/material';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -40,15 +45,19 @@ import ShareIcon from '@mui/icons-material/Share';
 import StarIcon from '@mui/icons-material/Star';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import HourglassTopIcon from '@mui/icons-material/HourglassTop';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
+import CampaignIcon from '@mui/icons-material/Campaign';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import api from '../lib/api';
-import { Match, MatchRatingStatus } from '../types';
+import { Match, MatchRatingStatus, NearbyPlayer } from '../types';
 import { socket } from '../lib/socket';
 import { useAuth } from '../context/AuthContext';
 import { getTrustBadge } from '../lib/reliability';
 import MatchQuickChat from '../components/MatchQuickChat';
 import { getGameTypeName } from '../constants/games';
+import { getCreditsDisplay } from '../lib/gamification';
 
 // Fix default Leaflet icon URLs
 // @ts-ignore
@@ -116,10 +125,26 @@ export default function MatchDetails() {
   const [paymentMethodDraft, setPaymentMethodDraft] = useState<'cash' | 'transfer' | 'other'>('cash');
   const [celebrationOpen, setCelebrationOpen] = useState(false);
   const [celebrationRating, setCelebrationRating] = useState<number | null>(null);
+  const [boostDialogOpen, setBoostDialogOpen] = useState(false);
+  const [boosting, setBoosting] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [nearbyPlayers, setNearbyPlayers] = useState<NearbyPlayer[]>([]);
+  const [selectedInviteIds, setSelectedInviteIds] = useState<Set<string>>(new Set());
+  const [loadingNearby, setLoadingNearby] = useState(false);
+  const [sendingInvites, setSendingInvites] = useState(false);
+  const [promoMessage, setPromoMessage] = useState<string | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoHighlight, setPromoHighlight] = useState(false);
+  const promoteSectionRef = useRef<HTMLDivElement | null>(null);
 
   const shouldAutoOpenCompleteDialog = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get('confirmMatch') === '1';
+  }, [location.search]);
+
+  const shouldFocusPromote = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('promote') === '1';
   }, [location.search]);
 
   useEffect(() => {
@@ -455,12 +480,103 @@ export default function MatchDetails() {
     );
   }, [match, user]);
 
+  const canPromoteMatch = useMemo(() => {
+    if (!match || !user) return false;
+    const deadlinePassed = new Date() > new Date(match.registrationDeadline);
+    return (
+      match.createdBy._id === user._id &&
+      (match.status === 'open' || match.status === 'full') &&
+      !deadlinePassed
+    );
+  }, [match, user]);
+
+  async function handleBoostConfirm() {
+    if (!id) return;
+    try {
+      setBoosting(true);
+      setPromoError(null);
+      const res = await api.post(`/api/matches/${id}/boost`);
+      setBoostDialogOpen(false);
+      setPromoMessage(
+        `Hitan signal poslat (${res.data?.sent ?? 0}). Preostalo kredita: ${res.data?.creditsRemaining ?? 0}.`
+      );
+      await refreshUser();
+    } catch (err: any) {
+      setPromoError(err.response?.data?.message || 'Neuspešan boost');
+    } finally {
+      setBoosting(false);
+    }
+  }
+
+  async function openInviteModal() {
+    if (!id) return;
+    try {
+      setInviteModalOpen(true);
+      setLoadingNearby(true);
+      setPromoError(null);
+      setSelectedInviteIds(new Set());
+      const res = await api.get(`/api/matches/${id}/nearby-players`);
+      setNearbyPlayers(Array.isArray(res.data) ? res.data : []);
+    } catch (err: any) {
+      setNearbyPlayers([]);
+      setPromoError(err.response?.data?.message || 'Neuspešno učitavanje igrača u blizini');
+    } finally {
+      setLoadingNearby(false);
+    }
+  }
+
+  function toggleInviteSelection(playerId: string) {
+    setSelectedInviteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(playerId)) next.delete(playerId);
+      else next.add(playerId);
+      return next;
+    });
+  }
+
+  async function handleSendInvites() {
+    if (!id || selectedInviteIds.size === 0) return;
+    if (getCreditsDisplay(user?.credits) < 1) {
+      setPromoError('Nemate dovoljno kredita za pozivnice');
+      return;
+    }
+    try {
+      setSendingInvites(true);
+      setPromoError(null);
+      const res = await api.post(`/api/matches/${id}/invite-players`, {
+        playerIds: [...selectedInviteIds],
+      });
+      setInviteModalOpen(false);
+      setPromoMessage(
+        `Pozivnice poslate: ${res.data?.sent ?? 0}. Preostalo kredita: ${res.data?.creditsRemaining ?? 0}.`
+      );
+      await refreshUser();
+    } catch (err: any) {
+      setPromoError(err.response?.data?.message || 'Neuspešno slanje pozivnica');
+    } finally {
+      setSendingInvites(false);
+    }
+  }
+
   useEffect(() => {
     if (!shouldAutoOpenCompleteDialog || didAutoOpenCompleteDialog || !canCompleteMatch) return;
     setNoShowIds(new Set());
     setCompleteDialogOpen(true);
     setDidAutoOpenCompleteDialog(true);
   }, [shouldAutoOpenCompleteDialog, didAutoOpenCompleteDialog, canCompleteMatch]);
+
+  useEffect(() => {
+    if (!shouldFocusPromote || !canPromoteMatch || loading) return;
+    const timer = window.setTimeout(() => {
+      promoteSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setPromoHighlight(true);
+    }, 150);
+    const clearHighlight = window.setTimeout(() => setPromoHighlight(false), 2500);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(clearHighlight);
+    };
+  }, [shouldFocusPromote, canPromoteMatch, loading, match?._id]);
 
   if (loading) {
     return (
@@ -981,6 +1097,68 @@ export default function MatchDetails() {
         </Box>
       </Paper>
 
+      {/* Match promotion — organizer only */}
+      {canPromoteMatch && (
+        <Paper
+          ref={promoteSectionRef}
+          elevation={0}
+          sx={{
+            mb: 3,
+            p: 2.5,
+            borderRadius: 3,
+            border: '2px solid',
+            borderColor: promoHighlight ? 'primary.main' : 'divider',
+            bgcolor: promoHighlight ? 'action.selected' : 'action.hover',
+            boxShadow: promoHighlight ? 4 : 0,
+            transition: 'border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease',
+          }}
+        >
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+            <CampaignIcon color="primary" />
+            <Typography variant="subtitle1" fontWeight={700}>
+              Promoviši meč
+            </Typography>
+          </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Boost i pozivnice troše po 1 kredit. Trenutno: {getCreditsDisplay(user?.credits)}
+          </Typography>
+          {promoMessage && (
+            <Alert severity="success" sx={{ mb: 1.5 }} onClose={() => setPromoMessage(null)}>
+              {promoMessage}
+            </Alert>
+          )}
+          {promoError && !inviteModalOpen && !boostDialogOpen && (
+            <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setPromoError(null)}>
+              {promoError}
+            </Alert>
+          )}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <Button
+              variant="contained"
+              color="warning"
+              startIcon={<RocketLaunchIcon />}
+              onClick={() => {
+                setPromoError(null);
+                setBoostDialogOpen(true);
+              }}
+              fullWidth
+              sx={{ borderRadius: 2, fontWeight: 700 }}
+            >
+              🚀 Pošalji Hitan Signal (Boost)
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<GroupAddIcon />}
+              onClick={openInviteModal}
+              fullWidth
+              sx={{ borderRadius: 2, fontWeight: 700 }}
+            >
+              👥 Pozovi Igrače u Blizini
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+
       {/* Action Buttons */}
       <Stack spacing={2}>
         <Button
@@ -1463,6 +1641,120 @@ export default function MatchDetails() {
             </Stack>
           </Box>
         </DialogContent>
+      </Dialog>
+
+      {/* Boost confirmation */}
+      <Dialog
+        open={boostDialogOpen}
+        onClose={() => !boosting && setBoostDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 4 } }}
+      >
+        <DialogTitle fontWeight={700}>Hitan signal (Boost)</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Pošalji prioritetno obaveštenje igračima u blizini koji igraju istu kategoriju/igru.
+            Ova akcija troši 1 kredit.
+          </Typography>
+          <Alert severity="info">
+            Preostalo kredita: <strong>{getCreditsDisplay(user?.credits)}</strong>
+          </Alert>
+          {promoError && boostDialogOpen && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {promoError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setBoostDialogOpen(false)} disabled={boosting}>
+            Otkaži
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleBoostConfirm}
+            disabled={boosting || getCreditsDisplay(user?.credits) < 1}
+            startIcon={boosting ? <CircularProgress size={16} color="inherit" /> : <RocketLaunchIcon />}
+          >
+            {boosting ? 'Slanje...' : 'Pošalji signal'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Nearby players invite modal */}
+      <Dialog
+        open={inviteModalOpen}
+        onClose={() => !sendingInvites && setInviteModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 4 } }}
+      >
+        <DialogTitle fontWeight={700}>Pozovi igrače u blizini</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Slanje pozivnica troši 1 kredit. Preostalo: <strong>{getCreditsDisplay(user?.credits)}</strong>
+          </Alert>
+          {promoError && inviteModalOpen && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {promoError}
+            </Alert>
+          )}
+          {loadingNearby ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : nearbyPlayers.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+              Nema dostupnih igrača u blizini.
+            </Typography>
+          ) : (
+            <List dense disablePadding>
+              {nearbyPlayers.map((p) => {
+                const selected = selectedInviteIds.has(p._id);
+                const badge = getTrustBadge(p.reliabilityScore);
+                return (
+                  <ListItem key={p._id} disablePadding secondaryAction={
+                    <Checkbox
+                      edge="end"
+                      checked={selected}
+                      onChange={() => toggleInviteSelection(p._id)}
+                    />
+                  }>
+                    <ListItemButton onClick={() => toggleInviteSelection(p._id)} sx={{ borderRadius: 2 }}>
+                      <ListItemAvatar>
+                        <Avatar src={p.avatarUrl || undefined}>
+                          {p.name?.charAt(0)?.toUpperCase()}
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={p.name}
+                        secondary={`${p.distance.toFixed(1)} km · ${badge.emoji} ${badge.label}`}
+                      />
+                    </ListItemButton>
+                  </ListItem>
+                );
+              })}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setInviteModalOpen(false)} disabled={sendingInvites}>
+            Zatvori
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSendInvites}
+            disabled={
+              sendingInvites ||
+              selectedInviteIds.size === 0 ||
+              getCreditsDisplay(user?.credits) < 1
+            }
+            startIcon={sendingInvites ? <CircularProgress size={16} color="inherit" /> : <GroupAddIcon />}
+          >
+            {sendingInvites ? 'Slanje...' : `Pošalji pozivnice (${selectedInviteIds.size})`}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

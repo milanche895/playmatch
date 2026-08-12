@@ -21,6 +21,7 @@ const {
   formatQuickMessage,
 } = require('../utils/quickMessages');
 const { GAME_TYPES } = require('../constants/games');
+const { awardMatchCompletionXp, evaluateBadges, DEFAULT_STARTING_CREDITS } = require('../utils/gamification');
 
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
 
@@ -184,7 +185,7 @@ async function notifyNearbyPlayers(match, field) {
 
     if (fieldLat == null || fieldLng == null) {
       console.log('[Push Notifications] No coordinates available, skipping notifications');
-      return;
+      return { success: 0, failed: 0 };
     }
 
     // Build query for players with PWA push subscriptions
@@ -203,7 +204,7 @@ async function notifyNearbyPlayers(match, field) {
 
     if (players.length === 0) {
       console.log('[Push Notifications] No players to notify - check if players have notifications enabled and are subscribed');
-      return;
+      return { success: 0, failed: 0 };
     }
     const nearbyPlayers = [];
 
@@ -229,7 +230,7 @@ async function notifyNearbyPlayers(match, field) {
 
     if (nearbyPlayers.length === 0) {
       console.log('[Push Notifications] No nearby players to notify - players are outside notification radius');
-      return;
+      return { success: 0, failed: 0 };
     }
 
     // Format match date for notification
@@ -260,7 +261,7 @@ async function notifyNearbyPlayers(match, field) {
 
     if (subscriptions.length === 0) {
       console.log('[Push Notifications] No valid subscriptions to send notifications to');
-      return;
+      return { success: 0, failed: 0 };
     }
 
     // Send notifications
@@ -280,10 +281,114 @@ async function notifyNearbyPlayers(match, field) {
     }
 
     console.log(`✅ Sent ${result.success} push notifications, ${result.failed} failed`);
+    return { success: result.success, failed: result.failed };
   } catch (error) {
     console.error('Error notifying nearby players:', error);
     throw error;
   }
+}
+
+function getMatchCoords(match, field) {
+  if (match.isInformal) {
+    return {
+      lat: match.informalLocation?.lat,
+      lng: match.informalLocation?.lng,
+      locationName: match.informalLocation?.name || 'Privatni teren'
+    };
+  }
+  return {
+    lat: field?.lat,
+    lng: field?.lng,
+    locationName: field?.name || 'Teren'
+  };
+}
+
+function getMatchDisplayName(match, field) {
+  const sportName = GAME_TYPES[match.sport]?.name || match.sport || 'Meč';
+  const { locationName } = getMatchCoords(match, field);
+  return `${sportName} — ${locationName}`;
+}
+
+async function clearExpiredSubscriptions(expiredSubscriptions) {
+  if (!expiredSubscriptions?.length) return;
+  for (const expiredSub of expiredSubscriptions) {
+    if (expiredSub?.endpoint) {
+      await User.updateMany(
+        { 'pushSubscription.endpoint': expiredSub.endpoint },
+        { $unset: { pushSubscription: 1 } }
+      );
+    }
+  }
+}
+
+/**
+ * Find nearby player candidates for a match (distance within each player's notificationRadius).
+ * @returns {Promise<Array<{ player, distance }>>}
+ */
+async function findNearbyPlayerCandidates(match, field, options = {}) {
+  const {
+    requirePush = false,
+    requireNotificationEnabled = false,
+    matchSportOrCategory = false,
+    excludePlayerIds = []
+  } = options;
+
+  const { lat, lng } = getMatchCoords(match, field);
+  if (lat == null || lng == null) return [];
+
+  const creator = await User.findById(match.createdBy).select('blockedPlayers');
+  const creatorBlocked = new Set((creator?.blockedPlayers || []).map((id) => id.toString()));
+  const exclude = new Set([
+    match.createdBy.toString(),
+    ...excludePlayerIds.map((id) => id.toString()),
+    ...(match.players || []).map((p) => p.toString())
+  ]);
+
+  const query = {
+    role: 'player',
+    'lastKnownLocation.lat': { $exists: true, $ne: null },
+    'lastKnownLocation.lng': { $exists: true, $ne: null }
+  };
+  if (requireNotificationEnabled) query.notificationEnabled = true;
+  if (requirePush) query.pushSubscription = { $exists: true, $ne: null };
+
+  const players = await User.find(query).select(
+    'name avatarUrl reliabilityScore preferredSports notificationRadius lastKnownLocation pushSubscription blockedPlayers notificationEnabled'
+  );
+
+  const matchSport = match.sport;
+  const matchCategory = GAME_TYPES[matchSport]?.category;
+
+  const results = [];
+  for (const player of players) {
+    const playerId = player._id.toString();
+    if (exclude.has(playerId)) continue;
+    if (creatorBlocked.has(playerId)) continue;
+    if ((player.blockedPlayers || []).some((id) => id.toString() === match.createdBy.toString())) continue;
+
+    const distance = calculateDistance(
+      lat,
+      lng,
+      player.lastKnownLocation.lat,
+      player.lastKnownLocation.lng
+    );
+    const radius = player.notificationRadius || 10;
+    if (distance > radius) continue;
+
+    if (matchSportOrCategory) {
+      const prefs = player.preferredSports || [];
+      const matchesSport = prefs.includes(matchSport);
+      const matchesCategory =
+        matchCategory &&
+        prefs.some((p) => GAME_TYPES[p]?.category === matchCategory);
+      if (!matchesSport && !matchesCategory) continue;
+    }
+
+    results.push({ player, distance: Number(distance.toFixed(2)) });
+  }
+
+  results.sort((a, b) => a.distance - b.distance);
+  return results;
 }
 
 function matchesRoutesFactory(io) {
@@ -967,6 +1072,9 @@ function matchesRoutesFactory(io) {
       match.status = 'completed';
       await match.save();
 
+      // Gamification: +50 XP attendees, +80 XP creator (once)
+      await awardMatchCompletionXp(match, User);
+
       const populated = await findPopulatedMatch(match._id);
 
       io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
@@ -974,6 +1082,177 @@ function matchesRoutesFactory(io) {
     } catch (e) {
       console.error('Complete match error:', e);
       res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Nearby players eligible for direct invite (creator only)
+  router.get('/:id/nearby-players', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      if (match.createdBy.toString() !== req.user.id) {
+        return res.status(403).json({ message: 'Samo organizator može videti igrače u blizini' });
+      }
+      if (match.status !== 'open' && match.status !== 'full') {
+        return res.status(400).json({ message: 'Meč nije otvoren za promociju' });
+      }
+      if (new Date() > new Date(match.registrationDeadline)) {
+        return res.status(400).json({ message: 'Rok za prijavu je istekao' });
+      }
+
+      let field = null;
+      if (!match.isInformal && match.fieldId) {
+        field = await Field.findById(match.fieldId).select('name lat lng');
+      }
+
+      const nearby = await findNearbyPlayerCandidates(match, field);
+      return res.json(
+        nearby.map(({ player, distance }) => ({
+          _id: player._id,
+          name: player.name,
+          avatarUrl: player.avatarUrl || null,
+          reliabilityScore: player.reliabilityScore ?? 100,
+          distance
+        }))
+      );
+    } catch (e) {
+      console.error('Nearby players error:', e);
+      return res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Direct invite — targeted Web Push; costs 1 credit
+  router.post('/:id/invite-players', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      if (match.createdBy.toString() !== req.user.id) {
+        return res.status(403).json({ message: 'Samo organizator može slati pozivnice' });
+      }
+      if (match.status !== 'open' && match.status !== 'full') {
+        return res.status(400).json({ message: 'Meč nije otvoren za promociju' });
+      }
+      if (new Date() > new Date(match.registrationDeadline)) {
+        return res.status(400).json({ message: 'Rok za prijavu je istekao' });
+      }
+
+      const playerIds = Array.isArray(req.body?.playerIds)
+        ? [...new Set(req.body.playerIds.map((id) => String(id)))]
+        : [];
+      if (playerIds.length === 0) {
+        return res.status(400).json({ message: 'Izaberite bar jednog igrača' });
+      }
+
+      const creator = await User.findById(req.user.id).select('name credits');
+      if (!creator) {
+        return res.status(404).json({ message: 'Korisnik nije pronađen' });
+      }
+
+      const currentCredits =
+        typeof creator.credits === 'number' ? creator.credits : DEFAULT_STARTING_CREDITS;
+      if (currentCredits < 1) {
+        return res.status(400).json({ message: 'Nemate dovoljno kredita za pozivnice' });
+      }
+
+      creator.credits = currentCredits - 1;
+      await creator.save();
+
+      let field = null;
+      if (!match.isInformal && match.fieldId) {
+        field = await Field.findById(match.fieldId).select('name lat lng');
+      }
+
+      const matchName = getMatchDisplayName(match, field);
+      const joinedIds = new Set((match.players || []).map((p) => p.toString()));
+
+      const targets = await User.find({
+        _id: { $in: playerIds },
+        role: 'player'
+      }).select('name pushSubscription');
+
+      const subscriptions = [];
+      let skipped = 0;
+      for (const player of targets) {
+        if (joinedIds.has(player._id.toString())) {
+          skipped += 1;
+          continue;
+        }
+        if (player.pushSubscription?.endpoint) {
+          subscriptions.push(player.pushSubscription);
+        } else {
+          skipped += 1;
+        }
+      }
+
+      const payload = {
+        title: 'Pozivnica za meč 👥',
+        body: `${creator.name || 'Organizator'} te poziva na meč ${matchName}!`,
+        url: `/matches/${match._id}`,
+        matchId: match._id.toString(),
+        image: '/icons/icon-192.png'
+      };
+
+      const result = await sendPushNotifications(subscriptions, payload);
+      await clearExpiredSubscriptions(result.expiredSubscriptions);
+
+      return res.json({
+        message: 'Pozivnice su poslate',
+        sent: result.success,
+        failed: result.failed,
+        skipped,
+        creditsRemaining: creator.credits
+      });
+    } catch (e) {
+      console.error('Invite players error:', e);
+      return res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
+  // Match boost — spend 1 credit and re-notify nearby players
+  router.post('/:id/boost', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      if (match.createdBy.toString() !== req.user.id) {
+        return res.status(403).json({ message: 'Samo organizator može boost-ovati meč' });
+      }
+      if (match.status !== 'open' && match.status !== 'full') {
+        return res.status(400).json({ message: 'Meč nije otvoren za promociju' });
+      }
+      if (new Date() > new Date(match.registrationDeadline)) {
+        return res.status(400).json({ message: 'Rok za prijavu je istekao' });
+      }
+
+      const creatorDoc = await User.findById(req.user.id).select('name credits');
+      if (!creatorDoc) {
+        return res.status(404).json({ message: 'Korisnik nije pronađen' });
+      }
+
+      const currentCredits =
+        typeof creatorDoc.credits === 'number' ? creatorDoc.credits : DEFAULT_STARTING_CREDITS;
+      if (currentCredits < 1) {
+        return res.status(400).json({ message: 'Nemate dovoljno kredita za hitan signal' });
+      }
+
+      creatorDoc.credits = currentCredits - 1;
+      await creatorDoc.save();
+
+      let field = null;
+      if (!match.isInformal && match.fieldId) {
+        field = await Field.findById(match.fieldId);
+      }
+
+      const result = await notifyNearbyPlayers(match, field);
+
+      return res.json({
+        message: 'Hitan signal je poslat',
+        sent: result?.success ?? 0,
+        failed: result?.failed ?? 0,
+        creditsRemaining: creatorDoc.credits
+      });
+    } catch (e) {
+      console.error('Boost match error:', e);
+      return res.status(500).json({ message: 'Greška servera' });
     }
   });
 
@@ -1182,6 +1461,11 @@ function matchesRoutesFactory(io) {
 
       const ratedUserIds = [...new Set(newRatings.map((r) => r.ratedUserId.toString()))];
       await Promise.all(ratedUserIds.map((id) => recalculateUserRatings(id)));
+
+      // Completion XP fallback (idempotent) + badge eval for fair-play recipients
+      await awardMatchCompletionXp(match, User);
+      await Promise.all(ratedUserIds.map((id) => evaluateBadges(id, User)));
+      await evaluateBadges(req.user.id, User);
 
       return res.json({ message: 'Ocene su sačuvane', saved: newRatings.length });
     } catch (e) {

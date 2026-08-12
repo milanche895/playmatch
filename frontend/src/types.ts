@@ -29,6 +29,12 @@ export type User = {
   location?: string;
   preferredSports?: string[];
   experience?: 'beginner' | 'intermediate' | 'advanced' | 'professional';
+  // Gamification
+  xp?: number;
+  level?: number;
+  badges?: { id: string; unlockedAt?: string }[];
+  credits?: number;
+  referredBy?: string;
   // Notification settings
   notificationEnabled?: boolean;
   notificationRadius?: number;
@@ -38,6 +44,14 @@ export type User = {
     updatedAt?: string;
   };
   pushSubscription?: PushSubscriptionJSON | null;
+};
+
+export type NearbyPlayer = {
+  _id: string;
+  name: string;
+  avatarUrl?: string | null;
+  reliabilityScore?: number;
+  distance: number;
 };
 
 export type PlayerAnalytics = {

@@ -4,6 +4,7 @@ const Field = require('../models/Field');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const { rewardReliabilityForCompletedMatch } = require('../utils/reliability');
+const { awardMatchCompletionXp } = require('../utils/gamification');
 
 const router = express.Router();
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
@@ -160,6 +161,9 @@ router.post('/matches/:id/complete', auth(true), requireCourt, async (req, res) 
 
     // Reward players who successfully played (+2, capped at 100)
     await rewardReliabilityForCompletedMatch(match.players, User);
+
+    // Gamification: +50 XP attendees, +80 XP creator (once)
+    await awardMatchCompletionXp(match, User);
 
     const populated = await Match.findById(match._id)
       .populate('fieldId')

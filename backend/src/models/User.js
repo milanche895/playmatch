@@ -45,6 +45,16 @@ const userSchema = new mongoose.Schema(
       sport: { type: String, required: true },
       skillLevel: { type: Number, min: 1, max: 5, required: true }
     }],
+    // Gamification / token economy
+    xp: { type: Number, default: 0, min: 0 },
+    level: { type: Number, default: 1, min: 1 },
+    badges: [{
+      id: { type: String, required: true },
+      unlockedAt: { type: Date, default: Date.now }
+    }],
+    credits: { type: Number, default: 3, min: 0 }, // Free starting credits for boosts
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    referralRewardGranted: { type: Boolean, default: false }, // +2 credits once on first completed match
     // Notification settings
     notificationEnabled: { type: Boolean, default: true }, // Da li želi push notifikacije
     notificationRadius: { type: Number, default: 10 }, // Radius u km za obaveštenja o mečevima

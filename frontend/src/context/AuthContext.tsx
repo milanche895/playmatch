@@ -13,7 +13,8 @@ type AuthContextValue = {
     email: string,
     password: string,
     role?: 'player' | 'court',
-    preferredSports?: string[]
+    preferredSports?: string[],
+    referredBy?: string
   ) => Promise<void>;
   logout: () => Promise<void>;
   loginWithGoogle: (role?: 'player' | 'court') => void;
@@ -58,7 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string,
     password: string,
     role?: 'player' | 'court',
-    preferredSports?: string[]
+    preferredSports?: string[],
+    referredBy?: string
   ) {
     try {
       const res = await api.post('/api/auth/register', {
@@ -67,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password,
         role,
         preferredSports: preferredSports || [],
+        ...(referredBy ? { referredBy } : {}),
       });
       const { token: _token, ...userData } = res.data;
       setUser(userData);

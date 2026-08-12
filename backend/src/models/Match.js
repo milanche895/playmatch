@@ -59,7 +59,9 @@ const matchSchema = new mongoose.Schema(
       text: { type: String, required: true, maxlength: 200 },
       isPreset: { type: Boolean, default: false },
       createdAt: { type: Date, default: Date.now }
-    }]
+    }],
+    // Gamification — completion XP awarded once (complete or first rate fallback)
+    xpAwarded: { type: Boolean, default: false }
   },
   { timestamps: true }
 );

@@ -5,6 +5,7 @@ const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const FacebookStrategy = require('passport-facebook').Strategy;
 const axios = require('axios');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const { uploadImageFromUrl } = require('../utils/cloudinary');
 const auth = require('../middleware/auth');
@@ -266,7 +267,7 @@ function setTokenCookie(res, userId) {
 
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, avatarUrl, role, preferredSports } = req.body;
+    const { name, email, password, avatarUrl, role, preferredSports, referredBy } = req.body;
     if (!name || !email || !password) return res.status(400).json({ message: 'Nedostaju polja' });
     const existing = await User.findOne({ email });
     if (existing) return res.status(409).json({ message: 'Email je već u upotrebi' });
@@ -281,15 +282,31 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Izaberite kategoriju i igru kojom se bavite' });
     }
 
-    const user = await User.create({ 
-      name, 
-      email, 
-      password: hashed, 
+    const createPayload = {
+      name,
+      email,
+      password: hashed,
       avatarUrl,
       role: role || 'player',
       provider: 'local',
       preferredSports: (role || 'player') === 'player' ? sports : [],
-    });
+    };
+
+    // Optional referral — store referrer; +2 credits granted on first completed match
+    if (referredBy && mongoose.Types.ObjectId.isValid(String(referredBy))) {
+      const referrer = await User.findById(referredBy).select('_id');
+      if (referrer) {
+        createPayload.referredBy = referrer._id;
+      }
+    }
+
+    const user = await User.create(createPayload);
+
+    // Prevent self-referral edge case (shouldn't happen on create, but guard if same id somehow)
+    if (user.referredBy && user.referredBy.toString() === user._id.toString()) {
+      user.referredBy = undefined;
+      await user.save();
+    }
     
     // Generate token
     const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
@@ -304,6 +321,9 @@ router.post('/register', async (req, res) => {
       avatarUrl: user.avatarUrl,
       role: user.role,
       preferredSports: user.preferredSports || [],
+      credits: user.credits ?? 3,
+      xp: user.xp ?? 0,
+      level: user.level ?? 1,
       token // Include token in response for localStorage
     });
   } catch (e) {

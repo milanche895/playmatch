@@ -110,6 +110,11 @@ export default function MojiMecevi() {
     return Boolean(match.isInformal && isMatchInProgressState && matchStarted);
   }
 
+  function canShowInvitePlayersButton(match: Match): boolean {
+    if (match.status !== 'open' && match.status !== 'full') return false;
+    return new Date() <= new Date(match.registrationDeadline);
+  }
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
@@ -281,6 +286,19 @@ export default function MojiMecevi() {
                             >
                               Vidi detalje
                             </Button>
+                            {canShowInvitePlayersButton(match) && (
+                              <Button
+                                variant="contained"
+                                color="primary"
+                                component={Link}
+                                to={`/matches/${match._id}?promote=1`}
+                                fullWidth
+                                startIcon={<PeopleIcon />}
+                                sx={{ borderRadius: 3, fontWeight: 700 }}
+                              >
+                                Pozovi igrače
+                              </Button>
+                            )}
                             {canShowConfirmMatchButton(match) && (
                               <Button
                                 variant="contained"
