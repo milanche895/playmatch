@@ -1,4 +1,4 @@
-import { Component, ReactNode } from 'react';
+import { Component, ReactNode, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider as MuiThemeProvider, CssBaseline, Container, CircularProgress, Box, Typography, Button } from '@mui/material';
 import { ThemeProvider as CustomThemeProvider, useThemeMode } from './context/ThemeContext';
@@ -18,6 +18,7 @@ import MojiIgraci from './pages/MojiIgraci';
 import NotificationSettings from './pages/NotificationSettings';
 import PublicPlayerProfile from './pages/PublicPlayerProfile';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { trackPlayerLocation } from './lib/location';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -71,9 +72,15 @@ function CourtRoute({ children }: { children: JSX.Element }) {
 }
 
 function AppContent() {
-  const { loading } = useAuth();
+  const { user, loading } = useAuth();
   const { mode } = useThemeMode();
   const theme = createAppTheme(mode);
+
+  useEffect(() => {
+    if (user?.role === 'player') {
+      trackPlayerLocation();
+    }
+  }, [user?._id, user?.role]);
 
   if (loading) {
     return (

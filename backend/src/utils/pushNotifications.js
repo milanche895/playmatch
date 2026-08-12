@@ -33,35 +33,53 @@ function getVapidPublicKey() {
   return VAPID_PUBLIC_KEY;
 }
 
+function normalizePushSubscription(subscription) {
+  if (!subscription) return null;
+  const plain = typeof subscription.toObject === 'function'
+    ? subscription.toObject()
+    : (typeof subscription.toJSON === 'function' ? subscription.toJSON() : subscription);
+  const endpoint = plain?.endpoint;
+  const keys = plain?.keys || {};
+  if (!endpoint || !keys.p256dh || !keys.auth) return null;
+  return {
+    endpoint,
+    keys: {
+      p256dh: String(keys.p256dh),
+      auth: String(keys.auth)
+    }
+  };
+}
+
 /**
  * Send push notification to a single subscription
  * @param {Object} subscription - PushSubscription object (with endpoint and keys)
- * @param {Object} payload - { title, body, url?, image?, matchId? }
+ * @param {Object} payload - { title, body, url?, image?, matchId?, tag?, requireInteraction? }
  * @returns {Promise<void>}
  */
 async function sendPushNotification(subscription, payload) {
-  if (!subscription || !subscription.endpoint) {
-    throw new Error('Invalid push subscription: endpoint required');
+  const normalized = normalizePushSubscription(subscription);
+  if (!normalized) {
+    throw new Error('Invalid push subscription: endpoint and keys required');
   }
 
-  const { title, body, url, image, matchId } = payload;
+  const { title, body, url, image, matchId, tag, requireInteraction } = payload;
 
   const notificationPayload = JSON.stringify({
     title: title || 'Plejko',
     body: body || 'Novi meč je kreiran u blizini!',
     icon: image || '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
-    tag: matchId ? `match-${matchId}` : 'plejko-notification',
+    tag: tag || (matchId ? `match-${matchId}` : 'plejko-notification'),
     data: {
       url: url || '/',
       matchId: matchId || ''
     },
-    vibrate: [200, 100, 200],
-    requireInteraction: false
+    vibrate: requireInteraction ? [300, 100, 300, 100, 300] : [200, 100, 200],
+    requireInteraction: Boolean(requireInteraction)
   });
 
   try {
-    await webpush.sendNotification(subscription, notificationPayload);
+    await webpush.sendNotification(normalized, notificationPayload);
     console.log('✅ Push notification sent');
     return { success: 1, failed: 0 };
   } catch (error) {
@@ -91,8 +109,15 @@ async function sendPushNotifications(subscriptions, payload) {
   let success = 0;
   let failed = 0;
   const expiredSubscriptions = [];
+  const validSubscriptions = subscriptions
+    .map(normalizePushSubscription)
+    .filter(Boolean);
 
-  const promises = subscriptions.map(async (subscription) => {
+  if (validSubscriptions.length === 0) {
+    return { success: 0, failed: subscriptions.length, expiredSubscriptions: [] };
+  }
+
+  const promises = validSubscriptions.map(async (subscription) => {
     try {
       const result = await sendPushNotification(subscription, payload);
       if (result.success > 0) {
@@ -128,5 +153,6 @@ async function sendPushNotifications(subscriptions, payload) {
 module.exports = {
   getVapidPublicKey,
   sendPushNotification,
-  sendPushNotifications
+  sendPushNotifications,
+  normalizePushSubscription
 };

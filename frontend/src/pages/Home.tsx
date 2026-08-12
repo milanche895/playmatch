@@ -27,6 +27,7 @@ import L from 'leaflet';
 import api from '../lib/api';
 import { Match, Field } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { persistPlayerLocation } from '../lib/location';
 import {
   subscribeToPushNotifications,
   unsubscribeFromPushNotifications,
@@ -390,6 +391,9 @@ export default function Home() {
               position.coords.longitude,
             ];
             setUserLocation(location);
+            if (user?.role === 'player') {
+              persistPlayerLocation(location[0], location[1]);
+            }
           } else {
             console.warn('Geolocation returned null coordinates');
             setLocationError('Nije moguće dobiti vašu lokaciju. Prikazuju se svi mečevi.');

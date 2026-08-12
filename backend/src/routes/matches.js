@@ -5,7 +5,7 @@ const Field = require('../models/Field');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const { calculateDistance } = require('../utils/notifications');
-const { sendPushNotifications } = require('../utils/pushNotifications');
+const { sendPushNotifications, normalizePushSubscription } = require('../utils/pushNotifications');
 const { processExpiredMatches } = require('../utils/matchStatus');
 const {
   getReliabilityPenaltyPoints,
@@ -21,7 +21,7 @@ const {
   formatQuickMessage,
 } = require('../utils/quickMessages');
 const { GAME_TYPES } = require('../constants/games');
-const { awardMatchCompletionXp, evaluateBadges, DEFAULT_STARTING_CREDITS } = require('../utils/gamification');
+const { awardMatchCompletionXp, evaluateBadges, DEFAULT_STARTING_CREDITS, awardCredits } = require('../utils/gamification');
 
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
 
@@ -211,7 +211,7 @@ async function notifyNearbyPlayers(match, field) {
     // Filter players by distance
     for (const player of players) {
       // Skip if player is the creator
-      if (player._id.toString() === match.createdBy.toString()) {
+      if (idString(player._id) === idString(match.createdBy)) {
         continue;
       }
 
@@ -288,6 +288,13 @@ async function notifyNearbyPlayers(match, field) {
   }
 }
 
+function idString(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (value._id) return value._id.toString();
+  return value.toString();
+}
+
 function getMatchCoords(match, field) {
   if (match.isInformal) {
     return {
@@ -330,18 +337,20 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
     requirePush = false,
     requireNotificationEnabled = false,
     matchSportOrCategory = false,
-    excludePlayerIds = []
+    excludePlayerIds = [],
+    minRadiusKm = 0
   } = options;
 
   const { lat, lng } = getMatchCoords(match, field);
   if (lat == null || lng == null) return [];
 
-  const creator = await User.findById(match.createdBy).select('blockedPlayers');
-  const creatorBlocked = new Set((creator?.blockedPlayers || []).map((id) => id.toString()));
+  const creatorId = idString(match.createdBy);
+  const creator = await User.findById(creatorId).select('blockedPlayers');
+  const creatorBlocked = new Set((creator?.blockedPlayers || []).map(idString));
   const exclude = new Set([
-    match.createdBy.toString(),
-    ...excludePlayerIds.map((id) => id.toString()),
-    ...(match.players || []).map((p) => p.toString())
+    creatorId,
+    ...excludePlayerIds.map(idString),
+    ...(match.players || []).map(idString)
   ]);
 
   const query = {
@@ -361,18 +370,18 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
 
   const results = [];
   for (const player of players) {
-    const playerId = player._id.toString();
+    const playerId = idString(player._id);
     if (exclude.has(playerId)) continue;
     if (creatorBlocked.has(playerId)) continue;
-    if ((player.blockedPlayers || []).some((id) => id.toString() === match.createdBy.toString())) continue;
+    if ((player.blockedPlayers || []).some((id) => idString(id) === creatorId)) continue;
 
     const distance = calculateDistance(
       lat,
       lng,
-      player.lastKnownLocation.lat,
-      player.lastKnownLocation.lng
+      Number(player.lastKnownLocation.lat),
+      Number(player.lastKnownLocation.lng)
     );
-    const radius = player.notificationRadius || 10;
+    const radius = Math.max(Number(player.notificationRadius) || 10, minRadiusKm);
     if (distance > radius) continue;
 
     if (matchSportOrCategory) {
@@ -381,7 +390,11 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
       const matchesCategory =
         matchCategory &&
         prefs.some((p) => GAME_TYPES[p]?.category === matchCategory);
-      if (!matchesSport && !matchesCategory) continue;
+      if (!prefs.length) {
+        // Legacy / incomplete profiles: still eligible so promotion is not empty
+      } else if (!matchesSport && !matchesCategory) {
+        continue;
+      }
     }
 
     results.push({ player, distance: Number(distance.toFixed(2)) });
@@ -1090,7 +1103,7 @@ function matchesRoutesFactory(io) {
     try {
       const match = await Match.findById(req.params.id);
       if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
-      if (match.createdBy.toString() !== req.user.id) {
+      if (idString(match.createdBy) !== req.user.id) {
         return res.status(403).json({ message: 'Samo organizator može videti igrače u blizini' });
       }
       if (match.status !== 'open' && match.status !== 'full') {
@@ -1105,14 +1118,15 @@ function matchesRoutesFactory(io) {
         field = await Field.findById(match.fieldId).select('name lat lng');
       }
 
-      const nearby = await findNearbyPlayerCandidates(match, field);
+      const nearby = await findNearbyPlayerCandidates(match, field, { minRadiusKm: 25 });
       return res.json(
         nearby.map(({ player, distance }) => ({
           _id: player._id,
           name: player.name,
           avatarUrl: player.avatarUrl || null,
           reliabilityScore: player.reliabilityScore ?? 100,
-          distance
+          distance,
+          hasPush: Boolean(normalizePushSubscription(player.pushSubscription))
         }))
       );
     } catch (e) {
@@ -1126,7 +1140,7 @@ function matchesRoutesFactory(io) {
     try {
       const match = await Match.findById(req.params.id);
       if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
-      if (match.createdBy.toString() !== req.user.id) {
+      if (idString(match.createdBy) !== req.user.id) {
         return res.status(403).json({ message: 'Samo organizator može slati pozivnice' });
       }
       if (match.status !== 'open' && match.status !== 'full') {
@@ -1154,16 +1168,13 @@ function matchesRoutesFactory(io) {
         return res.status(400).json({ message: 'Nemate dovoljno kredita za pozivnice' });
       }
 
-      creator.credits = currentCredits - 1;
-      await creator.save();
-
       let field = null;
       if (!match.isInformal && match.fieldId) {
         field = await Field.findById(match.fieldId).select('name lat lng');
       }
 
       const matchName = getMatchDisplayName(match, field);
-      const joinedIds = new Set((match.players || []).map((p) => p.toString()));
+      const joinedIds = new Set((match.players || []).map(idString));
 
       const targets = await User.find({
         _id: { $in: playerIds },
@@ -1173,27 +1184,45 @@ function matchesRoutesFactory(io) {
       const subscriptions = [];
       let skipped = 0;
       for (const player of targets) {
-        if (joinedIds.has(player._id.toString())) {
+        if (joinedIds.has(idString(player._id))) {
           skipped += 1;
           continue;
         }
-        if (player.pushSubscription?.endpoint) {
-          subscriptions.push(player.pushSubscription);
+        const sub = normalizePushSubscription(player.pushSubscription);
+        if (sub) {
+          subscriptions.push(sub);
         } else {
           skipped += 1;
         }
       }
+
+      if (subscriptions.length === 0) {
+        return res.status(400).json({
+          message: 'Izabrani igrači trenutno nemaju uključena obaveštenja, pa pozivnice nisu poslate'
+        });
+      }
+
+      creator.credits = currentCredits - 1;
+      await creator.save();
 
       const payload = {
         title: 'Pozivnica za meč 👥',
         body: `${creator.name || 'Organizator'} te poziva na meč ${matchName}!`,
         url: `/matches/${match._id}`,
         matchId: match._id.toString(),
+        tag: `match-invite-${match._id}-${Date.now()}`,
+        requireInteraction: true,
         image: '/icons/icon-192.png'
       };
 
-      const result = await sendPushNotifications(subscriptions, payload);
-      await clearExpiredSubscriptions(result.expiredSubscriptions);
+      let result;
+      try {
+        result = await sendPushNotifications(subscriptions, payload);
+        await clearExpiredSubscriptions(result.expiredSubscriptions);
+      } catch (sendErr) {
+        await awardCredits(req.user.id, 1, User);
+        throw sendErr;
+      }
 
       return res.json({
         message: 'Pozivnice su poslate',
@@ -1208,12 +1237,12 @@ function matchesRoutesFactory(io) {
     }
   });
 
-  // Match boost — spend 1 credit and re-notify nearby players
+  // Match boost — spend 1 credit and send a distinct urgent push to nearby players
   router.post('/:id/boost', auth(true), async (req, res) => {
     try {
       const match = await Match.findById(req.params.id);
       if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
-      if (match.createdBy.toString() !== req.user.id) {
+      if (idString(match.createdBy) !== req.user.id) {
         return res.status(403).json({ message: 'Samo organizator može boost-ovati meč' });
       }
       if (match.status !== 'open' && match.status !== 'full') {
@@ -1234,15 +1263,55 @@ function matchesRoutesFactory(io) {
         return res.status(400).json({ message: 'Nemate dovoljno kredita za hitan signal' });
       }
 
-      creatorDoc.credits = currentCredits - 1;
-      await creatorDoc.save();
-
       let field = null;
       if (!match.isInformal && match.fieldId) {
         field = await Field.findById(match.fieldId);
       }
 
-      const result = await notifyNearbyPlayers(match, field);
+      let nearby = await findNearbyPlayerCandidates(match, field, {
+        requirePush: true,
+        matchSportOrCategory: true,
+        minRadiusKm: 25
+      });
+      if (nearby.length === 0) {
+        nearby = await findNearbyPlayerCandidates(match, field, {
+          requirePush: true,
+          minRadiusKm: 25
+        });
+      }
+
+      const subscriptions = nearby
+        .map(({ player }) => normalizePushSubscription(player.pushSubscription))
+        .filter(Boolean);
+
+      if (subscriptions.length === 0) {
+        return res.status(400).json({
+          message: 'Nema igrača u blizini sa uključenim obaveštenjima'
+        });
+      }
+
+      creatorDoc.credits = currentCredits - 1;
+      await creatorDoc.save();
+
+      const matchName = getMatchDisplayName(match, field);
+      const payload = {
+        title: 'Hitan signal! 🚀',
+        body: `${creatorDoc.name || 'Organizator'} traži igrače za ${matchName} — javi se odmah!`,
+        url: `/matches/${match._id}`,
+        matchId: match._id.toString(),
+        tag: `match-boost-${match._id}-${Date.now()}`,
+        requireInteraction: true,
+        image: '/icons/icon-192.png'
+      };
+
+      let result;
+      try {
+        result = await sendPushNotifications(subscriptions, payload);
+        await clearExpiredSubscriptions(result.expiredSubscriptions);
+      } catch (sendErr) {
+        await awardCredits(req.user.id, 1, User);
+        throw sendErr;
+      }
 
       return res.json({
         message: 'Hitan signal je poslat',

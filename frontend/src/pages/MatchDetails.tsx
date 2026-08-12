@@ -495,10 +495,13 @@ export default function MatchDetails() {
     try {
       setBoosting(true);
       setPromoError(null);
-      const res = await api.post(`/api/matches/${id}/boost`);
+      const res = await api.post(`/api/matches/${id}/boost`, {}, { timeout: 30000 });
       setBoostDialogOpen(false);
+      const sent = res.data?.sent ?? 0;
       setPromoMessage(
-        `Hitan signal poslat (${res.data?.sent ?? 0}). Preostalo kredita: ${res.data?.creditsRemaining ?? 0}.`
+        sent > 0
+          ? `Hitan signal poslat (${sent}). Preostalo kredita: ${res.data?.creditsRemaining ?? 0}.`
+          : `Hitan signal je poslat, ali nijedan igrač u blizini trenutno nema uključena obaveštenja. Preostalo kredita: ${res.data?.creditsRemaining ?? 0}.`
       );
       await refreshUser();
     } catch (err: any) {
@@ -545,7 +548,7 @@ export default function MatchDetails() {
       setPromoError(null);
       const res = await api.post(`/api/matches/${id}/invite-players`, {
         playerIds: [...selectedInviteIds],
-      });
+      }, { timeout: 30000 });
       setInviteModalOpen(false);
       setPromoMessage(
         `Pozivnice poslate: ${res.data?.sent ?? 0}. Preostalo kredita: ${res.data?.creditsRemaining ?? 0}.`
@@ -1706,22 +1709,29 @@ export default function MatchDetails() {
             </Box>
           ) : nearbyPlayers.length === 0 ? (
             <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-              Nema dostupnih igrača u blizini.
+              Nema dostupnih igrača u blizini. Igrači se pojavljuju ovde kada otvore mapu
+              (sa dozvolom za lokaciju) i još nisu prijavljeni na meč.
             </Typography>
           ) : (
             <List dense disablePadding>
               {nearbyPlayers.map((p) => {
                 const selected = selectedInviteIds.has(p._id);
                 const badge = getTrustBadge(p.reliabilityScore);
+                const canInvite = p.hasPush !== false;
                 return (
                   <ListItem key={p._id} disablePadding secondaryAction={
                     <Checkbox
                       edge="end"
                       checked={selected}
-                      onChange={() => toggleInviteSelection(p._id)}
+                      disabled={!canInvite}
+                      onChange={() => canInvite && toggleInviteSelection(p._id)}
                     />
                   }>
-                    <ListItemButton onClick={() => toggleInviteSelection(p._id)} sx={{ borderRadius: 2 }}>
+                    <ListItemButton
+                      onClick={() => canInvite && toggleInviteSelection(p._id)}
+                      disabled={!canInvite}
+                      sx={{ borderRadius: 2 }}
+                    >
                       <ListItemAvatar>
                         <Avatar src={p.avatarUrl || undefined}>
                           {p.name?.charAt(0)?.toUpperCase()}
@@ -1729,7 +1739,7 @@ export default function MatchDetails() {
                       </ListItemAvatar>
                       <ListItemText
                         primary={p.name}
-                        secondary={`${p.distance.toFixed(1)} km · ${badge.emoji} ${badge.label}`}
+                        secondary={`${p.distance.toFixed(1)} km · ${badge.emoji} ${badge.label}${p.hasPush === false ? ' · bez obaveštenja' : ''}`}
                       />
                     </ListItemButton>
                   </ListItem>

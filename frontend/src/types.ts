@@ -52,6 +52,7 @@ export type NearbyPlayer = {
   avatarUrl?: string | null;
   reliabilityScore?: number;
   distance: number;
+  hasPush?: boolean;
 };
 
 export type PlayerAnalytics = {
