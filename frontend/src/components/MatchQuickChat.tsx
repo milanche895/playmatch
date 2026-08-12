@@ -18,12 +18,10 @@ import { MatchQuickMessage } from '../types';
 
 export const QUICK_MESSAGE_PRESETS = [
   'Donosim loptu',
-  'Zasmetaću 5 min',
-  'Imam rezervne majice',
+  'Zakasniću 5 minuta',
   'Koju boju majica?',
   'Ja bela',
   'Ja crvena',
-  'Sve OK, vidimo se',
 ] as const;
 
 const MAX_LENGTH = 200;
@@ -201,16 +199,15 @@ export default function MatchQuickChat({ matchId, currentUserId, canSend }: Prop
 
       {canSend ? (
         <>
-          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 1.5 }}>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" justifyContent="center" sx={{ mb: 1.5 }}>
             {QUICK_MESSAGE_PRESETS.map((preset) => (
               <Chip
                 key={preset}
                 label={preset}
-                size="small"
                 clickable
                 disabled={sending}
                 onClick={() => void sendMessage({ preset })}
-                sx={{ borderRadius: 2 }}
+                sx={{ borderRadius: 2, minHeight: 40, px: 0.5 }}
               />
             ))}
           </Stack>
@@ -232,7 +229,13 @@ export default function MatchQuickChat({ matchId, currentUserId, canSend }: Prop
                 variant="contained"
                 disabled={sending || !text.trim()}
                 startIcon={sending ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
-                sx={{ borderRadius: 2, fontWeight: 600, flexShrink: 0 }}
+                sx={{
+                  borderRadius: 2,
+                  fontWeight: 600,
+                  flexShrink: 0,
+                  width: { xs: '100%', sm: 'auto' },
+                  minHeight: 40,
+                }}
               >
                 Pošalji
               </Button>

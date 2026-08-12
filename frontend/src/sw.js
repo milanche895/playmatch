@@ -12,7 +12,7 @@ self.addEventListener('push', function(event) {
 
   // Default notification data
   let notificationData = {
-    title: 'PlayMatch',
+    title: 'Plejko',
     body: 'Novi meč je kreiran u blizini!',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
@@ -61,7 +61,7 @@ self.addEventListener('push', function(event) {
       // Merge parsed data with defaults (only if data was successfully parsed)
       if (data) {
         notificationData = {
-          title: data.title || 'PlayMatch',
+          title: data.title || 'Plejko',
           body: data.body || 'Novi meč je kreiran u blizini!',
           icon: data.icon || '/icons/icon-192.png',
           badge: data.badge || '/icons/icon-192.png',

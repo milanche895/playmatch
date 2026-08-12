@@ -179,7 +179,7 @@ export default function NotificationSettings() {
 
       {/* Status Card */}
       <Card elevation={0} sx={{ mb: 3, borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent sx={{ p: 4 }}>
+        <CardContent sx={{ p: { xs: 2, sm: 4 } }}>
           <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
             <SettingsIcon sx={{ mr: 1, verticalAlign: 'middle', color: 'primary.main' }} />
             Trenutno Stanje
@@ -187,8 +187,13 @@ export default function NotificationSettings() {
           
           <Stack spacing={3}>
             <Paper elevation={0} sx={{ p: 3, borderRadius: 3, bgcolor: 'action.hover' }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Box>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                justifyContent="space-between"
+                alignItems={{ xs: 'flex-start', sm: 'center' }}
+                spacing={1.5}
+              >
+                <Box sx={{ minWidth: 0 }}>
                   <Typography variant="body1" fontWeight={600}>Status pretplate</Typography>
                   <Typography variant="body2" color="text.secondary">
                     {isSubscribed ? 'Aktivna pretplata na obaveštenja' : 'Nema aktivne pretplate'}
@@ -204,8 +209,13 @@ export default function NotificationSettings() {
             </Paper>
 
             <Paper elevation={0} sx={{ p: 3, borderRadius: 3, bgcolor: 'action.hover' }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Box>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                justifyContent="space-between"
+                alignItems={{ xs: 'flex-start', sm: 'center' }}
+                spacing={1.5}
+              >
+                <Box sx={{ minWidth: 0 }}>
                   <Typography variant="body1" fontWeight={600}>Dozvola pretraživača</Typography>
                   <Typography variant="body2" color="text.secondary">
                     {getPermissionLabel(status?.permission || 'default')}
@@ -224,7 +234,7 @@ export default function NotificationSettings() {
 
       {/* Actions Card */}
       <Card elevation={0} sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent sx={{ p: 4 }}>
+        <CardContent sx={{ p: { xs: 2, sm: 4 } }}>
           <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
             Akcije
           </Typography>

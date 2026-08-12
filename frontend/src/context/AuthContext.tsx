@@ -8,7 +8,13 @@ type AuthContextValue = {
   setUser: (u: User | null) => void;
   refreshUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string, role?: 'player' | 'court') => Promise<void>;
+  register: (
+    name: string,
+    email: string,
+    password: string,
+    role?: 'player' | 'court',
+    preferredSports?: string[]
+  ) => Promise<void>;
   logout: () => Promise<void>;
   loginWithGoogle: (role?: 'player' | 'court') => void;
   loginWithFacebook: (role?: 'player' | 'court') => void;
@@ -47,9 +53,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function register(name: string, email: string, password: string, role?: 'player' | 'court') {
+  async function register(
+    name: string,
+    email: string,
+    password: string,
+    role?: 'player' | 'court',
+    preferredSports?: string[]
+  ) {
     try {
-      const res = await api.post('/api/auth/register', { name, email, password, role });
+      const res = await api.post('/api/auth/register', {
+        name,
+        email,
+        password,
+        role,
+        preferredSports: preferredSports || [],
+      });
       const { token: _token, ...userData } = res.data;
       setUser(userData);
     } catch (error) {

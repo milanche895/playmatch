@@ -41,6 +41,8 @@ import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { User, PlayerAnalytics } from '../types';
 import { getTrustBadge } from '../lib/reliability';
+import PreferredGamesPicker from '../components/PreferredGamesPicker';
+import { getGameTypeName } from '../constants/games';
 
 export default function PlayerProfile() {
   const { user: currentUser, refreshUser } = useAuth();
@@ -262,20 +264,10 @@ export default function PlayerProfile() {
     }
   }
 
-  function handleAddSport() {
-    const sport = prompt('Unesite naziv sporta:');
-    if (sport && sport.trim() && !formData.preferredSports.includes(sport.trim())) {
-      setFormData({
-        ...formData,
-        preferredSports: [...formData.preferredSports, sport.trim()]
-      });
-    }
-  }
-
-  function handleRemoveSport(sport: string) {
+  function handlePreferredGamesChange(gameIds: string[]) {
     setFormData({
       ...formData,
-      preferredSports: formData.preferredSports.filter(s => s !== sport)
+      preferredSports: gameIds,
     });
   }
 
@@ -318,7 +310,12 @@ export default function PlayerProfile() {
         >
           Nazad
         </Button>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'stretch', sm: 'center' }}
+          spacing={2}
+        >
           <Typography variant="h4" fontWeight={700}>
             Moj Profil
           </Typography>
@@ -327,7 +324,7 @@ export default function PlayerProfile() {
               variant="contained"
               startIcon={<EditIcon />}
               onClick={() => setEditing(true)}
-              sx={{ borderRadius: 3 }}
+              sx={{ borderRadius: 3, width: { xs: '100%', sm: 'auto' } }}
             >
               Izmeni Profil
             </Button>
@@ -429,12 +426,21 @@ export default function PlayerProfile() {
                   <Box sx={{ color: 'text.secondary' }}><SportsIcon /></Box>
                   <Box>
                     <Typography variant="caption" color="text.secondary">
-                      Omiljeni sportovi
+                      Omiljene igre
                     </Typography>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                      {user.preferredSports?.map((sport) => (
-                        <Chip key={sport} label={sport} size="small" sx={{ fontSize: '0.75rem' }} />
-                      )) || <Typography variant="body2">-</Typography>}
+                      {user.preferredSports && user.preferredSports.length > 0 ? (
+                        user.preferredSports.map((sport) => (
+                          <Chip
+                            key={sport}
+                            label={getGameTypeName(sport)}
+                            size="small"
+                            sx={{ fontSize: '0.75rem' }}
+                          />
+                        ))
+                      ) : (
+                        <Typography variant="body2">-</Typography>
+                      )}
                     </Box>
                   </Box>
                 </Stack>
@@ -627,22 +633,17 @@ export default function PlayerProfile() {
                     <option value="professional">Profesionalac</option>
                   </TextField>
 
-                  {/* Sports */}
+                  {/* Preferred games: category → game type */}
                   <Box>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Omiljeni sportovi</Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
-                      {formData.preferredSports.map((sport) => (
-                        <Chip
-                          key={sport}
-                          label={sport}
-                          onDelete={() => handleRemoveSport(sport)}
-                          color="primary"
-                        />
-                      ))}
-                    </Box>
-                    <Button size="small" variant="outlined" onClick={handleAddSport}>
-                      + Dodaj sport
-                    </Button>
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
+                      Omiljene igre
+                    </Typography>
+                    <PreferredGamesPicker
+                      key={`preferred-games-${user._id}-${editing}`}
+                      value={formData.preferredSports}
+                      onChange={handlePreferredGamesChange}
+                      disabled={saving}
+                    />
                   </Box>
 
                   {/* Notifications */}
@@ -672,12 +673,19 @@ export default function PlayerProfile() {
                         max={50}
                         step={1}
                         marks={[
-                          { value: 1, label: '1 km' },
+                          { value: 1, label: '1' },
                           { value: 25, label: '25 km' },
-                          { value: 50, label: '50 km' }
+                          { value: 50, label: '50' }
                         ]}
                         valueLabelDisplay="auto"
                         valueLabelFormat={(value) => `${value} km`}
+                        sx={{
+                          mx: { xs: 1, sm: 0 },
+                          width: { xs: 'calc(100% - 16px)', sm: '100%' },
+                          '& .MuiSlider-markLabel': {
+                            fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                          },
+                        }}
                       />
                     </Box>
                   )}
@@ -753,7 +761,7 @@ export default function PlayerProfile() {
                         user.sportSkillLevels?.map((entry) => (
                           <Chip
                             key={`${entry.sport}-${entry.skillLevel}`}
-                            label={`${entry.sport}: ${entry.skillLevel}/5`}
+                            label={`${getGameTypeName(entry.sport)}: ${entry.skillLevel}/5`}
                             size="small"
                             color="primary"
                             variant="outlined"

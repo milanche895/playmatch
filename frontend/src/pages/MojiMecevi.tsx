@@ -28,6 +28,7 @@ import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { Match } from '../types';
 import { getTrustBadge } from '../lib/reliability';
+import { getGameTypeName } from '../constants/games';
 
 export default function MojiMecevi() {
   const { user: currentUser } = useAuth();
@@ -79,7 +80,7 @@ export default function MojiMecevi() {
     if (match.status === 'full') return 'warning';
     if (match.status === 'completed') return 'success';
     if (match.status === 'open') return 'primary';
-    if (match.status === 'otkazano') return 'error';
+    if (match.status === 'otkazano' || match.status === 'failed') return 'error';
     return 'default';
   }
 
@@ -89,7 +90,18 @@ export default function MojiMecevi() {
     if (match.status === 'completed') return 'Završen';
     if (match.status === 'open') return 'Otvoren';
     if (match.status === 'otkazano') return 'Otkazan';
+    if (match.status === 'failed') return 'Neuspešan';
     return match.status;
+  }
+
+  function getMatchLocationName(match: Match): string {
+    if (match.isInformal) {
+      return match.informalLocation?.name || 'Privatni teren';
+    }
+    if (typeof match.fieldId === 'object' && match.fieldId?.name) {
+      return match.fieldId.name;
+    }
+    return 'Nepoznat teren';
   }
 
   function canShowConfirmMatchButton(match: Match): boolean {
@@ -183,10 +195,10 @@ export default function MojiMecevi() {
                               </Box>
                               <Box>
                                 <Typography variant="h6" fontWeight={700}>
-                                  {typeof match.fieldId === 'object' ? match.fieldId.name : 'Nepoznat teren'}
+                                  {getMatchLocationName(match)}
                                 </Typography>
-                                <Stack direction="row" spacing={1}>
-                                  <Chip label={match.sport} size="small" color="primary" />
+                                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                  <Chip label={getGameTypeName(match.sport)} size="small" color="primary" />
                                   <Chip label={getMatchStatusLabel(match)} size="small" color={getMatchStatusColor(match)} />
                                 </Stack>
                               </Box>
@@ -251,7 +263,7 @@ export default function MojiMecevi() {
                           </Stack>
 
                           <Stack
-                            direction="row"
+                            direction={{ xs: 'column', sm: 'row' }}
                             spacing={1.5}
                             sx={{
                               alignSelf: 'stretch',
@@ -262,10 +274,9 @@ export default function MojiMecevi() {
                               variant="outlined"
                               component={Link}
                               to={`/matches/${match._id}`}
-                              fullWidth={!canShowConfirmMatchButton(match)}
+                              fullWidth
                               sx={{
                                 borderRadius: 3,
-                                flex: canShowConfirmMatchButton(match) ? 1 : undefined,
                               }}
                             >
                               Vidi detalje
@@ -276,7 +287,8 @@ export default function MojiMecevi() {
                                 color="success"
                                 component={Link}
                                 to={`/matches/${match._id}?confirmMatch=1`}
-                                sx={{ borderRadius: 3, flex: 1 }}
+                                fullWidth
+                                sx={{ borderRadius: 3 }}
                               >
                                 Potvrdi meč
                               </Button>
@@ -313,10 +325,10 @@ export default function MojiMecevi() {
                             </Box>
                             <Box>
                               <Typography variant="h6" fontWeight={700}>
-                                {typeof match.fieldId === 'object' ? match.fieldId.name : 'Nepoznat teren'}
+                                {getMatchLocationName(match)}
                               </Typography>
-                              <Stack direction="row" spacing={1}>
-                                <Chip label={match.sport} size="small" color="primary" />
+                              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                <Chip label={getGameTypeName(match.sport)} size="small" color="primary" />
                                 <Chip label={getMatchStatusLabel(match)} size="small" color={getMatchStatusColor(match)} />
                               </Stack>
                             </Box>

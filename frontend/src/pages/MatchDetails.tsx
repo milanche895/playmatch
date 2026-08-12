@@ -48,6 +48,7 @@ import { socket } from '../lib/socket';
 import { useAuth } from '../context/AuthContext';
 import { getTrustBadge } from '../lib/reliability';
 import MatchQuickChat from '../components/MatchQuickChat';
+import { getGameTypeName } from '../constants/games';
 
 // Fix default Leaflet icon URLs
 // @ts-ignore
@@ -303,7 +304,7 @@ export default function MatchDetails() {
       : match.fieldId?.name || 'Nepoznata lokacija';
     const shareText = [
       'Fali nam igrač!',
-      `Sport: ${match.sport}`,
+      `Sport: ${getGameTypeName(match.sport)}`,
       `Vreme: ${formatDateTime(match.dateTime)}`,
       `Lokacija: ${locationName}`,
       `Slobodna mesta: ${Math.max(freeSlots, 0)}`,
@@ -314,7 +315,7 @@ export default function MatchDetails() {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: `PlayMatch - ${match.sport}`,
+          title: `Plejko - ${getGameTypeName(match.sport)}`,
           text: shareText,
           url: shareUrl
         });
@@ -482,6 +483,8 @@ export default function MatchDetails() {
     switch (match.status) {
       case 'failed':
         return { color: 'error' as const, icon: <ErrorIcon />, label: 'Neuspešan' };
+      case 'otkazano':
+        return { color: 'error' as const, icon: <CancelIcon />, label: 'Otkazan' };
       case 'full':
         return { color: 'warning' as const, icon: <PeopleIcon />, label: 'Pun' };
       case 'completed':
@@ -548,27 +551,13 @@ export default function MatchDetails() {
                   fontWeight: 600,
                 }}
               />
-              {(() => {
-                const startsInMs = new Date(match.dateTime).getTime() - Date.now();
-                const freeSlots = (match.maxPlayers || match.playersNeeded || 100) - match.players.length;
-                const isLastMinute = startsInMs > 0 && startsInMs <= 4 * 60 * 60 * 1000 && freeSlots > 0;
-                if (!isLastMinute) return null;
-                return (
-                  <Chip
-                    label="Hitno traže se igrači"
-                    size="small"
-                    color="error"
-                    sx={{ bgcolor: 'rgba(255,255,255,0.95)', fontWeight: 700 }}
-                  />
-                );
-              })()}
             </Stack>
             <Typography variant="h4" fontWeight={700}>
-              {match.sport}
+              {getGameTypeName(match.sport)}
             </Typography>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <LocationOnIcon sx={{ fontSize: 20 }} />
-              <Typography variant="h6" fontWeight={500}>
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ minWidth: 0 }}>
+              <LocationOnIcon sx={{ fontSize: 20, flexShrink: 0 }} />
+              <Typography variant="h6" fontWeight={500} sx={{ minWidth: 0, wordBreak: 'break-word', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                 {isInformal ? (informalLocation?.name || 'Privatni teren') : fieldId?.name}
               </Typography>
               {isInformal && (
@@ -772,7 +761,12 @@ export default function MatchDetails() {
 
                   {match.pricePerPlayer != null && (
                     <>
-                      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }} flexWrap="wrap">
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={2}
+                        alignItems={{ xs: 'stretch', sm: 'center' }}
+                        sx={{ mb: 2 }}
+                      >
                         <Typography variant="body2" fontWeight={600}>
                           Naplaćeno:{' '}
                           {match.players.filter((p) => isPlayerPaid(match, p._id)).length}/{match.players.length}
@@ -789,7 +783,7 @@ export default function MatchDetails() {
                           label="Način plaćanja"
                           value={paymentMethodDraft}
                           onChange={(e) => setPaymentMethodDraft(e.target.value as 'cash' | 'transfer' | 'other')}
-                          sx={{ minWidth: 160 }}
+                          sx={{ minWidth: 160, mt: { xs: 0.5, sm: 0 } }}
                         >
                           <MenuItem value="cash">Gotovina</MenuItem>
                           <MenuItem value="transfer">Prenos / IPS</MenuItem>
@@ -965,7 +959,7 @@ export default function MatchDetails() {
             </Typography>
           </Stack>
         </Box>
-        <Box sx={{ height: 300 }}>
+        <Box sx={{ height: { xs: 220, sm: 300 } }}>
           <MapContainer
             center={center}
             zoom={14}
@@ -1183,12 +1177,21 @@ export default function MatchDetails() {
             />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 3,
+            flexDirection: { xs: 'column-reverse', sm: 'row' },
+            alignItems: 'stretch',
+            gap: 1,
+            '& > :not(:first-of-type)': { ml: { xs: 0, sm: 1 } },
+          }}
+        >
           <Button
             onClick={handleCloseCancelDialog}
             disabled={cancelling}
             variant="outlined"
-            sx={{ borderRadius: 3, px: 3 }}
+            sx={{ borderRadius: 3, px: 3, width: { xs: '100%', sm: 'auto' } }}
           >
             Odustani
           </Button>
@@ -1197,7 +1200,7 @@ export default function MatchDetails() {
             variant="contained"
             color="error"
             disabled={cancelling}
-            sx={{ borderRadius: 3, px: 3 }}
+            sx={{ borderRadius: 3, px: 3, width: { xs: '100%', sm: 'auto' } }}
           >
             {cancelling ? 'Otkazivanje...' : 'Otkaži dolazak'}
           </Button>
@@ -1276,12 +1279,21 @@ export default function MatchDetails() {
             )}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 3,
+            flexDirection: { xs: 'column-reverse', sm: 'row' },
+            alignItems: 'stretch',
+            gap: 1,
+            '& > :not(:first-of-type)': { ml: { xs: 0, sm: 1 } },
+          }}
+        >
           <Button
             onClick={() => setCompleteDialogOpen(false)}
             disabled={completing}
             variant="outlined"
-            sx={{ borderRadius: 3 }}
+            sx={{ borderRadius: 3, width: { xs: '100%', sm: 'auto' } }}
           >
             Odustani
           </Button>
@@ -1290,7 +1302,7 @@ export default function MatchDetails() {
             variant="contained"
             color="success"
             disabled={completing}
-            sx={{ borderRadius: 3, px: 3 }}
+            sx={{ borderRadius: 3, px: 3, width: { xs: '100%', sm: 'auto' } }}
           >
             {completing ? 'Potvrđivanje...' : 'Potvrdi termin'}
           </Button>
@@ -1324,7 +1336,7 @@ export default function MatchDetails() {
                   />
                   <TextField
                     type="number"
-                    label={`Veština (${match.sport}) 1-5`}
+                    label={`Veština (${getGameTypeName(match.sport)}) 1-5`}
                     value={ratingValues[p._id]?.skillLevel ?? 3}
                     inputProps={{ min: 1, max: 5 }}
                     onChange={(e) =>

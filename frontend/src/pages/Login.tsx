@@ -19,7 +19,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import GoogleIcon from '@mui/icons-material/Google';
 import FacebookIcon from '@mui/icons-material/Facebook';
-import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
+import PlejkoLogo from '../components/PlejkoLogo';
 
 export default function Login() {
   const { login, loginWithGoogle, loginWithFacebook } = useAuth();
@@ -79,30 +79,19 @@ export default function Login() {
           borderRadius: 4,
           border: '1px solid',
           borderColor: 'divider',
+          backgroundImage: `linear-gradient(180deg, rgba(0,212,255,0.06) 0%, transparent 35%)`,
         }}
       >
         {/* Header */}
         <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <Box
-            sx={{
-              width: 64,
-              height: 64,
-              borderRadius: 3,
-              bgcolor: 'primary.main',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              mx: 'auto',
-              mb: 2,
-            }}
-          >
-            <SportsSoccerIcon sx={{ color: 'white', fontSize: 32 }} />
-          </Box>
-          <Typography variant="h4" fontWeight={700} sx={{ mb: 1 }}>
+          <Stack alignItems="center" sx={{ mb: 2 }}>
+            <PlejkoLogo size="md" showTagline align="center" />
+          </Stack>
+          <Typography variant="h4" fontWeight={800} sx={{ mb: 1 }}>
             Dobrodošli nazad
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Prijavite se da biste nastavili
+            Prijavite se da biste nastavili na Plejko
           </Typography>
         </Box>
 

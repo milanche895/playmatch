@@ -35,9 +35,7 @@ import { Link as RouterLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useThemeMode } from "../context/ThemeContext";
 import InstallButton from "./InstallButton";
-
-// Import logo
-import playmatchLogo from "../assets/logo2.png";
+import PlejkoLogo from "./PlejkoLogo";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -130,15 +128,7 @@ export default function Navbar() {
           px: 1,
         }}
       >
-        <Box
-          component="img"
-          src={playmatchLogo}
-          alt="PlayMatch logo"
-          sx={{
-            height: 50,
-            width: "auto",
-          }}
-        />
+        <PlejkoLogo size="sm" />
       </Box>
 
       {/* User info if logged in */}
@@ -245,8 +235,9 @@ export default function Navbar() {
         position="sticky" 
         elevation={0}
         sx={{ 
-          bgcolor: 'background.paper',
+          bgcolor: 'background.default',
           color: 'text.primary',
+          backdropFilter: 'blur(12px)',
         }}
       >
         <Toolbar
@@ -266,15 +257,7 @@ export default function Navbar() {
               mr: 'auto',
             }}
           >
-            <Box
-              component="img"
-              src={playmatchLogo}
-              alt="PlayMatch logo"
-              sx={{
-                height: { xs: 44, sm: 50 },
-                width: "auto",
-              }}
-            />
+            <PlejkoLogo size="sm" />
           </Box>
 
           {/* Desktop Navigation */}

@@ -1,6 +1,7 @@
-# PlayMatch — Kompletna specifikacija aplikacije
+# PlayMatch / Plejko — Kompletna specifikacija aplikacije
 
 > **Svrha dokumenta:** Referenca za AI asistente i developere pri unapređenju, refaktorisanju ili proširivanju aplikacije.  
+> **Brend u UI-ju:** **Plejko** (tagline: *Pronađi · Okupi · Igraj*). Repozitorijum i interni naziv projekta: PlayMatch.  
 > **Jezik UI-ja:** sr-RS (srpski).  
 > **Poslednja revizija:** avgust 2026.  
 > **Aktivni kod:** `backend/` + `frontend/` (ostale fascikle su legacy — vidi §11).
@@ -9,17 +10,18 @@
 
 ## 1. Pregled projekta
 
-**PlayMatch** je full-stack PWA (Progressive Web App) za organizaciju sportskih mečeva na srpskom tržištu.
+**Plejko (PlayMatch)** je full-stack PWA za organizaciju okupljanja: sport, društvene igre, pub igre i e-sport / gaming — na srpskom tržištu.
 
 ### Ključne mogućnosti
 
 | Oblast | Funkcionalnost |
 |--------|----------------|
-| **Igrači** | Pronalaze mečeve na mapi, kreiraju/priključuju se mečevima, ocenjuju saigrače, blokiraju igrače, primaju push obaveštenja |
-| **Vlasnici terena (court)** | Upravljaju terenima, odobravaju/odbijaju rezervacije, rezervišu termine, prate statistiku |
-| **Mečevi** | Formalni (na registrovanom terenu) i neformalni (privatna lokacija na mapi) |
-| **Real-time** | Socket.IO ažuriranja u detaljima meča |
-| **Obaveštenja** | Web Push (VAPID) — PWA push preko service workera |
+| **Igre / kategorije** | Katalog `GAME_TYPES`: sport, tabletop, pub, esports; preferirane igre na registraciji i feed filter |
+| **Igrači** | Mapa mečeva, kreiranje/prijava, waitlist, brzi chat, cost splitter, ocene, blokiranje, push, trust badge |
+| **Vlasnici terena (court)** | Upravljanje terenima, odobrenje rezervacija, rezervacija termina, statistika |
+| **Mečevi** | Formalni (registrovan teren) i neformalni (privatna lokacija na mapi) |
+| **Real-time** | Socket.IO: `match_updated`, `match_message` |
+| **Obaveštenja** | Web Push (VAPID) preko PWA service workera |
 
 ### Tech stack
 
@@ -34,376 +36,457 @@
 ## 2. Uloge korisnika
 
 ### `player` (igrač)
-- Kreira mečeve (formalne i neformalne)
-- Priključuje se mečevima, otkazuje dolazak (sa kaznom pouzdanosti)
-- Upravlja profilom, avatarom, sportskim veštinama
-- Prima push obaveštenja u radijusu od lokacije
-- Vidi svoje mečeve, igrače sa kojima je igrao, blokira igrače
-- Ocenjuje saigrače posle završenog meča
+- Birа preferirane igre pri registraciji (obavezno ≥1)
+- Kreira mečeve (formalne i neformalne) **samo** za igre iz `preferredSports`
+- Priključuje se mečevima, staje na waitlist, otkazuje dolazak (sa kaznom pouzdanosti)
+- Vidi cost splitter, brzi chat (kao učesnik), ocenjuje saigrače
+- Upravlja profilom, avatarom, veštinama po sportu/igri
+- Prima push u radijusu od lokacije; trust badge na osnovu `reliabilityScore`
+- Stranice: Moji mečevi, Moji igrači, Profil, Notification settings
 
 ### `court` (vlasnik terena)
 - Kreira i uređuje terene (Manage Fields)
-- Odobrava/odbija/cancel-uje rezervacije mečeva na svojim terenima
+- Odobrava/odbija/cancel-uje rezervacije; završava formalne mečeve
 - Rezerviše slobodne termine (court reservation)
-- Prati statistiku (nedeljno/mesečno) u Moj Termini
-- **Nema** profil stranicu, push postavke ni navigaciju za igrača
+- Prati statistiku u Moj Termini
+- **Nema** player navigaciju (role guard: `CourtRoute` / `PlayerRoute`)
 
 ---
 
-## 3. Poslovna logika — mečevi
+## 3. Katalog igara (`GAME_TYPES`)
 
-### 3.1 Tipovi mečeva
+Izvor istine:
+- Backend: `backend/src/constants/games.js`
+- Frontend: `frontend/src/constants/games.ts` (+ `CATEGORY_META`, helperi, aliasi)
 
-#### Formalni meč (`isInformal: false`)
-- Obavezan `fieldId` → referenca na `Field`
-- `registrationDeadline` = `dateTime` − `field.registrationDeadlineHours`
-- Ako teren ima `courtOwner` → `courtApproval: 'pending'` (ali vidi bug u §12)
+### Kategorije
+
+| ID | Label (UI) | Primeri |
+|----|------------|---------|
+| `sport` | Sport | Mali fudbal, košarka, tenis, padel, trčanje… |
+| `tabletop` | Društvene igre | Catan, šah, UNO, Codenames, D&D… |
+| `pub` | Pub igre | Pikado, bilijar, kuglanje, kviz… |
+| `esports` | Gaming | FIFA, LoL, CS2, Valorant, Mario Kart… |
+
+Svaka igra: `{ id, name, category, defaultMinPlayers, defaultMaxPlayers }` (backend ima i alias `minPlayers`/`maxPlayers`).
+
+CreateMatch / Register koriste default min/max iz kataloga. `Match.sport` i `User.preferredSports[]` čuvaju **canonical id** (npr. `football`, `catan`).
+
+---
+
+## 4. Poslovna logika — mečevi
+
+### 4.1 Tipovi mečeva
+
+#### Formalni (`isInformal: false`)
+- Obavezan `fieldId` → `Field`
+- `registrationDeadline` = `dateTime` − `field.registrationDeadlineHours` (ako bi bio u prošlosti → clamp na ~30 min pre meča)
+- Ako teren ima `courtOwner` → `courtApproval: 'pending'`, inače `approved`
 - Provera preklapanja termina na istom terenu
-- Push obaveštenja koriste koordinate terena
+- Push koristi koordinate terena
+- Završetak: court `POST /api/courts/matches/:id/complete`
 
-#### Neformalni meč (`isInformal: true`)
-- Nema `fieldId`; koristi `informalLocation: { name, lat, lng }`
-- Rok prijave: `informalRegistrationDeadlineHours` (1–48h, default iz UI)
+#### Neformalni (`isInformal: true`)
+- Nema `fieldId`; `informalLocation: { name, lat, lng }`
+- Rok prijave: `informalRegistrationDeadlineHours` (1–48h)
 - `courtApproval: 'approved'` automatski
-- Organizator može ručno završiti meč (`POST /api/matches/:id/complete`) i označiti no-shows
-- Push koristi koordinate iz `informalLocation`
+- Organizator: `POST /api/matches/:id/complete` + opciono `noShowIds`
+- Push koristi `informalLocation`
 
-### 3.2 Statusi meča (`Match.status`)
+### 4.2 Statusi (`Match.status`)
 
 | Status | Značenje |
 |--------|----------|
 | `open` | Otvoren za prijave |
-| `full` | Dostignut `minPlayers` (ili `maxPlayers`) |
-| `completed` | Meč odigran/završen |
-| `failed` | Rok prošao, nema dovoljno igrača |
-| `otkazano` | Otkazan (deadline, court reject/cancel) |
+| `full` | Dostignut `minPlayers` |
+| `completed` | Meč odigran |
+| `failed` | Deadline prošao, nema dovoljno igrača |
+| `otkazano` | Otkazan (court reject/cancel ili dovoljno igrača ali court i dalje `pending`) |
 
-### 3.3 Odobrenje terena (`courtApproval`)
+### 4.3 Odobrenje terena (`courtApproval`)
 
 | Vrednost | Značenje |
 |----------|----------|
-| `pending` | Čeka odobrenje vlasnika terena |
+| `pending` | Čeka vlasnika terena |
 | `approved` | Odobreno |
-| `rejected` | Odbijeno → meč ide u `otkazano` |
+| `rejected` | Odbijeno → meč `otkazano` |
 
-### 3.4 Prelazi statusa (implementirano)
+Default u šemi: `approved`. Formalni meč sa `courtOwner` kreira se kao `pending`.
+
+### 4.4 Prelazi statusa
 
 ```
-open → full          kada players.length >= minPlayers
-open → failed        GET /api/matches side-effect: deadline prošao + malo igrača
-open → otkazano      cron + court reject/cancel
-full → completed     court complete (formalni) ili organizer complete (neformalni)
+create → open (+ courtApproval pending|approved)
+open → full          players.length >= minPlayers
+                     (quirk: applyFullStatus tada i auto-approve courtApproval)
+open/full → failed   processExpiredMatches: deadline prošao + players < min
+open/full → otkazano processExpiredMatches: dovoljno igrača + courtApproval pending
+                   | court reject / cancel
+full → completed     court complete (formal) ili organizer complete (informal)
 ```
 
-### 3.5 Prijava / odjava
+`processExpiredMatches` (`utils/matchStatus.js`) radi:
+- na cron-u (`0 * * * *` + jednom na startu)
+- kao side-effect na `GET /api/matches`
 
-- **Join** (`POST /:id/join`) — dodaje igrača u `players[]`; ako je bio na waitlist-u, uklanja ga odatle
-- **Leave** (`POST /:id/leave`) — bez kazne (implementirano na backendu, **nije u frontend UI**)
-- **Cancel attendance** (`POST /:id/cancel-attendance`) — sa komentarom, smanjuje `reliabilityScore`
-- Organizator ne može napustiti meč kad je `full` ili `completed`
-- **Lista čekanja (waitlist)** — FIFO red kada je meč na kapacitetu (`players.length >= maxPlayers`, ili 100 ako max nije postavljen):
-  - `POST /:id/waitlist` — „Stani u red“
-  - `POST /:id/waitlist/leave` — napuštanje reda
-  - Pri leave / cancel-attendance: prvi podoban sa waitlist-a se automatski prebacuje u `players[]` i dobija push („Mesto se oslobodilo!“); blokirani / court nalozi se preskaču
+### 4.5 Prijava / odjava / waitlist
 
-### 3.6 Ocenjivanje posle meča
+- **Join** — u `players[]`; skida sa waitlist-a ako je bio; court role zabranjen; blok lista organizatora
+- **Leave** — bez kazne (backend postoji; UI koristi cancel-attendance)
+- **Cancel attendance** — komentar + reliability kazna po vremenu do meča
+- Organizator ne može napustiti kad je `full` / `completed`
+- **Waitlist (FIFO)** — kad je kapacitet pun (`maxPlayers` ili 100):
+  - `POST /:id/waitlist` / `POST /:id/waitlist/leave`
+  - Pri leave/cancel: prvi podoban sa waitlist-a → `players[]` + push „Mesto se oslobodilo!“
+  - Preskaču se blokirani i court nalozi
 
-- Dostupno kad je `status === 'completed'`
-- `GET /:id/rating-status` — ko još nije ocenjen
-- `POST /:id/rate` — `{ ratings: [{ ratedUserId, stars, fairPlay, skillLevel?, sport }] }`
-- Ažurira `User.ratingAvg` i `ratingsCount` agregatno
+### 4.6 Cost splitter
 
-### 3.7 Pouzdanost (`reliabilityScore`)
+- Organizator postavlja `pricePerPlayer` (RSD) pri kreiranju ili kasnije (`PUT /:id/price-per-player`)
+- `playerPayments[]`: `{ playerId, paid, paidAt?, method: cash|transfer|other }`
+- Organizator: `POST /:id/mark-paid` (toggle plaćeno + metod; UI može pominjati IPS)
 
-- Početna vrednost: 100
-- Kazna pri `cancel-attendance` blizu termina meča
-- Analytics endpoint računa fallback iz odnosa otkazivanja ako polje nedostaje (može divergirati od stored vrednosti)
+### 4.7 Brzi chat (`quickMessages`)
+
+- Samo učesnici meča
+- Preset poruke + slobodan tekst ≤200 karaktera
+- Rate limit ~2s; čuva se do ~100 poruka
+- Nije u standardnom match payload-u (`-quickMessages`); API: `GET/POST /:id/messages`
+- Socket: `match_message`
+- Preseti (npr.): „Donosim loptu“, „Zasmetaću 5 min“, „Koju boju majica?“…
+
+### 4.8 Ocenjivanje
+
+- Kad je `status === 'completed'`
+- `GET /:id/rating-status`, `POST /:id/rate` — `{ ratedUserId, stars, fairPlay, skillLevel?, sport }`
+- Ažurira `ratingAvg` / `ratingsCount`; opciono `sportSkillLevels`
+
+### 4.9 Pouzdanost (`reliabilityScore`)
+
+Početna: **100** (opseg 0–100).
+
+| Događaj | Poeni |
+|---------|-------|
+| Cancel ≥2h pre meča | 0 |
+| Cancel 1–2h pre | −10 |
+| Cancel &lt;1h pre | −15 |
+| No-show (informal complete) | −15 |
+| Uspešno odigran meč (complete) | +2 (cap 100) |
+
+Implementacija: `backend/src/utils/reliability.js`.  
+Frontend trust badge (`lib/reliability.ts`):
+
+| Score | Badge |
+|-------|--------|
+| &gt; 90 | 🟢 Pouzdan igrač |
+| 70–90 | 🟡 Zna da otkaže |
+| &lt; 70 | 🔴 Rizičan |
 
 ---
 
-## 4. Backend — API referenca
+## 5. Backend — API referenca
 
 **Base URL:** `/api`  
 **Auth:** HttpOnly cookie `token` (JWT 7d) ili `Authorization: Bearer`  
-**Middleware:** `auth(true)` = obavezna, `auth(false)` = opciona
+**Middleware:** `auth(true)` obavezna, `auth(false)` opciona
 
-### 4.1 Auth — `/api/auth`
+### 5.1 Auth — `/api/auth`
 
 | Metoda | Putanja | Auth | Opis |
 |--------|---------|------|------|
-| POST | `/register` | — | Lokalna registracija `{ name, email, password, role }` |
-| POST | `/login` | — | `{ email, password }` |
+| POST | `/register` | — | Lokalna registracija; player mora `preferredSports` (≥1) |
+| POST | `/login` | — | Email/password |
 | POST | `/logout` | — | Briše cookie |
 | GET | `/me` | ✓ | Trenutni korisnik |
-| GET | `/google` | — | OAuth start; `?state=player\|court` |
-| GET | `/google/callback` | session | OAuth callback → redirect na frontend |
-| GET | `/facebook` | — | Facebook OAuth start |
-| GET | `/facebook/callback` | session | Facebook callback |
-| POST | `/instagram` | — | `{ accessToken, role }` — Instagram token auth |
+| GET | `/google` (+ callback) | — | Google OAuth; `?state=player\|court` |
+| GET | `/facebook` (+ callback) | — | Facebook OAuth |
+| POST | `/instagram` | — | Token auth `{ accessToken, role }` |
 
-**Napomena:** Login/register i dalje vraćaju JWT u response body (legacy); frontend ignoriše token i koristi samo cookie.
+**Napomena:** Login/register i dalje mogu vratiti JWT u body (legacy); frontend koristi samo cookie.
 
-### 4.2 Tereni — `/api/fields`
+### 5.2 Tereni — `/api/fields`
 
 | Metoda | Putanja | Auth | Opis |
 |--------|---------|------|------|
-| GET | `/` | — | Lista svih terena |
-| GET | `/:id` | — | Detalji terena |
-| POST | `/` | ✓ | Kreiranje terena (nije ograničeno na `court` rolu!) |
+| GET | `/` | — | Lista terena |
+| GET | `/:id` | — | Detalji |
+| POST | `/` | ✓ | Kreiranje; ako je `role===court` → `courtOwner` + default price/deadline |
 
-### 4.3 Mečevi — `/api/matches`
+### 5.3 Mečevi — `/api/matches`
 
 | Metoda | Putanja | Auth | Opis |
 |--------|---------|------|------|
-| GET | `/` | opciono | Lista mečeva; `?limit=50&skip=0` (max 100); filtrira blokirane kreatore |
-| POST | `/` | ✓ | Kreiranje meča; trigger push obaveštenja |
-| GET | `/:id` | — | Detalji meča |
-| POST | `/:id/join` | ✓ | Prijava na meč |
+| GET | `/` | opciono | Lista; `?limit`/`?skip`; `processExpiredMatches`; filter blokiranih |
+| POST | `/` | ✓ | Kreiranje; validacija `GAME_TYPES` + preferred; push |
+| GET | `/:id` | — | Detalji (bez `quickMessages`) |
+| POST | `/:id/join` | ✓ | Prijava |
 | POST | `/:id/leave` | ✓ | Odjava bez kazne |
-| POST | `/:id/cancel-attendance` | ✓ | Odjava sa kaznom `{ comment }` |
-| POST | `/:id/waitlist` | ✓ | Stani u red (kad je meč pun) |
-| POST | `/:id/waitlist/leave` | ✓ | Napusti listu čekanja |
-| POST | `/:id/complete` | ✓ | Završetak **neformalnog** meča `{ noShowIds? }` |
-| GET | `/:id/rating-status` | ✓ | Status ocenjivanja |
-| POST | `/:id/rate` | ✓ | Slanje ocena |
+| POST | `/:id/cancel-attendance` | ✓ | Odjava sa kaznom |
+| POST | `/:id/waitlist` | ✓ | Stani u red |
+| POST | `/:id/waitlist/leave` | ✓ | Napusti red |
+| PUT | `/:id/price-per-player` | ✓ | Cost splitter (organizator) |
+| POST | `/:id/mark-paid` | ✓ | Označi plaćeno (organizator) |
+| POST | `/:id/complete` | ✓ | Završetak **neformalnog** meča `{ noShows? }` |
+| GET | `/:id/messages` | ✓ | Brzi chat (učesnici) |
+| POST | `/:id/messages` | ✓ | Pošalji poruku / preset |
+| GET | `/:id/rating-status` | ✓ | Pending ocene |
+| POST | `/:id/rate` | ✓ | Pošalji ocene |
 
-**POST /** body (formalni):
+**POST /** formalni:
 ```json
 {
   "sport": "football",
   "fieldId": "...",
   "dateTime": "2026-08-15T18:00:00.000Z",
   "minPlayers": 10,
-  "maxPlayers": 14
+  "maxPlayers": 14,
+  "pricePerPlayer": 500
 }
 ```
 
-**POST /** body (neformalni):
+**POST /** neformalni:
 ```json
 {
   "isInformal": true,
-  "sport": "football",
+  "sport": "catan",
   "informalLocation": { "name": "Park", "lat": 44.8, "lng": 20.4 },
   "dateTime": "...",
-  "minPlayers": 6,
-  "maxPlayers": 10,
-  "informalRegistrationDeadlineHours": 24
+  "minPlayers": 3,
+  "maxPlayers": 4,
+  "informalRegistrationDeadlineHours": 24,
+  "pricePerPlayer": 0
 }
 ```
 
-### 4.4 Igrači — `/api/players`
+### 5.4 Igrači — `/api/players`
 
-| Metoda | Putanja | Auth | Rola | Opis |
-|--------|---------|------|------|------|
-| GET | `/profile/:id` | — | — | Javni profil |
-| GET | `/profile` | ✓ | player | Sopstveni profil |
-| PUT | `/profile` | ✓ | player | Ažuriranje profila |
-| GET | `/analytics/:id` | — | player | Javna statistika |
-| GET | `/analytics` | ✓ | player | Sopstvena statistika |
-| POST | `/location` | ✓ | player | `{ lat, lng }` — lastKnownLocation |
-| POST | `/push-subscription` | ✓ | player | `{ subscription }` Web Push |
-| DELETE | `/push-subscription` | ✓ | — | Uklanjanje pretplate |
-| GET | `/push-subscription/status` | ✓ | — | Status pretplate |
-| GET | `/vapid-public-key` | — | — | VAPID javni ključ |
-| POST | `/test-push` | ✓ | — | Test push na sebe |
-| GET | `/my-matches/created` | ✓ | player | Mečevi koje je kreirao |
-| GET | `/my-matches/joined` | ✓ | player | Mečevi na koje je prijavljen |
-| POST | `/upload-avatar` | ✓ | multer | Upload avatara → Cloudinary |
-| GET | `/my-players` | ✓ | player | Igrači iz organizatorovih mečeva |
-| GET | `/blocked-players` | ✓ | — | Lista blokiranih |
-| POST | `/block-player/:playerId` | ✓ | — | Blokiranje |
-| DELETE | `/block-player/:playerId` | ✓ | — | Deblokiranje |
-| GET | `/is-blocked-by/:userId` | ✓ | — | Da li me je blokirao korisnik |
+| Metoda | Putanja | Auth | Opis |
+|--------|---------|------|------|
+| GET | `/profile/:id` | — | Javni profil |
+| GET | `/profile` | ✓ | Sopstveni |
+| PUT | `/profile` | ✓ | Ažuriranje (bio, preferredSports, radius…) |
+| GET | `/analytics` / `/analytics/:id` | ✓ / — | Statistika |
+| POST | `/location` | ✓ | `lastKnownLocation` |
+| POST/DELETE | `/push-subscription` | ✓ | Web Push |
+| GET | `/push-subscription/status` | ✓ | Status |
+| GET | `/vapid-public-key` | — | VAPID public |
+| POST | `/test-push` | ✓ | Test |
+| GET | `/my-matches/created` | ✓ | Kreirani |
+| GET | `/my-matches/joined` | ✓ | Prijavljeni |
+| POST | `/upload-avatar` | ✓ | Cloudinary |
+| GET | `/my-players` | ✓ | Igrači sa organizatorovih mečeva |
+| GET | `/blocked-players` | ✓ | Blok lista |
+| POST/DELETE | `/block-player/:playerId` | ✓ | Block / unblock |
+| GET | `/is-blocked-by/:userId` | ✓ | Da li me je blokirao |
 
-### 4.5 Tereni (court panel) — `/api/courts`
+### 5.5 Court panel — `/api/courts`
 
-Svi endpointi zahtevaju auth + `role === 'court'`.
+Svi zahtevaju auth + `role === 'court'`.
 
 | Metoda | Putanja | Opis |
 |--------|---------|------|
-| GET | `/matches/pending` | Mečevi na čekanju odobrenja |
-| POST | `/matches/:id/approve` | Odobri meč |
+| GET | `/matches/pending` | Pending odobrenja |
+| POST | `/matches/:id/approve` | Odobri |
 | POST | `/matches/:id/reject` | Odbij → `otkazano` |
-| POST | `/matches/:id/cancel` | Otkaži odobren meč |
-| POST | `/matches/:id/complete` | Završi **formalni** meč |
-| PUT | `/working-hours` | Default radno vreme court korisnika |
+| POST | `/matches/:id/cancel` | Otkaži odobren |
+| POST | `/matches/:id/complete` | Završi formalni (+ reliability reward) |
+| PUT | `/working-hours` | Default radno vreme |
 | PUT | `/default-price` | Default cena |
 | PUT | `/default-deadline` | Default rok prijave (sati) |
-| GET | `/appointments` | Dashboard: reserved/pending/free/stats |
+| GET | `/appointments` | Dashboard reserved/pending/free/stats |
 | GET | `/fields/:fieldId/appointments` | Termini po terenu |
 | GET | `/fields` | Tereni vlasnika |
-| PUT | `/fields/:fieldId` | Ažuriranje terena |
-| PUT | `/fields/:fieldId/working-hours` | Radno vreme terena |
-| PUT | `/fields/:fieldId/price` | Cena terena |
-| POST | `/appointments/reserve` | Rezervacija slobodnog termina |
+| PUT | `/fields/:fieldId` (+ working-hours, price) | Uređivanje |
+| POST | `/appointments/reserve` | Rezervacija termina |
 
 ---
 
-## 5. Backend — modeli podataka
+## 6. Backend — modeli podataka
 
-### 5.1 User
+### 6.1 User
 
 ```
-name, email, password?, avatarUrl, provider, providerId, providerData
-role: 'player' | 'court'
-workingHours, defaultPrice, defaultRegistrationDeadlineHours  (court)
-bio, skills, phone, location, preferredSports[], experience
-ratingAvg, ratingsCount, reliabilityScore (0-100)
-sportSkillLevels: [{ sport, skillLevel (1-5) }]
-notificationEnabled, notificationRadius (km, default 10)
+name, email, password?, avatarUrl
+provider: local|google|facebook|instagram, providerId, providerData
+role: player|court
+workingHours, defaultPrice, defaultRegistrationDeadlineHours   (court)
+bio, skills, phone, location
+preferredSports[]          ← GAME_TYPES id-jevi
+experience: beginner|intermediate|advanced|professional
+ratingAvg, ratingsCount, reliabilityScore (0–100, default 100)
+sportSkillLevels: [{ sport, skillLevel 1–5 }]
+notificationEnabled (default true), notificationRadius (default 10 km)
 lastKnownLocation: { lat, lng, updatedAt }
-pushSubscription: Mixed (Web Push subscription object)
+pushSubscription: Mixed
 blockedPlayers: [ObjectId]
 ```
 
-### 5.2 Match
+### 6.2 Match
 
 ```
-sport, fieldId?, isInformal, informalLocation?, informalRegistrationDeadlineHours?
+sport                      ← GAME_TYPES id
+fieldId?                   ← obavezan ako !isInformal
+isInformal, informalLocation?, informalRegistrationDeadlineHours? (1–48)
 dateTime, registrationDeadline
-minPlayers, maxPlayers?, playersNeeded (legacy, sync sa minPlayers)
+minPlayers, maxPlayers?, playersNeeded (legacy ↔ minPlayers pre-save)
 players[], waitlist[], createdBy
 status: open|full|completed|failed|otkazano
-courtApproval: pending|approved|rejected
+courtApproval: pending|approved|rejected (default approved)
 courtApprovedBy?, courtApprovedAt?, description?
 playerCancellations: [{ playerId, comment, cancelledAt, penalizedReliability }]
-noShows: [ObjectId]  (neformalni complete)
+noShows: [ObjectId]
 pricePerPlayer?, playerPayments: [{ playerId, paid, paidAt?, method }]
 ratings: [{ raterId, ratedUserId, stars, fairPlay, sport, createdAt }]
+quickMessages: [{ userId, text ≤200, isPreset, createdAt }]  ← samo /messages
 ```
 
-### 5.3 Field
+### 6.3 Field
 
 ```
 name, sports[], lat, lng, courtOwner?, price?
-registrationDeadlineHours (default 24)
+registrationDeadlineHours  (default 0 = do kickoff-a / clamp logika)
 workingHours: { [day]: { start, end, closed } }
 ```
 
 ---
 
-## 6. Backend — infrastruktura
+## 7. Backend — infrastruktura
 
-### 6.1 Socket.IO
+### 7.1 Socket.IO
 
-**Klijent → server:**
-- `join_match_room(matchId)` → soba `match:<id>`
-- `leave_match_room(matchId)`
-
+**Klijent → server:** `join_match_room`, `leave_match_room`  
 **Server → klijent:**
-- `match_updated` — populated match objekat (matches, courts, cron)
+- `match_updated` — populated match (mutacije, cron)
+- `match_message` — brzi chat
 
-### 6.2 Cron (`server.js`)
+### 7.2 Cron / status job
 
-- **Raspored:** `0 * * * *` (svakog sata) + jednom pri startu
-- **Funkcija:** `checkCancelledMatches()` — `open` mečevi sa prošlim `registrationDeadline` → `otkazano`
+- Raspored: `0 * * * *` + jednom pri startu
+- `checkCancelledMatches()` → `processExpiredMatches(io)` (`utils/matchStatus.js`)
+- Isti helper i na `GET /api/matches`
 
-### 6.3 Push obaveštenja (`utils/pushNotifications.js`)
+### 7.3 Push (`utils/pushNotifications.js`)
 
-- **Samo VAPID Web Push** (`web-push` biblioteka)
-- Env: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
-- Trigger: `POST /api/matches` → `notifyNearbyPlayers()` filtrira igrače po:
-  - `notificationEnabled === true`
-  - `pushSubscription` postoji
-  - udaljenost ≤ `notificationRadius` km (Haversine)
-  - sport se poklapa sa `preferredSports` (ako postoji)
-- Trigger: auto-promocija sa waitlist-a → push „Mesto se oslobodilo!“ na promovisanog igrača
-- Istekle pretplate (HTTP 410/404) se čiste iz baze
+- Samo VAPID Web Push
+- Triggeri:
+  1. `POST /api/matches` → `notifyNearbyPlayers` (lokacija + radius + subscription + `notificationEnabled`; **bez** filtera po `preferredSports`)
+  2. Auto-promocija sa waitlist-a
+- Default title u payload-u: „Plejko“ / „Novi meč u blizini!“
+- Istekle pretplate (410/404) se čiste
 
-### 6.4 Cloudinary (`utils/cloudinary.js`)
+### 7.4 Ostali utiliti
 
-- Upload avatara (400×400 face crop)
-- OAuth avatar sync (Google/Facebook/Instagram)
+| Fajl | Uloga |
+|------|--------|
+| `utils/notifications.js` | Haversine `calculateDistance` |
+| `utils/reliability.js` | Kazne / nagrade pouzdanosti |
+| `utils/matchStatus.js` | `processExpiredMatches` |
+| `utils/quickMessages.js` | Preseti, limity, format |
+| `utils/cloudinary.js` | Avatar upload / OAuth sync |
 
-### 6.5 Skripte
+### 7.5 Skripte
 
 | Skripta | Svrha |
 |---------|-------|
-| `scripts/backfill-user-metrics.js` | Jednokratno popunjavanje metrika |
-| `scripts/fix-user-index.js` | Popravka OAuth unique indexa |
+| `scripts/backfill-user-metrics.js` | Backfill metrika |
+| `scripts/fix-user-index.js` | OAuth unique index |
 
 ---
 
-## 7. Frontend — rute i stranice
+## 8. Frontend — rute i stranice
 
-| Ruta | Komponenta | Auth | Rola | Funkcije |
-|------|------------|------|------|----------|
-| `/` | Home | — | svi | Mapa terena/mečeva, geolokacija, radius filter, join, notification banner, FAB create |
-| `/create` | CreateMatch | ✓ | player* | 3-korak wizard: formalni/neformalni meč |
-| `/matches/:id` | MatchDetails | — | svi | Detalji, mapa, join/leave/cancel, share, Socket.IO, ocene, informal complete |
-| `/manage-fields` | ManageFields | ✓ | court* | CRUD terena, radno vreme, approve/reject/cancel |
-| `/moji-termini` | MojTermine | ✓ | court* | Tabovi: rezervisano, pending, slobodno, statistika |
-| `/profil` | PlayerProfile | ✓ | player* | Profil, avatar, analitika, radius, test push |
-| `/moji-mecevi` | MojiMecevi | ✓ | player* | Kreirani vs prijavljeni mečevi |
-| `/moji-igraci` | MojiIgraci | ✓ | player* | Lista igrača, block/unblock |
-| `/notification-settings` | NotificationSettings | ✓ | svi* | Push subscribe/unsubscribe, test |
-| `/login` | Login | — | — | Email/password + OAuth |
-| `/register` | Register | — | — | Registracija + RoleSelectionModal za OAuth |
-| `/auth/callback` | AuthCallback | — | — | OAuth povratak, verifikacija cookie |
+Role guardovi: `PlayerRoute` / `CourtRoute` (auth + role), plus javne rute.
 
-\*Nema role guard na ruti — samo `ProtectedRoute` (auth). Court korisnik može otvoriti player stranice direktno URL-om.
+| Ruta | Komponenta | Guard | Funkcije |
+|------|------------|-------|----------|
+| `/` | Home | — | Lista/mapa; preferred vs svi mečevi; geolokacija; formal + informal markeri; join/waitlist; notif banner (+ subscribe) |
+| `/create` | CreateMatch | Player | 2 koraka: lokacija → datetime/igrači; formal/neformal; price; preferred igre; last-match preset |
+| `/matches/:id` | MatchDetails | — | Detalji, mapa, join/waitlist/cancel, share, cost splitter, chat, ocene, informal complete, Socket |
+| `/manage-fields` | ManageFields | Court | CRUD terena, radno vreme, approve flow |
+| `/moji-termini` | MojTermine | Court | Reserved / pending / free / stats; reserve; complete |
+| `/profil` | PlayerProfile | Player | Profil, avatar, analitika, preferred igre, radius |
+| `/profil/:id` | PublicPlayerProfile | — | Javni profil + analitika |
+| `/moji-mecevi` | MojiMecevi | Player | Kreirani / prijavljeni; informal complete CTA |
+| `/moji-igraci` | MojiIgraci | Player | Igrači, block, link na `/profil/:id` |
+| `/notification-settings` | NotificationSettings | Player | Subscribe / unsubscribe / test |
+| `/login` | Login | — | Email + OAuth |
+| `/register` | Register | — | Role + preferred games picker |
+| `/auth/callback` | AuthCallback | — | Cookie verify via `/me` |
 
-**Nedostaje:** `/profil/:id` (link postoji u MojiIgraci, ruta ne postoji). Nema 404 stranice.
+Nema 404 catch-all rute.
 
 ---
 
-## 8. Frontend — arhitektura
+## 9. Frontend — arhitektura
 
-### 8.1 Context
+### 9.1 Context
 
-| Fajl | Stanje / metode |
-|------|-----------------|
-| `AuthContext` | `user`, `loading`; `login`, `register`, `logout`, `refreshUser`, OAuth metode |
-| `ThemeContext` | light/dark mode, `localStorage` ključ `theme-mode` |
+| Fajl | Stanje |
+|------|--------|
+| `AuthContext` | `user`, `loading`; login/register/logout/refreshUser; OAuth |
+| `ThemeContext` | light/dark (`theme-mode` u localStorage) |
 
-### 8.2 Lib moduli
+### 9.2 Lib
 
 | Fajl | Svrha |
 |------|-------|
 | `api.ts` | Axios, `withCredentials: true`, timeout 10s |
 | `socket.ts` | Singleton Socket.IO, `autoConnect: false` |
-| `notifications.ts` | VAPID push: permission, subscribe, unsubscribe, status |
+| `notifications.ts` | VAPID subscribe / unsubscribe / status |
+| `reliability.ts` | Trust badge helperi |
 
-### 8.3 Komponente
+### 9.3 Constants / theme
 
-| Komponenta | Gde se koristi |
-|------------|----------------|
-| `Navbar` | App — role-aware navigacija, theme toggle, logout, PWA install |
-| `RoleSelectionModal` | Register — izbor player/court pre OAuth |
-| `InstallButton` | Navbar — PWA install prompt (mobile) |
+| Fajl | Svrha |
+|------|-------|
+| `constants/games.ts` | `GAME_TYPES`, kategorije, imena, aliasi |
+| `theme.ts` | MUI tema + `brand` tokeni (navy/cyan/magenta…) |
 
-### 8.4 PWA / Service Worker
+### 9.4 Komponente
 
-- **Plugin:** `vite-plugin-pwa`, strategija `injectManifest`
-- **SW fajl:** `frontend/src/sw.js`
-- **Manifest:** PlayMatch Global, standalone portrait, ikone 192/512
-- **Push handler:** parsira JSON/text, prikazuje notifikaciju, `notificationclick` otvara/fokusira tab
-- **Registracija:** `main.tsx` → `registerSW({ immediate: true })`
+| Komponenta | Uloga |
+|------------|--------|
+| `Navbar` | Role-aware nav, theme, logout, PWA install |
+| `PlejkoLogo` | Brend logo / tagline |
+| `BrandHero` | Hero na Home (kategorije Sport/Gaming/Društvene) |
+| `PreferredGamesPicker` | Multi-select preferiranih igara |
+| `SingleGamePreferencePicker` | Single-game izbor (CreateMatch) |
+| `MatchQuickChat` | Brzi chat na MatchDetails |
+| `RoleSelectionModal` | Player/court pre OAuth |
+| `InstallButton` | PWA install prompt |
 
-### 8.5 TypeScript tipovi (`types.ts`)
+### 9.5 PWA
 
-`User`, `Match`, `Field`, `PlayerAnalytics`, `InformalLocation`, `PushSubscriptionJSON`, `MatchRatingStatus`, `PendingRatingUser`, `PlayerCancellation`
+- `vite-plugin-pwa`, `injectManifest`, SW: `frontend/src/sw.js`
+- Manifest / naslov: **Plejko**
+- Push handler + `notificationclick`
+- Registracija: `main.tsx` → `registerSW({ immediate: true })`
+
+### 9.6 Tipovi (`types.ts`)
+
+`User`, `Match`, `Field`, `PlayerAnalytics`, `InformalLocation`, `PlayerPayment`, `MatchQuickMessage`, `PushSubscriptionJSON`, `MatchRatingStatus`, `PendingRatingUser`, `PlayerCancellation`
 
 ---
 
-## 9. Autentifikacija — arhitektura
+## 10. Autentifikacija
 
 ```
 Browser → Axios (withCredentials) → HttpOnly cookie "token"
-OAuth → Passport session → callback → setTokenCookie → redirect /auth/callback
+OAuth → Passport → setTokenCookie → redirect /auth/callback → GET /me
 Frontend NIKAD ne čuva token u localStorage
 ```
 
-**Cookie opcije (prod):** `SameSite: none`, `Secure: true`, 7 dana  
-**Cookie opcije (dev):** `SameSite: lax`, `Secure: false`
+**Cookie (prod):** `SameSite=none`, `Secure=true`, 7d  
+**Cookie (dev):** `SameSite=lax`, `Secure=false`
 
-**OAuth redirect:** Backend šalje `?user=<JSON>` u URL (PII u browser history — nije token ali je rizik).
+Auth middleware: cookie prvo, zatim Bearer.  
+OAuth može i dalje slati `?user=JSON` u redirect URL (PII rizik u history).
 
 ---
 
-## 10. Environment varijable
+## 11. Environment varijable
 
-### Backend (`.env`)
+### Backend
 
 ```
 MONGO_URI, JWT_SECRET, SESSION_SECRET, PORT=5050
@@ -415,183 +498,178 @@ VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT=mailto:...
 NODE_ENV
 ```
 
-### Frontend (`.env`)
+### Frontend
 
 ```
-VITE_API_URL=https://your-backend.onrender.com
-VITE_SOCKET_URL=https://your-backend.onrender.com
+VITE_API_URL=...
+VITE_SOCKET_URL=...
 ```
 
 ---
 
-## 11. Struktura repozitorijuma
+## 12. Struktura repozitorijuma
 
-### Aktivni kod (koristi se u produkciji)
+### Aktivni kod
 
 ```
 playmatch/
-├── backend/src/          ← API server
-├── frontend/src/         ← React PWA
-├── render.yaml           ← Render deploy
-├── CLAUDE.md             ← AI referenca (skraćena)
-└── PLAYMATCH_SPECIFICATION.md  ← ovaj fajl
+├── backend/src/
+│   ├── constants/games.js
+│   ├── middleware/auth.js
+│   ├── models/{User,Match,Field}.js
+│   ├── routes/{auth,matches,players,fields,courts}.js
+│   ├── utils/{cloudinary,pushNotifications,notifications,
+│   │         reliability,matchStatus,quickMessages}.js
+│   └── server.js
+├── frontend/src/
+│   ├── pages/… (uklj. PublicPlayerProfile)
+│   ├── components/… (PlejkoLogo, BrandHero, MatchQuickChat, pickers…)
+│   ├── constants/games.ts
+│   ├── lib/{api,socket,notifications,reliability}.ts
+│   └── …
+├── render.yaml
+├── CLAUDE.md
+└── PLAYMATCH_SPECIFICATION.md
 ```
 
-### Legacy / neaktivni (NE koristiti)
+### Legacy / neaktivni
 
-| Fascikla | Opis |
-|----------|------|
-| `client/` | Stari frontend (Tailwind, bez MUI) — zastareo |
-| `server/` | Stari backend — zastareo, manje ruta |
-| `MIGRATION_SUMMARY.md`, `PUSH_NOTIFICATIONS_MIGRATION.md`, `DEBUG_PUSH_NOTIFICATIONS.md`, `QUICK_FIX_PUSH_NOTIFICATIONS.md`, `PUSH_NOTIFICATIONS_TEST.md` | Dokumenti o OneSignal/FCM migraciji koja **nije implementirana** |
+| Fascikla / fajlovi | Opis |
+|--------------------|------|
+| `client/`, `server/` | Stari stack — ne koristiti |
+| Stari push migracioni MD-ovi | OneSignal/FCM migracija nije aktivna |
 
 ---
 
-## 12. Audit — nelogičnosti, bugovi, visak koda
+## 13. Audit — poznati problemi
 
-> Prioritet: 🔴 visok · 🟡 srednji · 🟢 nizak
+> Prioritet: 🔴 visok · 🟡 srednji · 🟢 nizak  
+> Stavke označene ✅ su rešene u odnosu na prethodnu reviziju specifikacije.
 
-### 12.1 🔴 Kritični problemi
+### 13.1 ✅ Rešeno od prethodnog audita
+
+| Ranije | Sada |
+|--------|------|
+| NotificationSettings deadlock (`disabled` dok permission nije granted) | Dugme disabled samo ako je `permission === 'denied'` |
+| Home banner bez subscribe | Banner poziva `subscribeToPushNotifications()` |
+| Nema `/profil/:id` | `PublicPlayerProfile` + ruta |
+| Nema role guarda | `PlayerRoute` / `CourtRoute` |
+| Cron samo `otkazano` vs GET `failed` | Zajednički `processExpiredMatches` (failed **ili** otkazano) |
+
+### 13.2 🔴 Visok prioritet
 
 | # | Problem | Gde | Posledica |
 |---|---------|-----|-----------|
-| 1 | **Push notifikacije ne stižu kad Chrome nije otvoren** | PWA/Android | Service worker mora biti registrovan + push subscription aktivna; na Androidu Chrome ubija SW na free tier telefonima; korisnik mora instalirati PWA i dozvoliti obaveštenja |
-| 2 | **NotificationSettings UX bug** | `NotificationSettings.tsx:241` | Dugme "Omogući" je `disabled` dok `permission !== 'granted'`, ali permission se traži tek u `onClick` → **deadlock** za nove korisnike |
-| 3 | **Home notification banner ne poziva subscribe** | `Home.tsx` | Postavlja samo `notificationEnabled: true` na backendu, ne registruje push pretplatu |
-| 4 | **Konflikt statusa meča: cron vs GET /matches** | `server.js` vs `matches.js` | Cron → svi `open` sa prošlim deadline → `otkazano`; GET /matches → malo igrača → `failed`. Isti meč može dobiti različit status zavisno od redosleda |
-| 5 | **Auto-approve court na join** | `matches.js` join handler | Kad se popuni `minPlayers`, `courtApproval` se automatski postavlja na `approved` — court approve flow je delimično besmislen |
-| 6 | **Link `/profil/:id` ne postoji** | `MojiIgraci.tsx` | "Vidi profil" vodi na 404 |
+| 1 | Push često radi pouzdano tek sa instaliranom PWA | Android/Chrome | SW može biti suspendovan bez install-a |
+| 2 | Auto-approve court na `applyFullStatus` | `matches.js` | Kad se popuni `minPlayers`, `courtApproval` → `approved` — court workflow delimično zaobiđen |
+| 3 | Push ne filtrira po preferiranim igrama | `notifyNearbyPlayers` | Igrač dobija notifikacije za sve sportove/igre u radijusu |
 
-### 12.2 🟡 Srednji problemi
+### 13.3 🟡 Srednji
 
 | # | Problem | Gde |
 |---|---------|-----|
-| 7 | Legacy `client/` i `server/` fascikle u repou | root |
-| 8 | `firebase` npm paket u frontendu — **nigde se ne importuje** | `frontend/package.json` |
-| 9 | `passport-facebook-token`, npm paket `http` — neiskorišćeni | `backend/package.json` |
-| 10 | JWT i dalje u response body (register/login/instagram) | `auth.js` — suprotno cookie-only dokumentaciji |
-| 11 | OAuth redirect sa `?user=JSON` u URL | `auth.js` — PII u history |
-| 12 | Session cookie uvek `secure: false` čak i u produkciji | `server.js:51` |
-| 13 | `POST /api/fields` nema proveru `court` role | `fields.js` |
-| 14 | Nema role guard na frontend rutama (`/create`, `/profil`, itd.) | `App.tsx` |
-| 15 | `POST /leave` endpoint postoji ali frontend ga ne koristi | samo `cancel-attendance` u UI |
-| 16 | Duplirana analytics logika (~75 linija × 2) | `players.js` |
-| 17 | `playersNeeded` legacy polje + pre-save hook | `Match.js`, ceo frontend |
-| 18 | Frontend učitava sve mečeve bez paginacije | `Home.tsx` |
-| 19 | Neformalni mečevi prikazuju "Nepoznat teren" | `MojiMecevi.tsx` |
-| 20 | Court reservation `playersNeeded: 0` → hook postavlja na 1 | `courts.js` |
-| 21 | Join ne blokira `otkazano`, `completed`, `rejected` | `matches.js` |
-| 22 | Mešanje jezika u UI | "Last Minute", "Share", "Notification Settings", raw sport keys |
-| 23 | `join` failures koriste `alert()` umesto MUI Alert | `Home.tsx` |
-| 24 | Dev port 3000 u vite.config, docs kažu 5173 | `vite.config.ts` |
-| 25 | Zastarela push migraciona dokumentacija | root MD fajlovi |
+| 4 | Legacy `client/` i `server/` | root |
+| 5 | JWT i dalje u response body (register/login) | `auth.js` |
+| 6 | OAuth redirect `?user=JSON` | `auth.js` |
+| 7 | Session cookie `secure: false` i u produkciji | `server.js` |
+| 8 | `POST /api/fields` nema strogu proveru `court` role | `fields.js` |
+| 9 | `POST /leave` postoji, UI koristi samo cancel-attendance | matches UI |
+| 10 | Duplirana analytics logika | `players.js` |
+| 11 | `playersNeeded` legacy + pre-save | Match + frontend |
+| 12 | Home učitava mečeve bez korišćenja paginacije | `Home.tsx` |
+| 13 | Join ne blokira sve terminalne statuse konzistentno | `matches.js` |
+| 14 | Mešanje engleskih stringova u UI | razni |
+| 15 | Dev port 3000 u `vite.config` (docs ponekad kažu 5173) | vite |
+| 16 | Court `appointments.free` često prazan stub | `courts.js` |
+| 17 | Reliability dual semantics u analytics (stored vs computed fallback) | `players.js` |
 
-### 12.3 🟢 Nizak prioritet / code smell
+### 13.4 🟢 Nizak / code smell
 
-| # | Problem | Gde |
-|---|---------|-----|
-| 26 | Nekorišćeni importi | Navbar (`Badge`), Home (`IconButton`, `Tooltip`), Register, AuthCallback, MojTermine, PlayerProfile |
-| 27 | Nekorišćene varijable | `upcomingInformalMatches` (Home), `currentUser` (MojiMecevi, MojiIgraci), `user` (NotificationSettings) |
-| 28 | `loginWithInstagram` bez UI | AuthContext |
-| 29 | `initPushNotifications()` prazan stub | notifications.ts |
-| 30 | `CLIENT_URL` dodeljen ali neiskorišćen | server.js:34 |
-| 31 | Leaflet icon fix dupliran u 6 fajlova | frontend pages |
-| 32 | `formatPlayersCount()` dupliran u 5+ stranica | frontend |
-| 33 | Lokalni tipovi umesto `types.ts` | MojiIgraci, MojTermine, ManageFields |
-| 34 | `GET /api/courts/matches/pending` ne koristi frontend | koristi per-field appointments |
-| 35 | Court default settings endpointi ne koriste frontend | working-hours, default-price, default-deadline |
-| 36 | `GET /api/players/analytics/:id`, `is-blocked-by` ne koriste frontend | — |
-| 37 | Dupli markeri na mapi (teren + meč na istim koordinatama) | Home.tsx |
-| 38 | Nema 404 catch-all rute | App.tsx |
-| 39 | `courts.js` free appointments stub (`appointments.free = []`) | nedovršeno |
-| 40 | Reliability score dual semantics (stored vs computed) | players.js analytics |
+| # | Problem |
+|---|---------|
+| 18 | Leaflet icon fix / `formatPlayersCount` duplikati |
+| 19 | Lokalni tipovi umesto `types.ts` na nekim court stranicama |
+| 20 | Court default settings endpointi retko korišćeni iz UI |
+| 21 | Dupli markeri (teren + meč) na istim koordinatama |
+| 22 | Nema 404 rute |
+| 23 | `loginWithInstagram` bez UI |
+| 24 | Nekorišćeni importi / dead code na mestima |
 
 ---
 
-## 13. Push obaveštenja — kako rade (detaljno)
+## 14. Push obaveštenja — flow
 
-### Flow za korisnika
-
-1. Korisnik instalira PWA (preporučeno) ili koristi sajt u Chrome-u
-2. Na `/notification-settings` ili `/profil` → dozvola za obaveštenja
-3. `subscribeToPushNotifications()` → Service Worker + PushManager + VAPID key
-4. Subscription se šalje na `POST /api/players/push-subscription`
-5. Korisnik ažurira lokaciju (`POST /api/players/location`) i radius u profilu
-6. Kad neko kreira meč → backend šalje push svima u radijusu
-
-### Zašto notifikacije stižu tek kad se otvori Chrome (Android)
-
-- Web Push na Androidu ide preko Chrome-ovog push servisa + service workera
-- Ako PWA nije instalirana, SW može biti suspendovan dok browser nije aktivan
-- Battery optimization na telefonu može odložiti push delivery
-- Ako korisnik nije završio subscribe flow (bug u §12.1 #2, #3), push neće raditi u pozadini
-- **Rešenje:** Instalirati PWA, fix NotificationSettings bug, povezati Home banner sa subscribe flow-om
+1. Instalirati PWA (preporučeno) ili Chrome sa dozvolom
+2. `/notification-settings`, `/profil` ili Home banner → permission + subscribe
+3. `subscribeToPushNotifications()` → SW + PushManager + VAPID → `POST /api/players/push-subscription`
+4. Lokacija: `POST /api/players/location`; radius u profilu
+5. Novi meč → push svima u radijusu (bez preferred-sports filtera)
+6. Waitlist promocija → poseban push
 
 ---
 
-## 14. Preporuke za AI pri budućim izmenama
+## 15. Preporuke za AI pri izmenama
 
 ### Uvek poštovati
 
-- UI tekstovi na **srpskom** (`sr-RS` locale za datume)
-- Auth preko **cookie-only** — ne vraćati localStorage token pattern
-- API pozivi preko `src/lib/api.ts`
-- Socket preko `src/lib/socket.ts`
-- Greške preko MUI `<Alert severity="error">`
-- Minimalan diff — ne refaktorisati širu okolinu bez potrebe
+- UI na **srpskom**; brend **Plejko** u user-facing copy
+- Cookie-only auth na frontendu
+- API preko `src/lib/api.ts`; socket preko `src/lib/socket.ts`
+- Igre iz `GAME_TYPES` (backend + frontend sync)
+- Formalni **i** neformalni mečevi pri svakoj izmeni match logike
+- Greške: MUI `<Alert>`; datumi: `toLocaleString('sr-RS', …)`
+- Minimalan diff
 
 ### Pre implementacije proveriti
 
-- Da li izmena utiče na **oba tipa meča** (formalni/neformalni)
-- Da li court approval workflow ima smisla posle izmene
-- Da li cron i GET /matches daju konzistentan status
-- Da li frontend ruta postoji za svaki backend endpoint koji se koristi u UI
+- Court approval vs `applyFullStatus` auto-approve
+- Cron / `processExpiredMatches` konzistentnost
+- Da li ruta ima odgovarajući role guard
+- Da li push / chat / payments treba ažurirati uz novi match event
 
 ### Predloženi redosled popravki
 
-1. Fix NotificationSettings disabled bug
-2. Povezati Home banner sa `subscribeToPushNotifications()`
-3. Dodati `/profil/:id` rutu
-4. Uskladiti cron vs failed/otkazano logiku
-5. Role guards na rutama
-6. Ukloniti legacy `client/`, `server/`, `firebase` dep, nekorišćene backend pakete
-7. Migracija `playersNeeded` → samo `minPlayers`
-8. Paginacija na Home
-9. Ekstrakcija dupliranih helpera (`formatPlayersCount`, Leaflet icons)
+1. Ukloniti ili usloviti auto-approve `courtApproval` u `applyFullStatus`
+2. Opciono: filter push po `preferredSports`
+3. Migracija `playersNeeded` → samo `minPlayers`
+4. Ukloniti legacy `client/`, `server/`
+5. Paginacija na Home
+6. Ekstrakcija dupliranih helpera
+7. Ukloniti JWT iz response body / `?user=` iz OAuth URL
 
 ---
 
-## 15. Brzi pregled fajlova
+## 16. Brzi pregled fajlova
 
-### Backend (13 izvornih fajlova)
+### Backend
 
 | Fajl | Uloga |
-|------|-------|
+|------|--------|
 | `server.js` | Entry, MongoDB, cron, Socket.IO, CORS |
-| `middleware/auth.js` | JWT middleware |
-| `models/User.js`, `Match.js`, `Field.js` | Mongoose šeme |
+| `middleware/auth.js` | JWT |
+| `models/*` | User, Match, Field |
+| `constants/games.js` | Katalog igara |
 | `routes/auth.js` | Auth + OAuth |
-| `routes/matches.js` | Mečevi, ocene, push trigger |
-| `routes/players.js` | Profili, analitika, push, blokiranje |
+| `routes/matches.js` | Mečevi, waitlist, payments, chat, ocene, push trigger |
+| `routes/players.js` | Profili, analitika, push, block |
 | `routes/fields.js` | Javni tereni |
 | `routes/courts.js` | Court dashboard |
-| `utils/notifications.js` | Haversine distanca |
-| `utils/pushNotifications.js` | VAPID web push |
-| `utils/cloudinary.js` | Upload slika |
+| `utils/*` | Push, distance, reliability, matchStatus, quickMessages, cloudinary |
 
-### Frontend (27 izvornih fajlova u `src/`)
+### Frontend (`src/`)
 
 | Kategorija | Fajlovi |
 |------------|---------|
-| Pages (12) | Home, CreateMatch, MatchDetails, Login, Register, AuthCallback, ManageFields, MojTermine, PlayerProfile, MojiMecevi, MojiIgraci, NotificationSettings |
-| Components (3) | Navbar, RoleSelectionModal, InstallButton |
-| Context (2) | AuthContext, ThemeContext |
-| Lib (3) | api, socket, notifications |
-| Other | App.tsx, main.tsx, types.ts, theme.ts, sw.js, pwa.d.ts, vite-env.d.ts |
+| Pages (13) | Home, CreateMatch, MatchDetails, Login, Register, AuthCallback, ManageFields, MojTermine, PlayerProfile, PublicPlayerProfile, MojiMecevi, MojiIgraci, NotificationSettings |
+| Components | Navbar, RoleSelectionModal, InstallButton, PlejkoLogo, BrandHero, MatchQuickChat, PreferredGamesPicker, SingleGamePreferencePicker |
+| Context | AuthContext, ThemeContext |
+| Lib | api, socket, notifications, reliability |
+| Constants | games.ts |
+| Other | App.tsx, main.tsx, types.ts, theme.ts, sw.js |
 
 ---
 
-## 16. Kako pokrenuti lokalno
+## 17. Lokalni setup
 
 ```bash
 # Backend (port 5050)
@@ -609,4 +687,21 @@ VITE_SOCKET_URL=http://localhost:5050
 
 ---
 
-*Ovaj dokument generisan auditom celog `backend/` i `frontend/` koda. Za kratku AI referencu pogledaj i `CLAUDE.md`.*
+## 18. Changelog specifikacije (avgust 2026)
+
+U odnosu na prethodnu reviziju dokumenta, usklađeno sa kodom:
+
+- **Brend Plejko** + multi-category `GAME_TYPES` (sport / tabletop / pub / esports)
+- **Waitlist**, **cost splitter**, **brzi chat** (`quickMessages` + Socket `match_message`)
+- Tačna **reliability** tabela + trust badge
+- **Preferirane igre** na registraciji / create / Home filter
+- Ispravljen opis cron-a → `processExpiredMatches` (failed | otkazano)
+- Push: **nema** preferredSports filter (ranije pogrešno dokumentovano)
+- Field `registrationDeadlineHours` default **0**
+- CreateMatch = **2 koraka**; role guardi; `/profil/:id`
+- NotificationSettings / Home banner subscribe — bugovi zatvoreni
+- Novi utiliti i komponente u inventaru fajlova
+
+---
+
+*Dokument usklađen auditom aktivnog `backend/` i `frontend/` koda. Za kratku AI referencu vidi i `CLAUDE.md` (može biti stariji od ovog fajla).*

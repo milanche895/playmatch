@@ -36,6 +36,18 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { Match, Field } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { getGameTypeName } from '../constants/games';
+
+function translateMatchStatus(status: string): string {
+  switch (status) {
+    case 'open': return 'Otvoren';
+    case 'full': return 'Pun';
+    case 'completed': return 'Završen';
+    case 'failed': return 'Neuspešan';
+    case 'otkazano': return 'Otkazan';
+    default: return status;
+  }
+}
 
 type FreeSlot = {
   fieldId: { _id: string; name: string; sport: string; sports?: string[] };
@@ -90,17 +102,19 @@ function MatchCard({ match, onComplete, onCancel }: { match: Match; onComplete?:
                 <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 0.5 }}>
                   {typeof match.fieldId === 'object' && match.fieldId.sports ? (
                     match.fieldId.sports.map((s) => (
-                      <Chip key={s} label={s} size="small" color="primary" />
+                      <Chip key={s} label={getGameTypeName(s)} size="small" color="primary" />
                     ))
                   ) : typeof match.fieldId === 'object' && match.fieldId.sport ? (
-                    <Chip label={match.fieldId.sport} size="small" color="primary" />
+                    <Chip label={getGameTypeName(match.fieldId.sport)} size="small" color="primary" />
+                  ) : match.sport ? (
+                    <Chip label={getGameTypeName(match.sport)} size="small" color="primary" />
                   ) : (
                     <Chip label="Nepoznat sport" size="small" color="primary" />
                   )}
                   <Chip
-                    label={match.status === 'full' ? 'Pun' : match.status === 'completed' ? 'Završen' : match.status === 'open' ? 'Otvoren' : match.status}
+                    label={translateMatchStatus(match.status)}
                     size="small"
-                    color={match.status === 'completed' ? 'success' : match.status === 'full' ? 'warning' : match.status === 'open' ? 'info' : 'default'}
+                    color={match.status === 'completed' ? 'success' : match.status === 'full' ? 'warning' : match.status === 'open' ? 'info' : match.status === 'failed' || match.status === 'otkazano' ? 'error' : 'default'}
                   />
                 </Stack>
               </Box>
@@ -180,17 +194,20 @@ function StatsCard({ title, stats, icon: Icon }: { title: string; stats: { compl
         </Box>
         <Typography variant="h6" fontWeight={700}>{title}</Typography>
       </Stack>
-      <Grid container spacing={3}>
-        <Grid item xs={4}>
-          <Typography variant="h4" fontWeight={700} color="success.main">{stats.completed}</Typography>
+      <Grid container spacing={{ xs: 2, sm: 3 }}>
+        <Grid item xs={12} sm={4}>
+          <Typography variant="h4" fontWeight={700} color="success.main" sx={{ fontSize: { xs: '1.5rem', sm: '2.125rem' } }}>{stats.completed}</Typography>
           <Typography variant="body2" color="text.secondary">Završeni</Typography>
         </Grid>
-        <Grid item xs={4}>
-          <Typography variant="h4" fontWeight={700} color="primary.main">{stats.paid}</Typography>
+        <Grid item xs={12} sm={4}>
+          <Typography variant="h4" fontWeight={700} color="primary.main" sx={{ fontSize: { xs: '1.5rem', sm: '2.125rem' } }}>{stats.paid}</Typography>
           <Typography variant="body2" color="text.secondary">Naplaćeni</Typography>
         </Grid>
-        <Grid item xs={4}>
-          <Typography variant="h4" fontWeight={700}>{stats.totalRevenue.toLocaleString('sr-RS')} <Typography component="span" variant="body2" color="text.secondary">EUR</Typography></Typography>
+        <Grid item xs={12} sm={4}>
+          <Typography variant="h4" fontWeight={700} sx={{ fontSize: { xs: '1.25rem', sm: '2.125rem' }, wordBreak: 'break-word' }}>
+            {stats.totalRevenue.toLocaleString('sr-RS')}{' '}
+            <Typography component="span" variant="body2" color="text.secondary">EUR</Typography>
+          </Typography>
           <Typography variant="body2" color="text.secondary">Prihod</Typography>
         </Grid>
       </Grid>

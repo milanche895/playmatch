@@ -23,6 +23,7 @@ import {
 import api from '../lib/api';
 import { User, PlayerAnalytics } from '../types';
 import { getTrustBadge } from '../lib/reliability';
+import { getGameTypeName } from '../constants/games';
 
 const experienceLabels: Record<string, string> = {
   beginner: 'Početnik',
@@ -157,10 +158,10 @@ export default function PublicPlayerProfile() {
                 )}
                 {user.preferredSports && user.preferredSports.length > 0 && (
                   <Box>
-                    <Typography variant="caption" color="text.secondary">Omiljeni sportovi</Typography>
+                    <Typography variant="caption" color="text.secondary">Omiljene igre</Typography>
                     <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5, mt: 0.5 }}>
                       {user.preferredSports.map((sport) => (
-                        <Chip key={sport} label={sport} size="small" variant="outlined" />
+                        <Chip key={sport} label={getGameTypeName(sport)} size="small" variant="outlined" />
                       ))}
                     </Stack>
                   </Box>
@@ -184,7 +185,7 @@ export default function PublicPlayerProfile() {
                       {user.sportSkillLevels?.map((entry) => (
                         <Chip
                           key={`${entry.sport}-${entry.skillLevel}`}
-                          label={`${entry.sport}: ${entry.skillLevel}/5`}
+                          label={`${getGameTypeName(entry.sport)}: ${entry.skillLevel}/5`}
                           size="small"
                           color="primary"
                         />

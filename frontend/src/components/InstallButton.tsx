@@ -104,7 +104,7 @@ export default function InstallButton() {
           severity="success"
           sx={{ width: '100%' }}
         >
-          PlayMatch je uspešno instaliran!
+          Plejko je uspešno instaliran!
         </Alert>
       </Snackbar>
     </>

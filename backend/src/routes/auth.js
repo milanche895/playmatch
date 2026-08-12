@@ -266,18 +266,29 @@ function setTokenCookie(res, userId) {
 
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, avatarUrl, role } = req.body;
+    const { name, email, password, avatarUrl, role, preferredSports } = req.body;
     if (!name || !email || !password) return res.status(400).json({ message: 'Nedostaju polja' });
     const existing = await User.findOne({ email });
     if (existing) return res.status(409).json({ message: 'Email je već u upotrebi' });
     const hashed = await bcrypt.hash(password, 10);
+
+    const sports = Array.isArray(preferredSports)
+      ? preferredSports.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim())
+      : [];
+
+    // Players should pick at least one preferred game so we can personalize the feed
+    if ((role || 'player') === 'player' && sports.length === 0) {
+      return res.status(400).json({ message: 'Izaberite kategoriju i igru kojom se bavite' });
+    }
+
     const user = await User.create({ 
       name, 
       email, 
       password: hashed, 
       avatarUrl,
       role: role || 'player',
-      provider: 'local'
+      provider: 'local',
+      preferredSports: (role || 'player') === 'player' ? sports : [],
     });
     
     // Generate token
@@ -292,6 +303,7 @@ router.post('/register', async (req, res) => {
       email: user.email, 
       avatarUrl: user.avatarUrl,
       role: user.role,
+      preferredSports: user.preferredSports || [],
       token // Include token in response for localStorage
     });
   } catch (e) {
@@ -327,6 +339,9 @@ router.post('/login', async (req, res) => {
       email: user.email, 
       avatarUrl: user.avatarUrl,
       role: user.role,
+      preferredSports: user.preferredSports || [],
+      notificationEnabled: user.notificationEnabled,
+      notificationRadius: user.notificationRadius,
       token // Include token in response for localStorage
     });
   } catch (e) {

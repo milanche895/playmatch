@@ -94,7 +94,7 @@ export default function RoleSelectionModal({ open, onClose, onSelect, provider }
             textAlign: 'center',
           }}
         >
-          Pre nego što nastavite sa {providerNames[provider]}, molimo izaberite kako ćete koristiti PlayMatch
+          Pre nego što nastavite sa {providerNames[provider]}, molimo izaberite kako ćete koristiti Plejko
         </Typography>
 
         <Stack spacing={2}>
@@ -155,7 +155,17 @@ export default function RoleSelectionModal({ open, onClose, onSelect, provider }
         </Stack>
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, pb: 3, pt: 1 }}>
+      <DialogActions
+        sx={{
+          px: 3,
+          pb: 3,
+          pt: 1,
+          flexDirection: { xs: 'column-reverse', sm: 'row' },
+          alignItems: 'stretch',
+          gap: 1.5,
+          '& > :not(:first-of-type)': { ml: { xs: 0, sm: 1 } },
+        }}
+      >
         <Button
           onClick={onClose}
           variant="outlined"

@@ -43,15 +43,15 @@ export default defineConfig({
       manifest: {
         id: "/",
         scope: "/",
-        name: "PlayMatch Global",
-        short_name: "PlayMatch",
-        description: "Pronađi igrače i terene za fudbal u tvom gradu",
+        name: "Plejko",
+        short_name: "Plejko",
+        description: "Plejko — Pronađi · Okupi · Igraj. Sport, gaming, društvene igre i druženje.",
         start_url: "/",
         display: "standalone",
         orientation: "portrait",
-        background_color: "#ffffff",
-        theme_color: "#2e7d32",
-        categories: ["sports", "social"],
+        background_color: "#050A18",
+        theme_color: "#050A18",
+        categories: ["sports", "games", "social"],
         icons: [
           { 
             src: "/icons/icon-192.png", 

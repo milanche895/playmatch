@@ -37,6 +37,7 @@ import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { User } from '../types';
 import { getTrustBadge } from '../lib/reliability';
+import { getGameTypeName } from '../constants/games';
 
 interface PlayerMatch {
   _id: string;
@@ -261,11 +262,11 @@ export default function MojiIgraci() {
                     {player.preferredSports && player.preferredSports.length > 0 && (
                       <Box>
                         <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                          Omiljeni sportovi:
+                          Omiljene igre:
                         </Typography>
                         <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
                           {player.preferredSports.map((sport) => (
-                            <Chip key={sport} label={sport} size="small" variant="outlined" />
+                            <Chip key={sport} label={getGameTypeName(sport)} size="small" variant="outlined" />
                           ))}
                         </Stack>
                       </Box>
@@ -292,19 +293,24 @@ export default function MojiIgraci() {
                                 bgcolor: 'background.paper',
                               }}
                             >
-                              <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                                <Box>
-                                  <Typography variant="body2" fontWeight={600}>
+                              <Stack
+                                direction={{ xs: 'column', sm: 'row' }}
+                                spacing={1}
+                                alignItems={{ xs: 'flex-start', sm: 'center' }}
+                                justifyContent="space-between"
+                              >
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography variant="body2" fontWeight={600} sx={{ wordBreak: 'break-word' }}>
                                     {match.fieldName}
                                   </Typography>
                                   <Stack direction="row" spacing={1} alignItems="center">
                                     <SportsIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
                                     <Typography variant="caption" color="text.secondary">
-                                      {match.sport}
+                                      {getGameTypeName(match.sport)}
                                     </Typography>
                                   </Stack>
                                 </Box>
-                                <Box sx={{ textAlign: 'right' }}>
+                                <Box sx={{ textAlign: { xs: 'left', sm: 'right' }, flexShrink: 0 }}>
                                   <Typography variant="caption" color="text.secondary">
                                     {formatDateTime(match.dateTime)}
                                   </Typography>
@@ -345,9 +351,9 @@ export default function MojiIgraci() {
                         />
                       }
                       label={
-                        <Stack direction="row" spacing={0.5} alignItems="center">
-                          <BlockIcon sx={{ fontSize: 16, color: blockedPlayers.includes(player._id) ? 'error.main' : 'text.secondary' }} />
-                          <Typography variant="body2" color={blockedPlayers.includes(player._id) ? 'error.main' : 'text.secondary'}>
+                        <Stack direction="row" spacing={0.5} alignItems="flex-start" sx={{ maxWidth: '100%' }}>
+                          <BlockIcon sx={{ fontSize: 16, mt: 0.25, color: blockedPlayers.includes(player._id) ? 'error.main' : 'text.secondary', flexShrink: 0 }} />
+                          <Typography variant="body2" color={blockedPlayers.includes(player._id) ? 'error.main' : 'text.secondary'} sx={{ wordBreak: 'break-word' }}>
                             {blockedPlayers.includes(player._id) ? 'Blokiran - ne može videti vaše mečeve' : 'Blokiraj igrača'}
                           </Typography>
                         </Stack>

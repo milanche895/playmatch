@@ -22,6 +22,8 @@ import {
   FormControlLabel,
   Paper,
   Grid,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -40,6 +42,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { Field, Match } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { GAME_TYPE_LIST, getGameTypeName } from '../constants/games';
 
 // Fix Leaflet icon issue
 // @ts-ignore
@@ -88,6 +91,8 @@ function formatPlayersCount(match: Match): string {
 export default function ManageFields() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [fields, setFields] = useState<Field[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,20 +110,10 @@ export default function ManageFields() {
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [price, setPrice] = useState<number>(0);
-  const [registrationDeadlineHours, setRegistrationDeadlineHours] = useState<number>(24);
+  const [registrationDeadlineHours, setRegistrationDeadlineHours] = useState<number>(0);
 
-  // Available sports for indoor/balloon hall facilities
-  const availableSports = [
-    { id: 'football', label: 'Fudbal' },
-    { id: 'basketball', label: 'Košarka' },
-    { id: 'handball', label: 'Rukomet' },
-    { id: 'volleyball', label: 'Odbojka' },
-    { id: 'tennis', label: 'Tenis' },
-    { id: 'tabletennis', label: 'Stoni tenis' },
-  //  { id: 'gymnastics', label: 'Gimnastika' },
-  //  { id: 'dance', label: 'Ples' },
-  //  { id: 'yoga', label: 'Joga' },
-  ];
+  // Available game types (same list as rest of the app)
+  const availableSports = GAME_TYPE_LIST.map((g) => ({ id: g.id, label: g.name }));
   const [mapCenter, setMapCenter] = useState<[number, number]>([44.7866, 20.4489]);
   const [markerPosition, setMarkerPosition] = useState<[number, number] | null>(null);
 
@@ -253,7 +248,7 @@ export default function ManageFields() {
     setLat(field.lat.toString());
     setLng(field.lng.toString());
     setPrice(field.price || 0);
-    setRegistrationDeadlineHours(field.registrationDeadlineHours ?? 24);
+    setRegistrationDeadlineHours(field.registrationDeadlineHours ?? 0);
     setMarkerPosition([field.lat, field.lng]);
     setError(null);
     setOpenDialog(true);
@@ -328,7 +323,7 @@ export default function ManageFields() {
       if (editingField) {
         const deadlineHours = typeof registrationDeadlineHours === 'number' && !isNaN(registrationDeadlineHours) 
           ? registrationDeadlineHours 
-          : parseInt(String(registrationDeadlineHours ?? 24));
+          : parseInt(String(registrationDeadlineHours ?? 0));
         
         await api.put(`/api/courts/fields/${editingField._id}`, {
           name,
@@ -371,7 +366,12 @@ export default function ManageFields() {
         >
           Nazad
         </Button>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'stretch', sm: 'center' }}
+          spacing={2}
+        >
           <Typography variant="h4" fontWeight={700}>
             Moji Tereni
           </Typography>
@@ -379,7 +379,7 @@ export default function ManageFields() {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={openAddDialog}
-            sx={{ borderRadius: 3 }}
+            sx={{ borderRadius: 3, width: { xs: '100%', sm: 'auto' } }}
           >
             Dodaj Teren
           </Button>
@@ -430,7 +430,7 @@ export default function ManageFields() {
                           </Typography>
                           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
                             {(field.sports || [field.sport]).filter(Boolean).map((s) => (
-                              <Chip key={s} label={s} size="small" color="primary" />
+                              <Chip key={s} label={getGameTypeName(s!)} size="small" color="primary" />
                             ))}
                             {field.price && field.price > 0 && (
                               <Typography variant="body2" color="text.secondary">
@@ -441,16 +441,33 @@ export default function ManageFields() {
                         </Box>
                       </Stack>
                       
-                      <Stack direction="row" spacing={1}>
-                        <Button variant="outlined" size="small" onClick={() => openEditDialog(field)} startIcon={<EditIcon />}
-                          sx={{ borderRadius: 2 }}>
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={1}
+                        sx={{ width: { xs: '100%', sm: 'auto' } }}
+                      >
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => openEditDialog(field)}
+                          startIcon={<EditIcon />}
+                          sx={{ borderRadius: 2, width: { xs: '100%', sm: 'auto' } }}
+                        >
                           Izmeni
                         </Button>
-                        <Button variant="outlined" size="small" onClick={() => handleOpenWorkingHoursDialog(field)} startIcon={<ScheduleIcon />}
-                          sx={{ borderRadius: 2 }}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => handleOpenWorkingHoursDialog(field)}
+                          startIcon={<ScheduleIcon />}
+                          sx={{ borderRadius: 2, width: { xs: '100%', sm: 'auto' } }}
+                        >
                           Radno Vreme
                         </Button>
-                        <IconButton onClick={() => toggleFieldExpanded(field._id)} sx={{ ml: 1 }}>
+                        <IconButton
+                          onClick={() => toggleFieldExpanded(field._id)}
+                          sx={{ ml: { xs: 0, sm: 1 }, alignSelf: { xs: 'flex-end', sm: 'center' } }}
+                        >
                           {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                         </IconButton>
                       </Stack>
@@ -542,7 +559,14 @@ export default function ManageFields() {
       )}
 
       {/* Add/Edit Dialog */}
-      <Dialog open={openDialog} onClose={closeDialog} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+      <Dialog
+        open={openDialog}
+        onClose={closeDialog}
+        maxWidth="md"
+        fullWidth
+        fullScreen={isMobile}
+        PaperProps={{ sx: { borderRadius: isMobile ? 0 : 4 } }}
+      >
         <DialogTitle sx={{ pb: 1, fontSize: '1.5rem', fontWeight: 700 }}>
           {editingField ? 'Izmeni Teren' : 'Dodaj Novi Teren'}
         </DialogTitle>
@@ -606,13 +630,19 @@ export default function ManageFields() {
             }} required fullWidth helperText="Koliko sati pre meča se zatvara prijava" />
             
             <Box>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                justifyContent="space-between"
+                alignItems={{ xs: 'stretch', sm: 'center' }}
+                spacing={1}
+                sx={{ mb: 1 }}
+              >
                 <Typography variant="subtitle2" fontWeight={600}>Lokacija na mapi</Typography>
                 <Button size="small" startIcon={<MyLocationIcon />} onClick={getUserLocation}>
                   Moja lokacija
                 </Button>
               </Stack>
-              <Paper elevation={0} sx={{ height: 300, borderRadius: 3, overflow: 'hidden', border: '1px solid', borderColor: markerPosition ? 'primary.main' : 'divider' }}>
+              <Paper elevation={0} sx={{ height: { xs: 220, sm: 300 }, borderRadius: 3, overflow: 'hidden', border: '1px solid', borderColor: markerPosition ? 'primary.main' : 'divider' }}>
                 <MapContainer center={markerPosition || mapCenter} zoom={markerPosition ? 15 : 13} style={{ height: '100%', width: '100%' }} scrollWheelZoom={true} key={`${mapCenter[0]}-${mapCenter[1]}`}>
                   <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                   <MapCenter position={markerPosition || mapCenter} />
@@ -622,15 +652,15 @@ export default function ManageFields() {
               </Paper>
             </Box>
             
-            <Stack direction="row" spacing={2}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField label="Geografska širina" value={lat} InputProps={{ readOnly: true }} fullWidth helperText={lat ? '✓ Postavljeno' : 'Kliknite na mapu'} />
               <TextField label="Geografska dužina" value={lng} InputProps={{ readOnly: true }} fullWidth helperText={lng ? '✓ Postavljeno' : 'Kliknite na mapu'} />
             </Stack>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={closeDialog} variant="outlined" sx={{ borderRadius: 3, px: 3 }}>Otkaži</Button>
-          <Button onClick={handleSubmit} variant="contained" disabled={(!lat || !lng || !name)} sx={{ borderRadius: 3, px: 3 }}>
+          <Button onClick={closeDialog} variant="outlined" sx={{ borderRadius: 3, px: 3, width: { xs: '100%', sm: 'auto' } }}>Otkaži</Button>
+          <Button onClick={handleSubmit} variant="contained" disabled={(!lat || !lng || !name)} sx={{ borderRadius: 3, px: 3, width: { xs: '100%', sm: 'auto' } }}>
             {editingField ? 'Ažuriraj Teren' : 'Dodaj Teren'}
           </Button>
         </DialogActions>
@@ -671,18 +701,18 @@ export default function ManageFields() {
                       label={<Typography variant="body1" fontWeight={600}>{dayNames[day]}</Typography>}
                     />
                     {!dayData.closed && (
-                      <Stack direction="row" spacing={2} alignItems="center">
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
                         <TextField type="number" label="Od (sat)" value={startHour} onChange={(e) => {
                           const hour = parseInt(e.target.value) || 0;
                           const clampedHour = Math.max(0, Math.min(23, hour));
                           setWorkingHours({ ...workingHours, [day]: { ...dayData, start: clampedHour.toString() }});
-                        }} inputProps={{ min: 0, max: 23 }} sx={{ width: 100 }} />
-                        <Typography variant="body1">-</Typography>
+                        }} inputProps={{ min: 0, max: 23 }} sx={{ width: { xs: '100%', sm: 100 } }} />
+                        <Typography variant="body1" sx={{ display: { xs: 'none', sm: 'block' } }}>-</Typography>
                         <TextField type="number" label="Do (sat)" value={endHour} onChange={(e) => {
                           const hour = parseInt(e.target.value) || 0;
                           const clampedHour = Math.max(0, Math.min(23, hour));
                           setWorkingHours({ ...workingHours, [day]: { ...dayData, end: clampedHour.toString() }});
-                        }} inputProps={{ min: 0, max: 23 }} sx={{ width: 100 }} />
+                        }} inputProps={{ min: 0, max: 23 }} sx={{ width: { xs: '100%', sm: 100 } }} />
                       </Stack>
                     )}
                   </Stack>

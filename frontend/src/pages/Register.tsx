@@ -28,9 +28,11 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import GoogleIcon from '@mui/icons-material/Google';
 import FacebookIcon from '@mui/icons-material/Facebook';
-import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
 import SportsIcon from '@mui/icons-material/Sports';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
+import PlejkoLogo from '../components/PlejkoLogo';
+import SingleGamePreferencePicker from '../components/SingleGamePreferencePicker';
+import { CategoryId } from '../constants/games';
 
 export default function Register() {
   const { register, loginWithGoogle, loginWithFacebook } = useAuth();
@@ -40,6 +42,8 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<'player' | 'court'>('player');
+  const [preferredCategory, setPreferredCategory] = useState<CategoryId | null>(null);
+  const [preferredGameType, setPreferredGameType] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [roleModalOpen, setRoleModalOpen] = useState(false);
@@ -48,9 +52,19 @@ export default function Register() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (role === 'player') {
+      if (!preferredCategory || !preferredGameType) {
+        setError('Izaberite kategoriju i igru kojom se bavite');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
-      await register(name, email, password, role);
+      const preferredSports =
+        role === 'player' && preferredGameType ? [preferredGameType] : [];
+      await register(name, email, password, role, preferredSports);
       await new Promise(resolve => setTimeout(resolve, 100));
       navigate('/');
     } catch (e: any) {
@@ -106,30 +120,19 @@ export default function Register() {
           borderRadius: 4,
           border: '1px solid',
           borderColor: 'divider',
+          backgroundImage: `linear-gradient(180deg, rgba(212,0,255,0.06) 0%, transparent 35%)`,
         }}
       >
         {/* Header */}
         <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <Box
-            sx={{
-              width: 64,
-              height: 64,
-              borderRadius: 3,
-              bgcolor: 'primary.main',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              mx: 'auto',
-              mb: 2,
-            }}
-          >
-            <SportsSoccerIcon sx={{ color: 'white', fontSize: 32 }} />
-          </Box>
-          <Typography variant="h4" fontWeight={700} sx={{ mb: 1 }}>
-            Kreirajte nalog
+          <Stack alignItems="center" sx={{ mb: 2 }}>
+            <PlejkoLogo size="md" showTagline align="center" />
+          </Stack>
+          <Typography variant="h4" fontWeight={800} sx={{ mb: 1 }}>
+            Pridruži se Plejko
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Pridružite se zajednici sportskih entuzijasta
+            Pronađi · Okupi · Igraj
           </Typography>
         </Box>
 
@@ -258,13 +261,37 @@ export default function Register() {
               }}
             />
 
+            {role === 'player' && (
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 3,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.default',
+                }}
+              >
+                <SingleGamePreferencePicker
+                  category={preferredCategory}
+                  gameTypeId={preferredGameType}
+                  onCategoryChange={setPreferredCategory}
+                  onGameTypeChange={setPreferredGameType}
+                  required
+                  disabled={loading}
+                />
+              </Box>
+            )}
+
             {/* Submit Button */}
             <Button
               type="submit"
               variant="contained"
               fullWidth
               size="large"
-              disabled={loading}
+              disabled={
+                loading ||
+                (role === 'player' && (!preferredCategory || !preferredGameType))
+              }
               sx={{
                 py: 1.5,
                 fontSize: '1rem',

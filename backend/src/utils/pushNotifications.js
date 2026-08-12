@@ -47,11 +47,11 @@ async function sendPushNotification(subscription, payload) {
   const { title, body, url, image, matchId } = payload;
 
   const notificationPayload = JSON.stringify({
-    title: title || 'PlayMatch',
+    title: title || 'Plejko',
     body: body || 'Novi meč je kreiran u blizini!',
     icon: image || '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
-    tag: matchId ? `match-${matchId}` : 'playmatch-notification',
+    tag: matchId ? `match-${matchId}` : 'plejko-notification',
     data: {
       url: url || '/',
       matchId: matchId || ''

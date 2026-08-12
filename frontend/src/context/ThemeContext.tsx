@@ -10,18 +10,13 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // Initialize from localStorage or system preference
+  // Initialize from localStorage or default to dark (Plejko brand)
   const [mode, setModeState] = useState<PaletteMode>(() => {
-    // Check localStorage first
     const savedMode = localStorage.getItem('theme-mode') as PaletteMode | null;
     if (savedMode && (savedMode === 'light' || savedMode === 'dark')) {
       return savedMode;
     }
-    // Fall back to system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-    return 'light';
+    return 'dark';
   });
 
   // Listen for system preference changes

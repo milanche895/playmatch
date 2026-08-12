@@ -8,7 +8,8 @@ const fieldSchema = new mongoose.Schema(
     lng: { type: Number, required: true },
     courtOwner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Court that owns this field
     price: { type: Number}, // Price per appointment for this field
-    registrationDeadlineHours: { type: Number, default: 24 }, // Hours before match when registration closes
+    registrationDeadlineHours: { type: Number, default: 0 }, // Hours before match when registration closes (0 = until kickoff)
+
     workingHours: {
       monday: { start: String, end: String, closed: { type: Boolean, default: false } },
       tuesday: { start: String, end: String, closed: { type: Boolean, default: false } },

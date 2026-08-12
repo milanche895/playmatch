@@ -44,8 +44,10 @@ router.post('/', auth(true), async (req, res) => {
       }
       if (typeof registrationDeadlineHours === 'number' && registrationDeadlineHours >= 0) {
         fieldData.registrationDeadlineHours = registrationDeadlineHours;
-      } else if (user.defaultRegistrationDeadlineHours) {
+      } else if (typeof user.defaultRegistrationDeadlineHours === 'number' && user.defaultRegistrationDeadlineHours >= 0) {
         fieldData.registrationDeadlineHours = user.defaultRegistrationDeadlineHours;
+      } else {
+        fieldData.registrationDeadlineHours = 0;
       }
     }
     

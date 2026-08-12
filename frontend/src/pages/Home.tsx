@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Paper,
@@ -35,13 +35,18 @@ import LocationOnIcon from '@mui/icons-material/LocationOn';
 import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
 import PeopleIcon from '@mui/icons-material/People';
 import AddIcon from '@mui/icons-material/Add';
-import InfoIcon from '@mui/icons-material/Info';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import MapIcon from '@mui/icons-material/Map';
 import ViewListIcon from '@mui/icons-material/ViewList';
+import BrandHero from '../components/BrandHero';
+import { brand } from '../theme';
+import {
+  getGameTypeName,
+  matchBelongsToPreferredGames,
+} from '../constants/games';
 
 // Custom icons using HTML div icons for better customization
 function createCustomIcon(color: string) {
@@ -54,9 +59,9 @@ function createCustomIcon(color: string) {
   });
 }
 
-const matchIcon = createCustomIcon('#22c55e'); // Green for formal matches
-const fieldIcon = createCustomIcon('#3b82f6'); // Blue for fields
-const informalMatchIcon = createCustomIcon('#f97316'); // Orange for informal matches
+const matchIcon = createCustomIcon(brand.cyan);
+const fieldIcon = createCustomIcon(brand.blue);
+const informalMatchIcon = createCustomIcon(brand.orange);
 
 // Function to calculate distance between two coordinates (in km)
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -159,6 +164,7 @@ function translateMatchStatus(status: string, courtApproval?: string): string {
 }
 
 const VIEW_MODE_KEY = 'playmatch_home_view';
+const SPORT_FILTER_KEY = 'playmatch_home_sport_filter';
 
 // Match Card Component — optimized for list "first screen action"
 function MatchCard({
@@ -190,12 +196,6 @@ function MatchCard({
     return 'success';
   };
 
-  const isLastMinute = (() => {
-    const startsInMs = new Date(match.dateTime).getTime() - Date.now();
-    const freeSlots = (match.maxPlayers || match.playersNeeded || 100) - match.players.length;
-    return startsInMs > 0 && startsInMs <= 4 * 60 * 60 * 1000 && freeSlots > 0;
-  })();
-
   const coords = getMatchCoords(match);
   const locationName = getMatchLocationName(match);
   const distanceKm =
@@ -212,7 +212,7 @@ function MatchCard({
       elevation={0}
       sx={{
         border: '1px solid',
-        borderColor: isLastMinute ? 'error.light' : 'divider',
+        borderColor: 'divider',
         borderRadius: 3,
         overflow: 'hidden',
         transition: 'all 0.2s ease',
@@ -228,8 +228,8 @@ function MatchCard({
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }} flexWrap="wrap" useFlexGap>
                 <SportsSoccerIcon sx={{ color: 'primary.main', fontSize: 18 }} />
-                <Typography variant="body2" fontWeight={700} color="primary.main" sx={{ textTransform: 'capitalize' }}>
-                  {match.sport}
+                <Typography variant="body2" fontWeight={700} color="primary.main">
+                  {getGameTypeName(match.sport)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">·</Typography>
                 <Typography variant="body2" fontWeight={600}>
@@ -262,9 +262,6 @@ function MatchCard({
             <Typography variant="caption" color="text.secondary">
               {formatPlayersCount(match)}
             </Typography>
-            {isLastMinute && (
-              <Chip label="Hitno traže se igrači" size="small" color="error" sx={{ fontWeight: 700 }} />
-            )}
             {isUserInMatch && (
               <Chip
                 icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
@@ -353,6 +350,14 @@ export default function Home() {
     if (saved === 'map' || saved === 'list') return saved;
     return 'list';
   });
+  const [sportFilter, setSportFilter] = useState<'preferred' | 'all'>(() => {
+    const saved = localStorage.getItem(SPORT_FILTER_KEY);
+    if (saved === 'preferred' || saved === 'all') return saved;
+    return 'preferred';
+  });
+
+  const preferredSports = user?.preferredSports || [];
+  const hasPreferences = preferredSports.length > 0;
 
   // Use user's notification radius if available (convert km to meters for map), default 10km
   const effectiveRadius = user?.notificationRadius || 10;
@@ -616,8 +621,15 @@ export default function Home() {
     );
   }
 
-  const todaysMatches = matches.filter(m => isToday(m.dateTime));
-  const upcomingMatches = [...matches]
+  const displayedMatches = useMemo(() => {
+    if (!hasPreferences || sportFilter === 'all' || !user || user.role !== 'player') {
+      return matches;
+    }
+    return matches.filter((m) => matchBelongsToPreferredGames(m.sport, preferredSports));
+  }, [matches, hasPreferences, sportFilter, preferredSports, user]);
+
+  const todaysMatches = displayedMatches.filter(m => isToday(m.dateTime));
+  const upcomingMatches = [...displayedMatches]
     .filter((m) => new Date(m.dateTime).getTime() > Date.now() - 60 * 60 * 1000)
     .sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
 
@@ -627,8 +639,16 @@ export default function Home() {
     localStorage.setItem(VIEW_MODE_KEY, next);
   };
 
+  const handleSportFilterChange = (_: MouseEvent<HTMLElement>, next: 'preferred' | 'all' | null) => {
+    if (!next) return;
+    setSportFilter(next);
+    localStorage.setItem(SPORT_FILTER_KEY, next);
+  };
+
   return (
-    <Box sx={{ position: 'relative' }}>
+    <Box sx={{ position: 'relative', pb: user?.role === 'player' ? { xs: 10, sm: 8 } : 0 }}>
+      <BrandHero />
+
       {/* Header Section */}
       <Box sx={{ mb: 3 }}>
         <Stack
@@ -646,54 +666,77 @@ export default function Home() {
                 ? `Pronađite mečeve u vašoj blizini${userLocation ? ` (unutar ${effectiveRadius} km)` : ''}`
                 : 'Pregledajte dostupne mečeve i terene. Prijavite se da biste se pridružili meču.'}
             </Typography>
+            {user?.role === 'player' && hasPreferences && sportFilter === 'preferred' && (
+              <Typography variant="caption" color="primary.main" sx={{ display: 'block', mt: 0.75, fontWeight: 600 }}>
+                Prikaz: {preferredSports.map(getGameTypeName).join(' · ')}
+              </Typography>
+            )}
           </Box>
-          <ToggleButtonGroup
-            value={viewMode}
-            exclusive
-            onChange={handleViewModeChange}
-            size="small"
-            sx={{
-              alignSelf: { xs: 'stretch', sm: 'flex-start' },
-              bgcolor: 'background.paper',
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 2,
-              '& .MuiToggleButton-root': {
-                px: 2,
-                py: 1,
-                textTransform: 'none',
-                fontWeight: 700,
-                border: 0,
+          <Stack spacing={1.5} alignItems={{ xs: 'stretch', sm: 'flex-end' }}>
+            {user?.role === 'player' && hasPreferences && (
+              <ToggleButtonGroup
+                value={sportFilter}
+                exclusive
+                onChange={handleSportFilterChange}
+                size="small"
+                sx={{
+                  bgcolor: 'background.paper',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  '& .MuiToggleButton-root': {
+                    px: 2,
+                    py: 1,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    border: 0,
+                    borderRadius: 2,
+                  },
+                }}
+              >
+                <ToggleButton value="preferred" aria-label="Moje igre">
+                  Moje igre
+                </ToggleButton>
+                <ToggleButton value="all" aria-label="Svi mečevi">
+                  Svi mečevi
+                </ToggleButton>
+              </ToggleButtonGroup>
+            )}
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={handleViewModeChange}
+              size="small"
+              sx={{
+                alignSelf: { xs: 'stretch', sm: 'flex-end' },
+                bgcolor: 'background.paper',
+                border: '1px solid',
+                borderColor: 'divider',
                 borderRadius: 2,
-              },
-            }}
-          >
-            <ToggleButton value="list" aria-label="Prikaz liste">
-              <ViewListIcon sx={{ mr: 1, fontSize: 20 }} />
-              Lista
-            </ToggleButton>
-            <ToggleButton value="map" aria-label="Prikaz mape">
-              <MapIcon sx={{ mr: 1, fontSize: 20 }} />
-              Mapa
-            </ToggleButton>
-          </ToggleButtonGroup>
+                '& .MuiToggleButton-root': {
+                  px: 2,
+                  py: 1,
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  border: 0,
+                  borderRadius: 2,
+                },
+              }}
+            >
+              <ToggleButton value="list" aria-label="Prikaz liste">
+                <ViewListIcon sx={{ mr: 1, fontSize: 20 }} />
+                Lista
+              </ToggleButton>
+              <ToggleButton value="map" aria-label="Prikaz mape">
+                <MapIcon sx={{ mr: 1, fontSize: 20 }} />
+                Mapa
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
         </Stack>
       </Box>
 
       {/* Alerts */}
-      {!user && (
-        <Alert
-          severity="info"
-          sx={{ mb: 3, borderRadius: 3 }}
-          icon={<InfoIcon />}
-        >
-          Možete pregledati sve mečeve i terene.{' '}
-          <Link to="/login" style={{ color: 'inherit', fontWeight: 600 }}>
-            Prijavite se
-          </Link>{' '}
-          da biste se pridružili meču ili kreirali novi.
-        </Alert>
-      )}
       {locationError && user && (
         <Alert severity="warning" sx={{ mb: 3, borderRadius: 3 }}>
           {locationError}
@@ -767,11 +810,15 @@ export default function Home() {
       )}
 
       {/* No matches alert */}
-      {!loading && matches.length === 0 && (
+      {!loading && displayedMatches.length === 0 && (
         <Alert severity="info" sx={{ mb: 3, borderRadius: 3 }}>
           {user && userLocation
-            ? `Nema aktivnih mečeva unutar ${effectiveRadius} km. Proširite pretragu ili kreirajte novi meč!`
-            : 'Nema aktivnih mečeva u ovom trenutku.'}
+            ? sportFilter === 'preferred' && hasPreferences
+              ? `Nema mečeva za ${preferredSports.map(getGameTypeName).join(', ')} u blizini. Prebaci se na „Svi mečevi“ ili kreiraj novi.`
+              : `Nema aktivnih mečeva unutar ${effectiveRadius} km. Proširite pretragu ili kreirajte novi meč!`
+            : sportFilter === 'preferred' && hasPreferences
+              ? `Nema mečeva za ${preferredSports.map(getGameTypeName).join(', ')}. Prebaci se na „Svi mečevi“ ili kreiraj novi.`
+              : 'Nema aktivnih mečeva u ovom trenutku.'}
         </Alert>
       )}
 
@@ -899,7 +946,7 @@ export default function Home() {
                     icon={fieldIcon}
                   >
                     <Popup>
-                      <Stack spacing={1.5} sx={{ minWidth: 280, maxWidth: 360 }}>
+                      <Stack spacing={1.5} sx={{ minWidth: 0, width: '100%', maxWidth: 'min(360px, 78vw)' }}>
                         <Typography variant="subtitle1" fontWeight={700}>
                           {field.name}
                         </Typography>
@@ -1029,7 +1076,7 @@ export default function Home() {
             {/* Match markers */}
             {(() => {
               const matchesByField = new Map<string, Match[]>();
-              matches
+              displayedMatches
                 .filter((match) =>
                   match.fieldId &&
                   match.fieldId.lat &&
@@ -1055,7 +1102,7 @@ export default function Home() {
                     icon={matchIcon}
                   >
                     <Popup>
-                      <Stack spacing={2} sx={{ minWidth: 280, maxHeight: 400, overflowY: 'auto' }}>
+                      <Stack spacing={2} sx={{ minWidth: 0, width: '100%', maxWidth: 'min(360px, 78vw)', maxHeight: 400, overflowY: 'auto' }}>
                         <Typography variant="subtitle1" fontWeight={700}>
                           {field.name || 'Nepoznat Teren'}
                         </Typography>
@@ -1076,7 +1123,7 @@ export default function Home() {
                             >
                               <Stack spacing={1}>
                                 <Typography variant="body2" fontWeight={600}>
-                                  {match.sport.charAt(0).toUpperCase() + match.sport.slice(1)} Meč
+                                  {getGameTypeName(match.sport)} meč
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
                                   {new Date(match.dateTime).toLocaleString('sr-RS', {
@@ -1158,7 +1205,7 @@ export default function Home() {
               });
             })()}
             {/* Informal match markers — show all upcoming, not just today */}
-            {allMatches
+            {displayedMatches
               .filter((match) =>
                 match.isInformal &&
                 match.informalLocation?.lat &&
@@ -1172,15 +1219,15 @@ export default function Home() {
                   icon={informalMatchIcon}
                 >
                   <Popup>
-                    <Stack spacing={1.5} sx={{ minWidth: 240 }}>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="subtitle1" fontWeight={700}>
+                    <Stack spacing={1.5} sx={{ minWidth: 0, width: '100%', maxWidth: 'min(320px, 78vw)' }}>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Typography variant="subtitle1" fontWeight={700} sx={{ minWidth: 0, wordBreak: 'break-word' }}>
                           {match.informalLocation!.name || 'Privatni teren'}
                         </Typography>
                         <Chip label="Privatni" size="small" sx={{ bgcolor: '#f97316', color: 'white', fontWeight: 600 }} />
                       </Stack>
                       <Typography variant="body2" color="text.secondary">
-                        {match.sport.charAt(0).toUpperCase() + match.sport.slice(1)} meč
+                        {getGameTypeName(match.sport)} meč
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {new Date(match.dateTime).toLocaleString('sr-RS', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
@@ -1188,7 +1235,7 @@ export default function Home() {
                       <Stack direction="row" spacing={1}>
                         <Chip label={formatPlayersCount(match)} size="small" color={match.status === 'full' ? 'warning' : 'primary'} />
                       </Stack>
-                      <Stack direction="row" spacing={1}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                         <Button variant="outlined" size="small" component={Link} to={`/matches/${match._id}`} fullWidth>
                           Detalji
                         </Button>
@@ -1233,6 +1280,7 @@ export default function Home() {
             bottom: { xs: 16, sm: 24 },
             right: { xs: 16, sm: 24 },
             boxShadow: '0 4px 20px rgba(34, 197, 94, 0.4)',
+            zIndex: 1200,
           }}
         >
           <AddIcon />

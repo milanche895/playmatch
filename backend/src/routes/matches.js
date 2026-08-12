@@ -20,6 +20,7 @@ const {
   isParticipant,
   formatQuickMessage,
 } = require('../utils/quickMessages');
+const { GAME_TYPES } = require('../constants/games');
 
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
 
@@ -341,6 +342,24 @@ function matchesRoutesFactory(io) {
         return res.status(400).json({ message: 'Nedostaju polja' });
       }
 
+      if (!GAME_TYPES[sport]) {
+        return res.status(400).json({ message: 'Nepoznat tip igre / sporta' });
+      }
+
+      const creator = await User.findById(req.user.id).select('role preferredSports');
+      if (!creator) {
+        return res.status(401).json({ message: 'Korisnik nije pronađen' });
+      }
+
+      if (creator.role === 'player') {
+        const preferred = Array.isArray(creator.preferredSports) ? creator.preferredSports : [];
+        if (!preferred.includes(sport)) {
+          return res.status(403).json({
+            message: 'Možete kreirati mečeve samo za igre koje ste odabrali na profilu',
+          });
+        }
+      }
+
       // Validate based on match type
       if (isInformal) {
         if (!informalLocation || !informalLocation.name?.trim() ||
@@ -368,15 +387,19 @@ function matchesRoutesFactory(io) {
         }
       }
 
-      // Parse dateTime
+      // Parse dateTime — ISO with Z preferred; legacy "YYYY-MM-DDTHH:mm" uses server local parts
       let matchDate;
       if (typeof dateTime === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dateTime)) {
         const [datePart, timePart] = dateTime.split('T');
         const [year, month, day] = datePart.split('-').map(Number);
         const [hours, minutes] = timePart.split(':').map(Number);
-        matchDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+        matchDate = new Date(year, month - 1, day, hours, minutes || 0, 0, 0);
       } else {
         matchDate = new Date(dateTime);
+      }
+
+      if (Number.isNaN(matchDate.getTime())) {
+        return res.status(400).json({ message: 'Neispravan termin meča' });
       }
 
       // Round match time to full hour
@@ -389,12 +412,31 @@ function matchesRoutesFactory(io) {
         return res.status(400).json({ message: 'Meč mora biti u budućnosti. Molimo izaberite kasniji termin meča.' });
       }
 
-      // Calculate registration deadline
-      const deadlineDate = new Date(matchDate);
+      // Calculate registration deadline (hours before match).
+      // If the configured lead time would put the deadline in the past (e.g. same-day match
+      // with 24h field rule), clamp so signup stays open until shortly before kickoff.
+      const MIN_LEAD_MS = 30 * 60 * 1000; // at least 30 minutes before match
       const oneMinuteInMs = 60 * 1000;
+
+      function buildRegistrationDeadline(hoursBeforeMatch) {
+        const hours = Number(hoursBeforeMatch);
+        const deadlineDate = new Date(matchDate.getTime() - hours * 60 * 60 * 1000);
+        if (deadlineDate.getTime() >= now.getTime() - oneMinuteInMs) {
+          return { deadlineDate, error: null };
+        }
+        const clamped = new Date(matchDate.getTime() - MIN_LEAD_MS);
+        if (clamped.getTime() <= now.getTime()) {
+          return {
+            deadlineDate: null,
+            error: 'Meč je suviše blizu. Izaberite termin bar 30 minuta unapred.',
+          };
+        }
+        return { deadlineDate: clamped, error: null };
+      }
 
       let field = null;
       let courtApproval = 'approved';
+      let deadlineDate;
 
       if (isInformal) {
         // Informal matches: organizer chooses how long signups are open (hours before match)
@@ -404,20 +446,17 @@ function matchesRoutesFactory(io) {
         if (Number.isNaN(hours) || hours < 1 || hours > 48) {
           return res.status(400).json({ message: 'Rok za prijavu mora biti između 1 i 48 sati' });
         }
-        deadlineDate.setHours(deadlineDate.getHours() - hours);
-        if (deadlineDate.getTime() < now.getTime() - oneMinuteInMs) {
-          return res.status(400).json({ message: 'Rok za prijavu bi bio u prošlosti. Molimo izaberite kasniji termin meča.' });
-        }
+        const built = buildRegistrationDeadline(hours);
+        if (built.error) return res.status(400).json({ message: built.error });
+        deadlineDate = built.deadlineDate;
       } else {
         field = await Field.findById(fieldId);
         if (!field) return res.status(404).json({ message: 'Teren nije pronađen' });
 
-        const deadlineHours = field.registrationDeadlineHours ?? 24;
-        deadlineDate.setHours(deadlineDate.getHours() - deadlineHours);
-
-        if (deadlineDate.getTime() < now.getTime() - oneMinuteInMs) {
-          return res.status(400).json({ message: 'Rok za prijavu bi bio u prošlosti. Molimo izaberite kasniji termin meča.' });
-        }
+        const deadlineHours = field.registrationDeadlineHours ?? 0;
+        const built = buildRegistrationDeadline(deadlineHours);
+        if (built.error) return res.status(400).json({ message: built.error });
+        deadlineDate = built.deadlineDate;
 
         // Check for overlapping matches on the same field
         const matchDuration = 60 * 60 * 1000;
