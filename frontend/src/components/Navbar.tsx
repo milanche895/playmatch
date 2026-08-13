@@ -31,6 +31,7 @@ import AppRegistrationIcon from "@mui/icons-material/AppRegistration";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import NotificationsIcon from "@mui/icons-material/Notifications";
 import { Link as RouterLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useThemeMode } from "../context/ThemeContext";
@@ -90,6 +91,12 @@ export default function Navbar() {
       path: "/moji-igraci",
       show: !!user && user?.role === "player",
       icon: <PeopleIcon fontSize="small" />
+    },
+    {
+      label: "Obaveštenja",
+      path: "/notification-settings",
+      show: !!user && user?.role === "player",
+      icon: <NotificationsIcon fontSize="small" />
     },
     {
       label: "Moj Profil",

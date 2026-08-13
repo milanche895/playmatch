@@ -6,6 +6,20 @@ import { precacheAndRoute } from 'workbox-precaching';
 // Precache files (injected by VitePWA)
 precacheAndRoute(self.__WB_MANIFEST || []);
 
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('push', function(event) {
   console.log('[PushDebug][SW] Push Received');
   console.log('[Service Worker] Push had this data: ', event.data);

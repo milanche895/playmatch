@@ -24,39 +24,97 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return permission;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(label)), ms);
+    })
+  ]);
+}
+
+async function waitUntilActivated(registration: ServiceWorkerRegistration): Promise<ServiceWorkerRegistration> {
+  const worker = registration.active || registration.waiting || registration.installing;
+  if (registration.active) return registration;
+  if (registration.waiting) {
+    registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+  }
+
+  if (worker && worker.state !== 'activated') {
+    await new Promise<void>((resolve) => {
+      const onChange = () => {
+        if (worker.state === 'activated' || worker.state === 'redundant') {
+          worker.removeEventListener('statechange', onChange);
+          resolve();
+        }
+      };
+      worker.addEventListener('statechange', onChange);
+      if (worker.state === 'activated' || worker.state === 'redundant') {
+        worker.removeEventListener('statechange', onChange);
+        resolve();
+      }
+    });
+  }
+
+  return withTimeout(navigator.serviceWorker.ready, 8000, 'Service worker ready timeout');
+}
+
 /**
- * Get service worker registration
+ * Get service worker registration (dev SW is /dev-sw.js, prod is /sw.js)
  */
 async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
   if (!('serviceWorker' in navigator)) {
-    throw new Error('Service Workers are not supported in this browser');
+    throw new Error('Vaš pretraživač ne podržava Service Worker. Koristite Chrome ili Edge.');
   }
 
-  const existingRegistration = await navigator.serviceWorker.getRegistration();
-  if (existingRegistration) {
-    return existingRegistration;
-  }
+  const existing = await navigator.serviceWorker.getRegistrations();
+  let registration = existing[0] || (await navigator.serviceWorker.getRegistration());
 
-  try {
-    const readyRegistration = await Promise.race([
-      navigator.serviceWorker.ready,
-      new Promise<ServiceWorkerRegistration>((_, reject) => {
-        setTimeout(() => reject(new Error('timeout')), 12000);
-      })
-    ]);
-
-    if (readyRegistration) {
-      return readyRegistration;
+  // Dev: drop a stale /sw.js registration that cannot load ES module imports
+  if (import.meta.env.DEV && registration) {
+    const scriptURL =
+      registration.active?.scriptURL ||
+      registration.waiting?.scriptURL ||
+      registration.installing?.scriptURL ||
+      '';
+    if (scriptURL && !scriptURL.includes('dev-sw.js')) {
+      console.warn('[PushDebug] unregistering stale SW', scriptURL);
+      await registration.unregister();
+      registration = undefined;
     }
-  } catch {
-    // fallback to explicit registration below
+  }
+
+  if (!registration) {
+    try {
+      registration = await withTimeout(
+        navigator.serviceWorker.ready,
+        4000,
+        'timeout'
+      );
+    } catch {
+      registration = undefined;
+    }
+  }
+
+  if (!registration) {
+    const isDev = import.meta.env.DEV;
+    const swUrl = isDev ? '/dev-sw.js?dev-sw' : '/sw.js';
+    try {
+      registration = await navigator.serviceWorker.register(swUrl, {
+        type: isDev ? 'module' : 'classic',
+        scope: '/',
+      });
+    } catch (err) {
+      console.error('[PushDebug] SW register failed', swUrl, err);
+      throw new Error('Service Worker nije spreman. Osvežite stranicu (F5) i pokušajte ponovo.');
+    }
   }
 
   try {
-    const explicitRegistration = await navigator.serviceWorker.register('/sw.js');
-    return explicitRegistration;
-  } catch {
-    throw new Error('Service Worker nije spreman. Sačekajte par sekundi i pokušajte ponovo.');
+    return await waitUntilActivated(registration);
+  } catch (err) {
+    console.error('[PushDebug] SW activate failed', err);
+    throw new Error('Service Worker nije spreman. Osvežite stranicu (F5) i pokušajte ponovo.');
   }
 }
 

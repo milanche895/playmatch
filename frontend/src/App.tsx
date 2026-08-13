@@ -1,5 +1,5 @@
 import { Component, ReactNode, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider as MuiThemeProvider, CssBaseline, Container, CircularProgress, Box, Typography, Button } from '@mui/material';
 import { ThemeProvider as CustomThemeProvider, useThemeMode } from './context/ThemeContext';
 import createAppTheme from './theme';
@@ -45,6 +45,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 
 function PlayerRoute({ children }: { children: JSX.Element }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
@@ -52,7 +53,7 @@ function PlayerRoute({ children }: { children: JSX.Element }) {
       </Box>
     );
   }
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (user.role !== 'player') return <Navigate to="/" replace />;
   return children;
 }
@@ -176,6 +177,10 @@ function AppContent() {
                     <NotificationSettings />
                   </PlayerRoute>
                 }
+              />
+              <Route
+                path="/notification-setting"
+                element={<Navigate to="/notification-settings" replace />}
               />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />

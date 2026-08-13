@@ -11,7 +11,7 @@ import {
   InputAdornment,
   IconButton,
 } from '@mui/material';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
@@ -22,14 +22,22 @@ import FacebookIcon from '@mui/icons-material/Facebook';
 import PlejkoLogo from '../components/PlejkoLogo';
 
 export default function Login() {
-  const { login, loginWithGoogle, loginWithFacebook } = useAuth();
+  const { user, login, loginWithGoogle, loginWithFacebook } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
+  const redirectTo = (location.state as { from?: string } | null)?.from || '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      navigate(redirectTo, { replace: true });
+    }
+  }, [user, navigate, redirectTo]);
 
   useEffect(() => {
     const errorParam = searchParams.get('error');
@@ -44,7 +52,7 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/');
+      navigate(redirectTo);
     } catch (e) {
       setError('Neispravni podaci za prijavu');
     } finally {

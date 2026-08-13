@@ -7,16 +7,16 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      injectRegister: "auto",
+      injectRegister: null,
       devOptions: {
         enabled: true,
+        type: "module",
       },
       strategies: "injectManifest",
       srcDir: "src",
       filename: "sw.js",
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-        injectionPoint: undefined
       },
       workbox: {
         clientsClaim: true,

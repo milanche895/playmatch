@@ -909,6 +909,17 @@ export default function PlayerProfile() {
                     </Stack>
                   </Box>
 
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="small"
+                    startIcon={<NotificationsIcon />}
+                    onClick={() => navigate('/notification-settings')}
+                    sx={{ borderRadius: 3, mt: 1, alignSelf: 'flex-start' }}
+                  >
+                    Postavke obaveštenja
+                  </Button>
+
                   {/* Test Notification Button - View Mode */}
                   <Button
                     variant="outlined"
@@ -917,7 +928,7 @@ export default function PlayerProfile() {
                     startIcon={<NotificationsActiveIcon />}
                     onClick={handleTestNotification}
                     disabled={testingNotification}
-                    sx={{ borderRadius: 3, mt: 1, alignSelf: 'flex-start' }}
+                    sx={{ borderRadius: 3, alignSelf: 'flex-start' }}
                   >
                     {testingNotification ? 'Slanje...' : 'Pošalji test notifikaciju'}
                   </Button>
