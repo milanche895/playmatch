@@ -68,7 +68,8 @@ async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration
   }
 
   const existing = await navigator.serviceWorker.getRegistrations();
-  let registration = existing[0] || (await navigator.serviceWorker.getRegistration());
+  let registration: ServiceWorkerRegistration | undefined =
+    existing[0] || (await navigator.serviceWorker.getRegistration());
 
   // Dev: drop a stale /sw.js registration that cannot load ES module imports
   if (import.meta.env.DEV && registration) {

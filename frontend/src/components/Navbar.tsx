@@ -37,6 +37,7 @@ import { useAuth } from "../context/AuthContext";
 import { useThemeMode } from "../context/ThemeContext";
 import InstallButton from "./InstallButton";
 import PlejkoLogo from "./PlejkoLogo";
+import NotificationSetupAlert from "./NotificationSetupAlert";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -164,6 +165,12 @@ export default function Navbar() {
         </Box>
       )}
 
+      {user?.role === 'player' && (
+        <Box sx={{ mb: 2, px: 1 }}>
+          <NotificationSetupAlert variant="button" />
+        </Box>
+      )}
+
       <List sx={{ px: 0 }}>
         {navItems.map((item) => (
           <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
@@ -249,7 +256,8 @@ export default function Navbar() {
       >
         <Toolbar
           sx={{
-            minHeight: { xs: 56, sm: 64 },
+            position: 'relative',
+            minHeight: { xs: 64, sm: 72 },
             px: { xs: 2, sm: 3 },
           }}
         >
@@ -262,9 +270,22 @@ export default function Navbar() {
               alignItems: "center",
               textDecoration: "none",
               mr: 'auto',
+              zIndex: 1,
             }}
           >
             <PlejkoLogo size="sm" />
+          </Box>
+
+          <Box
+            sx={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              zIndex: 2,
+            }}
+          >
+            <NotificationSetupAlert />
           </Box>
 
           {/* Desktop Navigation */}
@@ -274,6 +295,7 @@ export default function Navbar() {
             sx={{
               display: { xs: "none", md: "flex" },
               alignItems: "center",
+              zIndex: 1,
             }}
           >
             {navItems.map((item) => (
@@ -343,7 +365,7 @@ export default function Navbar() {
             direction="row"
             spacing={1}
             alignItems="center"
-            sx={{ display: { xs: "flex", md: "none" } }}
+            sx={{ display: { xs: "flex", md: "none" }, zIndex: 1 }}
           >
             <InstallButton />
             <IconButton

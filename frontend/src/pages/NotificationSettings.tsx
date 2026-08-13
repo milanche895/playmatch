@@ -194,9 +194,9 @@ export default function NotificationSettings() {
                 spacing={1.5}
               >
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="body1" fontWeight={600}>Status pretplate</Typography>
+                  <Typography variant="body1" fontWeight={600}>Status obaveštenja</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {isSubscribed ? 'Aktivna pretplata na obaveštenja' : 'Nema aktivne pretplate'}
+                    {isSubscribed ? 'Obaveštenja su uključena na ovom uređaju' : 'Obaveštenja još nisu uključena'}
                   </Typography>
                 </Box>
                 <Chip
