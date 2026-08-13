@@ -32,6 +32,7 @@ import SportsIcon from '@mui/icons-material/Sports';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import PlejkoLogo from '../components/PlejkoLogo';
 import SingleGamePreferencePicker from '../components/SingleGamePreferencePicker';
+import { markPromptNotificationsAfterRegister, clearPromptNotificationsAfterRegister } from '../components/PostRegisterNotificationDialog';
 import { CategoryId } from '../constants/games';
 
 export default function Register() {
@@ -66,10 +67,14 @@ export default function Register() {
     try {
       const preferredSports =
         role === 'player' && preferredGameType ? [preferredGameType] : [];
+      if (role === 'player') {
+        markPromptNotificationsAfterRegister();
+      }
       await register(name, email, password, role, preferredSports, referralId);
       await new Promise(resolve => setTimeout(resolve, 100));
-      navigate('/');
+      navigate('/', { state: { promptNotifications: role === 'player' } });
     } catch (e: any) {
+      clearPromptNotificationsAfterRegister();
       console.error('Registration error:', e);
       setError(e.response?.data?.message || 'Registracija nije uspela');
     } finally {

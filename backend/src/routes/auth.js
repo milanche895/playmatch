@@ -431,13 +431,14 @@ router.get('/google/callback',
       setTokenCookie(res, user._id.toString());
       // Redirect to frontend — token is in HttpOnly cookie, not in URL
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
+      const newUserQuery = userCreatedRecently ? '&newUser=1' : '';
       res.redirect(`${frontendUrl}/auth/callback?user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
         email: user.email,
         avatarUrl: user.avatarUrl,
         role: user.role
-      }))}`);
+      }))}${newUserQuery}`);
     } catch (error) {
       console.error('Google OAuth callback error:', error);
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
@@ -496,13 +497,14 @@ router.get('/facebook/callback',
 
       // Redirect to frontend — token is in HttpOnly cookie, not in URL
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+      const newUserQuery = userCreatedRecently ? '&newUser=1' : '';
       res.redirect(`${frontendUrl}/auth/callback?user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
         email: user.email,
         avatarUrl: user.avatarUrl,
         role: user.role
-      }))}`);
+      }))}${newUserQuery}`);
     } catch (error) {
       console.error('Facebook OAuth callback error:', error);
       const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';

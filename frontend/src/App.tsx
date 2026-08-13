@@ -19,6 +19,7 @@ import NotificationSettings from './pages/NotificationSettings';
 import PublicPlayerProfile from './pages/PublicPlayerProfile';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { trackPlayerLocation } from './lib/location';
+import PostRegisterNotificationDialog from './components/PostRegisterNotificationDialog';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -103,6 +104,7 @@ function AppContent() {
         }}
       >
         <Navbar />
+        <PostRegisterNotificationDialog />
         <Box
           component="main"
           sx={{
