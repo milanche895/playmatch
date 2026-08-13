@@ -261,31 +261,32 @@ export default function Navbar() {
             px: { xs: 2, sm: 3 },
           }}
         >
-          {/* Logo - Left */}
+          {/* Logo + activate-notifications — left cluster */}
           <Box
-            component={RouterLink}
-            to="/"
             sx={{
               display: "flex",
               alignItems: "center",
-              textDecoration: "none",
-              mr: 'auto',
+              gap: 1.5,
+              mr: "auto",
               zIndex: 1,
+              minWidth: 0,
             }}
           >
-            <PlejkoLogo size="sm" />
-          </Box>
-
-          <Box
-            sx={{
-              position: 'absolute',
-              left: '50%',
-              top: '50%',
-              transform: 'translate(-50%, -50%)',
-              zIndex: 2,
-            }}
-          >
-            <NotificationSetupAlert />
+            <Box
+              component={RouterLink}
+              to="/"
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                textDecoration: "none",
+                flexShrink: 0,
+              }}
+            >
+              <PlejkoLogo size="sm" />
+            </Box>
+            <Box sx={{ display: { xs: "none", md: "flex" }, alignItems: "center" }}>
+              <NotificationSetupAlert />
+            </Box>
           </Box>
 
           {/* Desktop Navigation */}

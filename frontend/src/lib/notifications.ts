@@ -33,6 +33,128 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]);
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function sanitizeVapidKey(raw: string): string {
+  return String(raw || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/\s+/g, '');
+}
+
+function isIOSDevice(): boolean {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isStandalonePwa(): boolean {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    ('standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone))
+  );
+}
+
+function assertPushSupportedOnThisDevice(): void {
+  if (isIOSDevice() && !isStandalonePwa()) {
+    throw new Error(
+      'Na iPhone-u push obaveštenja rade samo iz ikone na početnom ekranu. Dodajte sajt: Deli → Dodaj na početni ekran, pa otvorite Plejko odatle.'
+    );
+  }
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    throw new Error('Ovaj pretraživač na telefonu ne podržava push obaveštenja. Otvorite sajt u Chrome-u.');
+  }
+}
+
+function isPushServiceError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const name = error instanceof Error ? error.name : '';
+  return name === 'AbortError' || /push service error|registration failed/i.test(message);
+}
+
+function toUserFacingPushError(error: unknown): Error {
+  if (error instanceof Error && !isPushServiceError(error)) {
+    return error;
+  }
+
+  return new Error(
+    'Telefon nije uspeo da se prijavi na push servis. Zatvorite Chrome, otvorite Plejko ponovo i pokušajte još jednom. Ako ste na iPhone-u, koristite ikonu sa početnog ekrana.'
+  );
+}
+
+function pickRootRegistration(
+  registrations: readonly ServiceWorkerRegistration[]
+): ServiceWorkerRegistration | undefined {
+  return (
+    registrations.find((registration) => {
+      try {
+        return new URL(registration.scope).pathname === '/';
+      } catch {
+        return registration.scope.endsWith('/');
+      }
+    }) || registrations[0]
+  );
+}
+
+async function waitUntilControlling(): Promise<void> {
+  if (navigator.serviceWorker.controller) return;
+
+  await Promise.race([
+    new Promise<void>((resolve) => {
+      navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
+    }),
+    delay(2000)
+  ]);
+}
+
+function vapidKeyToArrayBuffer(base64String: string): ArrayBuffer {
+  const bytes = urlBase64ToUint8Array(base64String);
+  if (bytes.byteLength !== 65 || bytes[0] !== 0x04) {
+    throw new Error('VAPID javni ključ nije ispravan. Osvežite stranicu i pokušajte ponovo.');
+  }
+
+  // Chrome Android rejects a Uint8Array view; it needs a standalone 65-byte buffer.
+  const copy = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(copy).set(bytes);
+  return copy;
+}
+
+async function subscribeWithRetry(
+  registration: ServiceWorkerRegistration,
+  vapidPublicKey: string
+): Promise<PushSubscription> {
+  const keyBuffer = vapidKeyToArrayBuffer(vapidPublicKey);
+  const keyString = vapidPublicKey.replace(/=+$/, '');
+
+  try {
+    return await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: keyBuffer
+    });
+  } catch (firstError) {
+    if (!isPushServiceError(firstError)) throw firstError;
+
+    const stale = await registration.pushManager.getSubscription();
+    if (stale) {
+      await stale.unsubscribe();
+    }
+
+    await delay(400);
+
+    try {
+      return await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: keyString
+      });
+    } catch (secondError) {
+      console.error('[PushDebug] subscribe retry failed', secondError);
+      throw firstError;
+    }
+  }
+}
+
 async function waitUntilActivated(registration: ServiceWorkerRegistration): Promise<ServiceWorkerRegistration> {
   const worker = registration.active || registration.waiting || registration.installing;
   if (registration.active) return registration;
@@ -69,7 +191,7 @@ async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration
 
   const existing = await navigator.serviceWorker.getRegistrations();
   let registration: ServiceWorkerRegistration | undefined =
-    existing[0] || (await navigator.serviceWorker.getRegistration());
+    pickRootRegistration(existing) || (await navigator.serviceWorker.getRegistration('/'));
 
   // Dev: drop a stale /sw.js registration that cannot load ES module imports
   if (import.meta.env.DEV && registration) {
@@ -112,7 +234,9 @@ async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration
   }
 
   try {
-    return await waitUntilActivated(registration);
+    const activated = await waitUntilActivated(registration);
+    await waitUntilControlling();
+    return activated;
   } catch (err) {
     console.error('[PushDebug] SW activate failed', err);
     throw new Error('Service Worker nije spreman. Osvežite stranicu (F5) i pokušajte ponovo.');
@@ -131,48 +255,40 @@ async function getVapidPublicKey(): Promise<string> {
  * Subscribe to PWA push notifications
  */
 export async function subscribeToPushNotifications(): Promise<string | null> {
-  // First request browser permission
+  assertPushSupportedOnThisDevice();
+
   const permission = await requestNotificationPermission();
   
   if (permission !== 'granted') {
     throw new Error('Dozvola za obaveštenja nije odobrena.');
   }
 
+  // Android FCM often is not ready in the same tick as the permission prompt.
+  await delay(350);
+
   try {
-    // Get service worker registration
     const registration = await getServiceWorkerRegistration();
+    const vapidPublicKey = sanitizeVapidKey(await getVapidPublicKey());
 
-    // Get VAPID public key from backend
-    const vapidPublicKey = await getVapidPublicKey();
-
-    // Check if already subscribed
-    let subscription = await registration.pushManager.getSubscription();
-    
-    if (subscription) {
-      // Already subscribed, send to backend to verify
-      await api.post('/api/players/push-subscription', {
-        subscription: subscription.toJSON()
-      });
-      console.log('✅ Already subscribed to push notifications');
-      return subscription.endpoint;
+    if (!vapidPublicKey) {
+      throw new Error('VAPID javni ključ nije konfigurisan.');
     }
 
-    // Subscribe to push notifications
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
-    });
+    let subscription = await registration.pushManager.getSubscription();
 
-    // Send subscription to backend
+    if (!subscription) {
+      subscription = await subscribeWithRetry(registration, vapidPublicKey);
+    }
+
     await api.post('/api/players/push-subscription', {
       subscription: subscription.toJSON()
     });
 
     console.log('✅ PWA push subscription successful');
     return subscription.endpoint;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ Error subscribing to push notifications:', error);
-    throw error;
+    throw toUserFacingPushError(error);
   }
 }
 
@@ -277,8 +393,9 @@ export async function getNotificationStatus(): Promise<{
  * Convert VAPID public key from URL-safe base64 to Uint8Array
  */
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
+  const normalized = sanitizeVapidKey(base64String);
+  const padding = '='.repeat((4 - normalized.length % 4) % 4);
+  const base64 = (normalized + padding)
     .replace(/\-/g, '+')
     .replace(/_/g, '/');
 

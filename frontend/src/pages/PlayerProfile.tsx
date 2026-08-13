@@ -15,7 +15,6 @@ import {
   Paper,
   Switch,
   FormControlLabel,
-  Slider,
   Grid,
   IconButton,
   LinearProgress,
@@ -71,7 +70,6 @@ export default function PlayerProfile() {
     experience: 'beginner' as 'beginner' | 'intermediate' | 'advanced' | 'professional',
     avatarUrl: '',
     notificationEnabled: true,
-    notificationRadius: 10
   });
 
   useEffect(() => {
@@ -94,7 +92,6 @@ export default function PlayerProfile() {
         experience: res.data.experience || 'beginner',
         avatarUrl: res.data.avatarUrl || '',
         notificationEnabled: res.data.notificationEnabled !== undefined ? res.data.notificationEnabled : true,
-        notificationRadius: res.data.notificationRadius || 10
       });
       requestLocationAndSubscribe();
     } catch (err: any) {
@@ -187,7 +184,6 @@ export default function PlayerProfile() {
         experience: user.experience || 'beginner',
         avatarUrl: user.avatarUrl || '',
         notificationEnabled: user.notificationEnabled !== undefined ? user.notificationEnabled : true,
-        notificationRadius: user.notificationRadius || 10
       });
     }
     setEditing(false);
@@ -797,34 +793,13 @@ export default function PlayerProfile() {
                     }
                     label="Omogući obaveštenja o mečevima u blizini"
                   />
-                  {formData.notificationEnabled && (
-                    <Box>
-                      <Typography variant="body2" color="text.secondary" gutterBottom>
-                        Radijus obaveštenja: {formData.notificationRadius} km
-                      </Typography>
-                      <Slider
-                        value={formData.notificationRadius}
-                        onChange={(e, value) => setFormData({ ...formData, notificationRadius: value as number })}
-                        min={1}
-                        max={50}
-                        step={1}
-                        marks={[
-                          { value: 1, label: '1' },
-                          { value: 25, label: '25 km' },
-                          { value: 50, label: '50' }
-                        ]}
-                        valueLabelDisplay="auto"
-                        valueLabelFormat={(value) => `${value} km`}
-                        sx={{
-                          mx: { xs: 1, sm: 0 },
-                          width: { xs: 'calc(100% - 16px)', sm: '100%' },
-                          '& .MuiSlider-markLabel': {
-                            fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                          },
-                        }}
-                      />
-                    </Box>
-                  )}
+                  <Typography variant="body2" color="text.secondary">
+                    Radijus obaveštenja se podešava na{' '}
+                    <Link to="/notification-settings" style={{ fontWeight: 600 }}>
+                      stranici obaveštenja
+                    </Link>
+                    .
+                  </Typography>
 
                   {/* Test Notification Button */}
                   <Button
@@ -838,15 +813,6 @@ export default function PlayerProfile() {
                   >
                     {testingNotification ? 'Slanje...' : 'Pošalji test notifikaciju'}
                   </Button>
-
-                  {!user?.pushSubscription && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                      Napomena: Morate biti pretplaćeni na notifikacije da biste mogli testirati.{' '}
-                      <Link to="/notification-settings" style={{ color: 'inherit', fontWeight: 600 }}>
-                        Pretplati se ovde
-                      </Link>
-                    </Typography>
-                  )}
 
                   {/* Action Buttons */}
                   <Stack direction="row" spacing={2} justifyContent="flex-end">

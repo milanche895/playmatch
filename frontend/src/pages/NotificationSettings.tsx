@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type SyntheticEvent } from 'react';
 import {
   Box,
   Card,
@@ -11,6 +11,7 @@ import {
   Divider,
   Chip,
   Paper,
+  Slider,
 } from '@mui/material';
 import {
   Notifications as NotificationsIcon,
@@ -21,6 +22,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import {
   subscribeToPushNotifications,
   unsubscribeFromPushNotifications,
@@ -30,8 +32,11 @@ import {
 
 export default function NotificationSettings() {
   const navigate = useNavigate();
+  const { user, refreshUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
+  const [savingRadius, setSavingRadius] = useState(false);
+  const [radius, setRadius] = useState(10);
   const [status, setStatus] = useState<{
     subscribed: boolean;
     enabled: boolean;
@@ -40,6 +45,10 @@ export default function NotificationSettings() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRadius(user?.notificationRadius || 10);
+  }, [user?.notificationRadius]);
 
   useEffect(() => {
     loadStatus();
@@ -99,6 +108,26 @@ export default function NotificationSettings() {
       setError(err.message || 'Greška pri onemogućavanju obaveštenja');
     } finally {
       setSubscribing(false);
+    }
+  }
+
+  async function handleRadiusChange(_event: Event, value: number | number[]) {
+    setRadius(Array.isArray(value) ? value[0] : value);
+  }
+
+  async function handleRadiusCommit(_event: Event | SyntheticEvent, value: number | number[]) {
+    const next = Array.isArray(value) ? value[0] : value;
+    setRadius(next);
+    try {
+      setSavingRadius(true);
+      setError(null);
+      await api.put('/api/players/profile', { notificationRadius: next });
+      await refreshUser();
+      setSuccess(`Radijus obaveštenja je sačuvan: ${next} km`);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Greška pri čuvanju radijusa');
+    } finally {
+      setSavingRadius(false);
     }
   }
 
@@ -232,6 +261,41 @@ export default function NotificationSettings() {
         </CardContent>
       </Card>
 
+      <Card elevation={0} sx={{ mb: 3, borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
+        <CardContent sx={{ p: { xs: 2, sm: 4 } }}>
+          <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>
+            Radijus obaveštenja
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Dobijaćete obaveštenja o novim mečevima u krugu od {radius} km od vaše lokacije.
+            {savingRadius ? ' Čuvanje...' : ''}
+          </Typography>
+          <Slider
+            value={radius}
+            onChange={handleRadiusChange}
+            onChangeCommitted={handleRadiusCommit}
+            min={1}
+            max={50}
+            step={1}
+            marks={[
+              { value: 1, label: '1' },
+              { value: 25, label: '25 km' },
+              { value: 50, label: '50' }
+            ]}
+            valueLabelDisplay="auto"
+            valueLabelFormat={(value) => `${value} km`}
+            disabled={savingRadius}
+            sx={{
+              mx: { xs: 1, sm: 0 },
+              width: { xs: 'calc(100% - 16px)', sm: '100%' },
+              '& .MuiSlider-markLabel': {
+                fontSize: { xs: '0.7rem', sm: '0.75rem' },
+              },
+            }}
+          />
+        </CardContent>
+      </Card>
+
       {/* Actions Card */}
       <Card elevation={0} sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
         <CardContent sx={{ p: { xs: 2, sm: 4 } }}>
@@ -297,7 +361,6 @@ export default function NotificationSettings() {
 
           <Typography variant="body2" color="text.secondary">
             Obaveštenja će vas obavestiti o novim mečevima u blizini vaše lokacije.
-            Postavke radijusa možete izmeniti na stranici profila.
           </Typography>
         </CardContent>
       </Card>
