@@ -10,32 +10,23 @@ The UI language is **Serbian (sr-RS)**. All user-facing strings, error messages,
 
 ## Tech Stack
 
-### Backend (`/backend`)
-- **Runtime**: Node.js (CommonJS, `require`)
-- **Framework**: Express 4.19
-- **Database**: MongoDB via Mongoose 8.6
-- **Auth**: JWT in HttpOnly cookies + Passport.js for OAuth (Google, Facebook)
-- **Real-time**: Socket.IO 4.7
-- **Push Notifications**: `web-push` with VAPID keys (PWA Web Push)
-- **File Uploads**: Multer (memory storage) → Cloudinary
-- **Scheduler**: `node-cron`
-- **Port**: 5050 (dev), `process.env.PORT` (prod)
+Unified **Next.js 14** app (App Router) — one process, one origin.
 
-### Frontend (`/frontend`)
-- **Framework**: React 18.3 + TypeScript 5.6
-- **Build tool**: Vite 5.4
-- **UI Library**: Material-UI (MUI) 6.1
-- **Routing**: React Router 6.26
-- **Maps**: Leaflet 1.9 + react-leaflet 4.2
-- **Real-time**: Socket.IO Client 4.7
-- **PWA**: vite-plugin-pwa 1.2 (service workers, push notifications)
-- **HTTP Client**: Axios (via `src/lib/api.ts`)
-- **Dev port**: 5173
+- **UI**: React 18.3 + TypeScript 5.6 + MUI 6.1 + Leaflet
+- **API**: Express 4.19 mounted at `/api` inside `server.js`
+- **Database**: MongoDB via Mongoose 8.6
+- **Auth**: JWT in HttpOnly cookies + Passport.js (Google, Facebook)
+- **Real-time**: Socket.IO 4.7 on the same HTTP server
+- **Push**: `web-push` + `public/sw.js`
+- **Uploads**: Multer → Cloudinary
+- **Scheduler**: `node-cron`
+- **Port**: 3000 (dev), `process.env.PORT` (prod)
+
+Legacy `frontend/` (Vite) and `backend/` (Express) folders still exist but are **not** the app to run.
 
 ### Deployment
-- Platform: **Render** (Frankfurt region)
-- Backend URL: set via `BACKEND_URL` / `API_URL` env vars
-- Frontend URL: set via `CLIENT_URL` env var
+- Platform: **Render** (Frankfurt) — single web service
+- `CLIENT_URL` is the same origin as the app (OAuth redirects)
 
 ---
 
@@ -43,115 +34,58 @@ The UI language is **Serbian (sr-RS)**. All user-facing strings, error messages,
 
 ```
 playmatch/
-├── CLAUDE.md                        ← this file
-├── backend/
-│   ├── .env                         ← secrets (never commit)
-│   ├── config/
-│   │   └── playmatch-*-firebase-adminsdk-*.json  ← ⚠️ MUST move to env var
-│   ├── scripts/
-│   │   └── backfill-user-metrics.js
-│   └── src/
-│       ├── server.js                ← app entry point, Socket.IO, cron
-│       ├── middleware/
-│       │   └── auth.js              ← JWT auth middleware (cookie + Bearer header)
-│       ├── models/
-│       │   ├── User.js
-│       │   ├── Match.js
-│       │   └── Field.js
-│       ├── routes/
-│       │   ├── auth.js              ← login, register, OAuth, /me
-│       │   ├── matches.js           ← match CRUD, join, leave, ratings
-│       │   ├── players.js           ← profile, analytics, push, block
-│       │   ├── fields.js            ← field CRUD
-│       │   └── courts.js            ← court owner management
-│       └── utils/
-│           ├── cloudinary.js        ← image upload helpers
-│           ├── pushNotifications.js ← VAPID web push
-│           └── notifications.js     ← calculateDistance helper
-└── frontend/
-    ├── src/
-    │   ├── App.tsx                  ← routing, ErrorBoundary
-    │   ├── types.ts                 ← TypeScript interfaces
-    │   ├── context/
-    │   │   ├── AuthContext.tsx      ← auth state, login/logout/register
-    │   │   └── ThemeContext.tsx     ← dark/light mode
-    │   ├── lib/
-    │   │   ├── api.ts               ← axios instance (withCredentials, no localStorage)
-    │   │   ├── socket.ts            ← Socket.IO client
-    │   │   └── notifications.ts     ← PWA push subscription helpers
-    │   ├── components/
-    │   │   ├── Navbar.tsx
-    │   │   └── RoleSelectionModal.tsx
-    │   └── pages/
-    │       ├── Home.tsx             ← map + match discovery
-    │       ├── CreateMatch.tsx
-    │       ├── MatchDetails.tsx
-    │       ├── PlayerProfile.tsx
-    │       ├── MojiMecevi.tsx       ← organizer's matches
-    │       ├── MojTermine.tsx       ← player's schedule
-    │       ├── MojiIgraci.tsx       ← court's player list
-    │       ├── ManageFields.tsx
-    │       ├── NotificationSettings.tsx
-    │       ├── Login.tsx / Register.tsx
-    │       └── AuthCallback.tsx     ← OAuth redirect handler
-    └── vite.config.ts
+├── server.js                 ← Next.js + Express /api + Socket.IO + cron
+├── package.json              ← one app
+├── src/
+│   ├── app/                  ← Next.js App Router pages
+│   ├── views/                ← screen components (former frontend pages)
+│   ├── components/
+│   ├── context/
+│   ├── lib/                  ← api.ts (same-origin), socket.ts, router.tsx
+│   └── server/               ← Express routes, models, middleware, utils
+├── public/                   ← icons, manifest, sw.js
+└── scripts/
 ```
 
 ---
 
 ## Running the Project
 
-### Backend
 ```bash
-cd backend
 npm install
-npm run dev        # nodemon src/server.js
+npm run dev          # http://localhost:3000  (UI + /api + websocket)
+npm run build
+npm start
 ```
 
-### Frontend
-```bash
-cd frontend
-npm install
-npm run dev        # vite dev server on :5173
-```
+Loads `.env` from repo root, then fills missing keys from `backend/.env`.
 
-### Environment Variables (backend `.env`)
+### Environment Variables (`.env`)
 ```
 MONGO_URI=mongodb+srv://...
 JWT_SECRET=...
 SESSION_SECRET=...
-PORT=5050
+PORT=3000
 
-# OAuth
+# OAuth — callbacks must point at THIS same origin
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-GOOGLE_CALLBACK_URL=https://your-backend/api/auth/google/callback
+GOOGLE_CALLBACK_URL=http://localhost:3000/api/auth/google/callback
 FACEBOOK_APP_ID=...
 FACEBOOK_APP_SECRET=...
-FACEBOOK_CALLBACK_URL=https://your-backend/api/auth/facebook/callback
+FACEBOOK_CALLBACK_URL=http://localhost:3000/api/auth/facebook/callback
 
-# URLs
-CLIENT_URL=https://playmatch-1.onrender.com
-BACKEND_URL=https://your-backend.onrender.com
-API_URL=https://your-backend.onrender.com
+CLIENT_URL=http://localhost:3000
 
-# Cloudinary
 CLOUDINARY_CLOUD_NAME=...
 CLOUDINARY_API_KEY=...
 CLOUDINARY_API_SECRET=...
 
-# Push Notifications
 VAPID_PUBLIC_KEY=...
 VAPID_PRIVATE_KEY=...
 VAPID_SUBJECT=mailto:...
 
 NODE_ENV=production
-```
-
-### Frontend `.env` (Vite)
-```
-VITE_API_URL=https://your-backend.onrender.com
-VITE_SOCKET_URL=https://your-backend.onrender.com
 ```
 
 ---
@@ -332,7 +266,7 @@ Also runs once on server startup.
 - **Errors**: show MUI `<Alert severity="error">` — use `err.response?.data?.message || 'fallback'`
 - **Date formatting**: use `toLocaleString('sr-RS', {...})` for all user-visible dates
 - **Player count display**: use the local `formatPlayersCount(match)` helper (handles min/max/current)
-- **Routes with auth**: wrap in `<ProtectedRoute>` in `App.tsx`
+- **Routes with auth**: wrap in `<PlayerRoute>` / `<CourtRoute>` from `src/components/RouteGuards.tsx`
 
 ---
 

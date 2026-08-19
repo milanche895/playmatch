@@ -1,35 +1,21 @@
 services:
-  # Backend Web Service
   - type: web
-    name: playmatch-backend
+    name: plejko
     env: node
     region: frankfurt
     plan: free
-    buildCommand: cd backend && npm ci
-    startCommand: cd backend && npm start
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
       - key: MONGO_URI
-        sync: false  # Set this manually in Render Dashboard
+        sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
       - key: CLIENT_URL
-        sync: false  # Set this after frontend is deployed
-
-  # Frontend Web Service
-  - type: web
-    name: playmatch-frontend
-    env: node
-    region: frankfurt
-    plan: free
-    buildCommand: cd frontend && npm ci && npm run build
-    startCommand: cd frontend && vite preview --port $PORT --host
-    envVars:
-      - key: VITE_API_URL
-        sync: false  # Set this to your backend URL after deployment
-      - key: VITE_SOCKET_URL
-        sync: false  # Set this to your backend URL after deployment (same as VITE_API_URL)
-
+        sync: false

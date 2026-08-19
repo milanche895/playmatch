@@ -1,0 +1,28 @@
+const mongoose = require('mongoose');
+
+const fieldSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    sports: [{ type: String, required: true }], // Array of sports - one field can have multiple sports
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true },
+    courtOwner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Court that owns this field
+    price: { type: Number}, // Price per appointment for this field
+    registrationDeadlineHours: { type: Number, default: 0 }, // Hours before match when registration closes (0 = until kickoff)
+
+    workingHours: {
+      monday: { start: String, end: String, closed: { type: Boolean, default: false } },
+      tuesday: { start: String, end: String, closed: { type: Boolean, default: false } },
+      wednesday: { start: String, end: String, closed: { type: Boolean, default: false } },
+      thursday: { start: String, end: String, closed: { type: Boolean, default: false } },
+      friday: { start: String, end: String, closed: { type: Boolean, default: false } },
+      saturday: { start: String, end: String, closed: { type: Boolean, default: false } },
+      sunday: { start: String, end: String, closed: { type: Boolean, default: false } }
+    }
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model('Field', fieldSchema);
+
+
