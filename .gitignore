@@ -162,5 +162,5 @@ ecosystem.config.js.bak
 .eslintcache
 .stylelintcache
 
-backend/config/playmatch-2eadf-firebase-adminsdk-fbsvc-116c224780.json
-backend/config/playmatch-2eadf-firebase-adminsdk-fbsvc-116c224780.json
+config/playmatch-*-firebase-adminsdk-*.json
+config/*.json
