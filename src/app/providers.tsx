@@ -11,13 +11,13 @@ import {
   Button,
 } from '@mui/material';
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v14-appRouter';
-import { ThemeProvider as CustomThemeProvider, useThemeMode } from '@/context/ThemeContext';
-import createAppTheme from '@/theme';
-import Navbar from '@/components/Navbar';
-import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { trackPlayerLocation } from '@/lib/location';
-import PostRegisterNotificationDialog from '@/components/PostRegisterNotificationDialog';
-import { initPushNotifications } from '@/lib/notifications';
+import { ThemeProvider as CustomThemeProvider, useThemeMode } from '../context/ThemeContext';
+import createAppTheme from '../theme';
+import Navbar from '../components/Navbar';
+import { AuthProvider, useAuth } from '../context/AuthContext';
+import { trackPlayerLocation } from '../lib/location';
+import PostRegisterNotificationDialog from '../components/PostRegisterNotificationDialog';
+import { initPushNotifications } from '../lib/notifications';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
