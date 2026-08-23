@@ -9,6 +9,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const { uploadImageFromUrl } = require('../utils/cloudinary');
 const auth = require('../middleware/auth');
+const { getPublicUrl } = require('../publicUrl');
 
 const router = express.Router();
 
@@ -28,8 +29,7 @@ passport.deserializeUser(async (id, done) => {
 
 // Configure Google OAuth Strategy
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  const backendUrl = process.env.BACKEND_URL || process.env.API_URL || process.env.CLIENT_URL || 'http://localhost:3000';
-  const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${backendUrl}/api/auth/google/callback`;
+  const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${getPublicUrl()}/api/auth/google/callback`;
   passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -123,8 +123,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
 // Configure Facebook OAuth Strategy (redirect flow)
 if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
-  const backendUrl = process.env.BACKEND_URL || process.env.API_URL || process.env.CLIENT_URL || 'http://localhost:3000';
-  const callbackUrl = process.env.FACEBOOK_CALLBACK_URL || `${backendUrl}/api/auth/facebook/callback`;
+  const callbackUrl = process.env.FACEBOOK_CALLBACK_URL || `${getPublicUrl()}/api/auth/facebook/callback`;
   
   passport.use('facebook', new FacebookStrategy({
     clientID: process.env.FACEBOOK_APP_ID,
@@ -257,10 +256,8 @@ function setTokenCookie(res, userId) {
     httpOnly: true,
     path: '/',
     maxAge: 7 * 24 * 60 * 60 * 1000,
-
-    // ključ:
-    sameSite: isProduction ? 'none' : 'lax',
-    secure: isProduction, // u produkciji UVEK true
+    sameSite: 'lax',
+    secure: isProduction,
   });
 }
 
@@ -370,7 +367,11 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
-  res.clearCookie('token');
+  res.clearCookie('token', {
+    path: '/',
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+  });
   res.json({ ok: true });
 });
 
@@ -429,10 +430,8 @@ router.get('/google/callback',
       // If role doesn't exist in session or user is not new, keep existing role (login)
       
       setTokenCookie(res, user._id.toString());
-      // Redirect to frontend — token is in HttpOnly cookie, not in URL
-      const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
       const newUserQuery = userCreatedRecently ? '&newUser=1' : '';
-      res.redirect(`${frontendUrl}/auth/callback?user=${encodeURIComponent(JSON.stringify({
+      res.redirect(`/auth/callback?user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
         email: user.email,
@@ -441,8 +440,7 @@ router.get('/google/callback',
       }))}${newUserQuery}`);
     } catch (error) {
       console.error('Google OAuth callback error:', error);
-      const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000' || 'https://playmatch-1.onrender.com';
-      res.redirect(`${frontendUrl}/login?error=oauth_failed`);
+      res.redirect('/login?error=oauth_failed');
     }
   }
 );
@@ -494,11 +492,8 @@ router.get('/facebook/callback',
       // If role doesn't exist in session or user is not new, keep existing role (login)
       
       setTokenCookie(res, user._id.toString());
-
-      // Redirect to frontend — token is in HttpOnly cookie, not in URL
-      const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
       const newUserQuery = userCreatedRecently ? '&newUser=1' : '';
-      res.redirect(`${frontendUrl}/auth/callback?user=${encodeURIComponent(JSON.stringify({
+      res.redirect(`/auth/callback?user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
         email: user.email,
@@ -507,8 +502,7 @@ router.get('/facebook/callback',
       }))}${newUserQuery}`);
     } catch (error) {
       console.error('Facebook OAuth callback error:', error);
-      const frontendUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-      res.redirect(`${frontendUrl}/login?error=oauth_failed`);
+      res.redirect('/login?error=oauth_failed');
     }
   }
 );

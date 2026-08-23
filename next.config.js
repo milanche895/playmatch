@@ -16,8 +16,6 @@ const nextConfig = {
     };
     return config;
   },
-  // Custom server.js handles /api, Socket.IO and cron.
-  // Next only renders pages and static assets.
   async rewrites() {
     return [];
   },

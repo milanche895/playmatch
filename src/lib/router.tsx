@@ -53,9 +53,9 @@ export function useNavigate() {
 }
 
 export function useLocation() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '/';
   const searchParams = useNextSearchParams();
-  const search = searchParams.toString();
+  const search = searchParams?.toString() ?? '';
 
   return {
     pathname,
@@ -70,7 +70,7 @@ export function useParams<T extends Record<string, string | undefined> = Record<
 
 export function useSearchParams() {
   const params = useNextSearchParams();
-  return [params] as const;
+  return [params ?? new URLSearchParams()] as const;
 }
 
 export { usePathname, useRouter };

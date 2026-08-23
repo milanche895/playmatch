@@ -1,5 +1,17 @@
 {
   "framework": "nextjs",
   "installCommand": "npm install",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "functions": {
+    "src/pages/api/[[...path]].js": {
+      "maxDuration": 10,
+      "includeFiles": "src/server/**"
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/expired-matches",
+      "schedule": "0 8 * * *"
+    }
+  ]
 }

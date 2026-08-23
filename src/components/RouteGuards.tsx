@@ -26,7 +26,7 @@ export function PlayerRoute({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.replace(`/login?from=${encodeURIComponent(safeFrom(pathname))}`);
+      router.replace(`/login?from=${encodeURIComponent(safeFrom(pathname ?? '/'))}`);
       return;
     }
     if (user.role !== 'player') {

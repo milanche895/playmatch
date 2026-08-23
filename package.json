@@ -2,11 +2,12 @@
   "name": "plejko",
   "version": "0.1.0",
   "private": true,
-  "description": "Plejko — unified Next.js app (UI + API + Socket.IO)",
+  "description": "Plejko — Next.js app (UI + API)",
   "scripts": {
-    "dev": "nodemon --watch server.js --watch src/server --ext js,json server.js",
+    "dev": "next dev",
     "build": "next build",
-    "start": "cross-env NODE_ENV=production node server.js",
+    "start": "next start",
+    "start:server": "cross-env NODE_ENV=production node server.js",
     "fix-index": "node scripts/fix-user-index.js",
     "backfill-user-metrics": "node scripts/backfill-user-metrics.js"
   },
