@@ -9,7 +9,13 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const { uploadImageFromUrl } = require('../utils/cloudinary');
 const auth = require('../middleware/auth');
-const { getPublicUrl } = require('../publicUrl');
+const { getOAuthCallbackUrl } = require('../publicUrl');
+const {
+  isEmailVerified,
+  hashVerificationToken,
+  issueAndSendVerificationEmail,
+  RESEND_COOLDOWN_MS,
+} = require('../utils/emailVerification');
 
 const router = express.Router();
 
@@ -29,13 +35,13 @@ passport.deserializeUser(async (id, done) => {
 
 // Configure Google OAuth Strategy
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  const callbackUrl = process.env.GOOGLE_CALLBACK_URL || `${getPublicUrl()}/api/auth/google/callback`;
   passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: callbackUrl
+    callbackURL: getOAuthCallbackUrl(null, 'google'),
+    passReqToCallback: true,
   },
-  async (accessToken, refreshToken, profile, done) => {
+  async (req, accessToken, refreshToken, profile, done) => {
     try {
       let user = await User.findOne({ 
         $or: [
@@ -74,12 +80,17 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         if (!user.name || user.name.trim() === '') {
           user.name = profile.displayName || profile.name.givenName + ' ' + profile.name.familyName;
         }
+        if (!user.emailVerified) {
+          user.emailVerified = true;
+        }
+        applyOAuthOnboarding(user, getOnboardingFromReq(req));
         await user.save();
         return done(null, user);
       }
 
       // Create new user with all available profile data
-      // Role will be set in callback from session
+      const onboarding = getOnboardingFromReq(req);
+      const { sanitizeGameIds } = require('../constants/games');
       let avatarUrl = null;
       if (profile.photos && profile.photos[0]) {
         // Upload to Cloudinary if Cloudinary is configured
@@ -102,6 +113,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       user = await User.create({
         name: profile.displayName || (profile.name ? profile.name.givenName + ' ' + profile.name.familyName : 'User'),
         email: profile.emails && profile.emails[0] ? profile.emails[0].value : null,
+        emailVerified: true,
         provider: 'google',
         providerId: profile.id,
         providerData: { 
@@ -112,7 +124,8 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
           emails: profile.emails
         },
         avatarUrl: avatarUrl,
-        role: 'player' // Default, will be updated in callback if session has role
+        role: onboarding.role === 'court' ? 'court' : 'player',
+        preferredSports: sanitizeGameIds(onboarding.preferredSports),
       });
       return done(null, user);
     } catch (error) {
@@ -123,15 +136,14 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
 // Configure Facebook OAuth Strategy (redirect flow)
 if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
-  const callbackUrl = process.env.FACEBOOK_CALLBACK_URL || `${getPublicUrl()}/api/auth/facebook/callback`;
-  
   passport.use('facebook', new FacebookStrategy({
     clientID: process.env.FACEBOOK_APP_ID,
     clientSecret: process.env.FACEBOOK_APP_SECRET,
-    callbackURL: callbackUrl,
-    profileFields: ['id', 'displayName', 'email', 'picture', 'first_name', 'last_name']
+    callbackURL: getOAuthCallbackUrl(null, 'facebook'),
+    profileFields: ['id', 'displayName', 'email', 'picture', 'first_name', 'last_name'],
+    passReqToCallback: true,
   },
-  async (accessToken, refreshToken, profile, done) => {
+  async (req, accessToken, refreshToken, profile, done) => {
     try {
       // Try to get email from profile, if not available, fetch from Graph API
       let email = null;
@@ -175,6 +187,9 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
         if (email && (!user.email || user.email.includes('@facebook.com') || user.email.includes('@instagram.com'))) {
           user.email = email;
         }
+        if (!user.emailVerified) {
+          user.emailVerified = true;
+        }
         // Update avatar if not set
         if (!user.avatarUrl && profile.photos && profile.photos[0]) {
           // Upload to Cloudinary if Cloudinary is configured
@@ -198,6 +213,7 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
         if (!user.name || user.name.trim() === '') {
           user.name = profile.displayName || (profile.name ? profile.name.givenName + ' ' + profile.name.familyName : 'User');
         }
+        applyOAuthOnboarding(user, getOnboardingFromReq(req));
         await user.save();
         return done(null, user);
       }
@@ -225,6 +241,7 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
       user = await User.create({
         name: profile.displayName || (profile.name ? profile.name.givenName + ' ' + profile.name.familyName : 'User'),
         email: userEmail,
+        emailVerified: true,
         provider: 'facebook',
         providerId: profile.id,
         providerData: { 
@@ -234,7 +251,10 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
           name: profile.name
         },
         avatarUrl: avatarUrl,
-        role: 'player' // Default, will be updated in callback if session has role
+        role: getOnboardingFromReq(req).role === 'court' ? 'court' : 'player',
+        preferredSports: require('../constants/games').sanitizeGameIds(
+          getOnboardingFromReq(req).preferredSports
+        ),
       });
 
       return done(null, user);
@@ -243,6 +263,74 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
     }
   }));
 }
+function parseOAuthState(state) {
+  const result = { role: null, preferredSports: [] };
+  if (!state || typeof state !== 'string') return result;
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(state);
+  } catch {
+    try {
+      parsed = JSON.parse(decodeURIComponent(state));
+    } catch (e) {
+      console.error('Error parsing OAuth state:', e);
+      return result;
+    }
+  }
+
+  if (parsed.role === 'player' || parsed.role === 'court') {
+    result.role = parsed.role;
+  }
+  if (Array.isArray(parsed.preferredSports)) {
+    result.preferredSports = parsed.preferredSports;
+  }
+  return result;
+}
+
+function getOnboardingFromReq(req) {
+  const fromQuery = parseOAuthState(req?.query?.state);
+  const fromSession = {
+    role: req?.session?.oauthRole || null,
+    preferredSports: Array.isArray(req?.session?.oauthPreferredSports)
+      ? req.session.oauthPreferredSports
+      : [],
+  };
+  return {
+    role: fromQuery.role || fromSession.role,
+    preferredSports: fromQuery.preferredSports.length
+      ? fromQuery.preferredSports
+      : fromSession.preferredSports,
+  };
+}
+
+/** Apply role + games from register wizard. Works for new users and unfinished onboarding. */
+function applyOAuthOnboarding(user, onboarding) {
+  const { sanitizeGameIds } = require('../constants/games');
+  const sports = sanitizeGameIds(onboarding?.preferredSports);
+  const role = onboarding?.role === 'player' || onboarding?.role === 'court' ? onboarding.role : null;
+  if (!role && sports.length === 0) return false;
+
+  const neverOnboarded = !Array.isArray(user.preferredSports) || user.preferredSports.length === 0;
+  const createdRecently =
+    user.createdAt && Date.now() - new Date(user.createdAt).getTime() < 120000;
+
+  if (!createdRecently && !neverOnboarded) return false;
+
+  if (role) user.role = role;
+  if (sports.length > 0) user.preferredSports = sports;
+  return true;
+}
+
+function consumeOAuthOnboarding(req, user) {
+  const onboarding = getOnboardingFromReq(req);
+  if (req.session) {
+    delete req.session.oauthRole;
+    delete req.session.oauthPreferredSports;
+  }
+  return applyOAuthOnboarding(user, onboarding);
+}
+
 function setTokenCookie(res, userId) {
   const token = jwt.sign(
     { id: userId },
@@ -270,13 +358,20 @@ router.post('/register', async (req, res) => {
     if (existing) return res.status(409).json({ message: 'Email je već u upotrebi' });
     const hashed = await bcrypt.hash(password, 10);
 
-    const sports = Array.isArray(preferredSports)
-      ? preferredSports.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim())
-      : [];
+    const { sanitizeGameIds } = require('../constants/games');
+    const sports = sanitizeGameIds(preferredSports);
+    if (role !== 'player' && role !== 'court') {
+      return res.status(400).json({ message: 'Izaberite da li ste igrač ili teren' });
+    }
+    const resolvedRole = role;
 
-    // Players should pick at least one preferred game so we can personalize the feed
-    if ((role || 'player') === 'player' && sports.length === 0) {
-      return res.status(400).json({ message: 'Izaberite kategoriju i igru kojom se bavite' });
+    if (sports.length === 0) {
+      return res.status(400).json({
+        message:
+          resolvedRole === 'court'
+            ? 'Izaberite kategorije i igre koje vaše mesto nudi'
+            : 'Izaberite barem jednu igru',
+      });
     }
 
     const createPayload = {
@@ -284,9 +379,10 @@ router.post('/register', async (req, res) => {
       email,
       password: hashed,
       avatarUrl,
-      role: role || 'player',
+      role: resolvedRole,
       provider: 'local',
-      preferredSports: (role || 'player') === 'player' ? sports : [],
+      preferredSports: sports,
+      emailVerified: false,
     };
 
     // Optional referral — store referrer; +2 credits granted on first completed match
@@ -303,6 +399,12 @@ router.post('/register', async (req, res) => {
     if (user.referredBy && user.referredBy.toString() === user._id.toString()) {
       user.referredBy = undefined;
       await user.save();
+    }
+
+    try {
+      await issueAndSendVerificationEmail(user, req);
+    } catch (emailError) {
+      console.error('Verification email failed after register:', emailError.message);
     }
     
     // Generate token
@@ -321,6 +423,7 @@ router.post('/register', async (req, res) => {
       credits: user.credits ?? 3,
       xp: user.xp ?? 0,
       level: user.level ?? 1,
+      emailVerified: false,
       token // Include token in response for localStorage
     });
   } catch (e) {
@@ -359,6 +462,8 @@ router.post('/login', async (req, res) => {
       preferredSports: user.preferredSports || [],
       notificationEnabled: user.notificationEnabled,
       notificationRadius: user.notificationRadius,
+      emailVerified: isEmailVerified(user),
+      provider: user.provider,
       token // Include token in response for localStorage
     });
   } catch (e) {
@@ -377,66 +482,143 @@ router.post('/logout', (req, res) => {
 
 router.get('/me', auth(true), async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    const user = await User.findById(req.user.id).select('-password -emailVerifyTokenHash');
     if (!user) return res.status(404).json({ message: 'Korisnik nije pronađen' });
-    res.json(user);
+    if (!user.emailVerified && user.provider && user.provider !== 'local') {
+      user.emailVerified = true;
+      await user.save();
+    }
+    const payload = user.toObject();
+    payload.emailVerified = isEmailVerified(user);
+    res.json(payload);
   } catch (e) {
     res.status(401).json({ message: 'Nevažeći token' });
   }
 });
 
+router.post('/verify-email', async (req, res) => {
+  try {
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    if (!token) {
+      return res.status(400).json({ message: 'Nedostaje verifikacioni link' });
+    }
+
+    const tokenHash = hashVerificationToken(token);
+    let user = await User.findOne({ emailVerifyTokenHash: tokenHash }).select('-password');
+
+    if (!user) {
+      return res.status(400).json({ message: 'Link je nevažeći ili je istekao' });
+    }
+
+    if (!user.emailVerified) {
+      if (!user.emailVerifyExpires || user.emailVerifyExpires <= new Date()) {
+        return res.status(400).json({ message: 'Link je nevažeći ili je istekao' });
+      }
+      await User.updateOne(
+        { _id: user._id },
+        { $set: { emailVerified: true }, $unset: { emailVerifyExpires: 1 } }
+      );
+      user.emailVerified = true;
+    }
+
+    setTokenCookie(res, user._id.toString());
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+      role: user.role,
+      preferredSports: user.preferredSports || [],
+      emailVerified: true,
+      provider: user.provider,
+    });
+  } catch (e) {
+    console.error('Verify email error:', e);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.post('/resend-verification', auth(true), async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'Korisnik nije pronađen' });
+
+    if (isEmailVerified(user)) {
+      return res.status(400).json({
+        message: 'Email je već potvrđen',
+        code: 'EMAIL_ALREADY_VERIFIED',
+      });
+    }
+
+    if (user.emailVerifySentAt && Date.now() - new Date(user.emailVerifySentAt).getTime() < RESEND_COOLDOWN_MS) {
+      const retryAfterSeconds = Math.ceil(
+        (RESEND_COOLDOWN_MS - (Date.now() - new Date(user.emailVerifySentAt).getTime())) / 1000
+      );
+      return res.status(429).json({
+        message: `Sačekaj ${retryAfterSeconds}s pre ponovnog slanja`,
+        retryAfterSeconds,
+      });
+    }
+
+    await issueAndSendVerificationEmail(user, req);
+    res.json({ ok: true, message: 'Verifikacioni link je poslat' });
+  } catch (e) {
+    console.error('Resend verification error:', e);
+    if (e.code === 'EMAIL_NOT_CONFIGURED') {
+      return res.status(503).json({ message: 'Slanje emaila nije podešeno. Pokušaj kasnije.' });
+    }
+    const brevoMessage = e.response?.data?.message;
+    res.status(500).json({ message: brevoMessage || 'Slanje linka nije uspelo' });
+  }
+});
+
 // Google OAuth routes
 router.get('/google', (req, res, next) => {
-  // Get role from state parameter
-  const state = req.query.state;
-  let role = 'player'; // default
-  
-  if (state) {
-    try {
-      const stateData = JSON.parse(decodeURIComponent(state));
-      if (stateData.role && (stateData.role === 'player' || stateData.role === 'court')) {
-        role = stateData.role;
-      }
-    } catch (e) {
-      console.error('Error parsing state:', e);
-    }
-  }
-  
-  // Store role in session for use in callback
-  req.session.oauthRole = role;
-  
-  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
+  const onboarding = parseOAuthState(req.query.state);
+  req.session.oauthRole = onboarding.role;
+  req.session.oauthPreferredSports = onboarding.preferredSports;
+
+  const callbackURL = getOAuthCallbackUrl(req, 'google');
+  const state = typeof req.query.state === 'string' ? req.query.state : undefined;
+
+  req.session.save((err) => {
+    if (err) console.error('OAuth session save failed:', err);
+    passport.authenticate('google', {
+      scope: ['profile', 'email'],
+      callbackURL,
+      ...(state ? { state } : {}),
+    })(req, res, next);
+  });
 });
 
 router.get('/google/callback',
-  passport.authenticate('google', { session: true, failureRedirect: '/login?error=google_auth_failed' }),
+  (req, res, next) => {
+    const callbackURL = getOAuthCallbackUrl(req, 'google');
+    passport.authenticate('google', {
+      session: true,
+      failureRedirect: '/login?error=google_auth_failed',
+      callbackURL,
+    })(req, res, next);
+  },
   async (req, res) => {
     try {
       const user = req.user;
-      // Get role from session if available (only set during registration)
-      const role = req.session?.oauthRole;
-      delete req.session?.oauthRole;
-      
-      // Only update role for new users (registration)
-      // Check if user was just created (has default role 'player' and role exists in session)
-      // OR check if user was created within last 5 seconds (new user)
-      const userCreatedRecently = (Date.now() - new Date(user.createdAt).getTime()) < 5000;
-      const hasDefaultRole = user.role === 'player' || !user.role;
-      if (role && (role === 'player' || role === 'court') && (userCreatedRecently || hasDefaultRole)) {
-        // This is a new user (registration), set the role
-        user.role = role;
+      const isNewUser = consumeOAuthOnboarding(req, user);
+      if (isNewUser) {
         await user.save();
       }
-      // If role doesn't exist in session or user is not new, keep existing role (login)
-      
+
       setTokenCookie(res, user._id.toString());
-      const newUserQuery = userCreatedRecently ? '&newUser=1' : '';
+      const newUserQuery = isNewUser ? '&newUser=1' : '';
       res.redirect(`/auth/callback?user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
         email: user.email,
         avatarUrl: user.avatarUrl,
-        role: user.role
+        role: user.role,
+        preferredSports: user.preferredSports || [],
+        emailVerified: isEmailVerified(user),
+        provider: user.provider,
       }))}${newUserQuery}`);
     } catch (error) {
       console.error('Google OAuth callback error:', error);
@@ -447,58 +629,51 @@ router.get('/google/callback',
 
 // Facebook OAuth routes (redirect flow)
 router.get('/facebook', (req, res, next) => {
-  // Get role from state parameter
-  const state = req.query.state;
-  let role = 'player'; // default
-  
-  if (state) {
-    try {
-      const stateData = JSON.parse(decodeURIComponent(state));
-      if (stateData.role && (stateData.role === 'player' || stateData.role === 'court')) {
-        role = stateData.role;
-      }
-    } catch (e) {
-      console.error('Error parsing state:', e);
-    }
-  }
-  
-  // Store role in session for use in callback
-  req.session.oauthRole = role;
-  
-  // Only request public_profile scope - email is requested via profileFields
-  passport.authenticate('facebook', { scope: ['public_profile'] })(req, res, next);
+  const onboarding = parseOAuthState(req.query.state);
+  req.session.oauthRole = onboarding.role;
+  req.session.oauthPreferredSports = onboarding.preferredSports;
+
+  const callbackURL = getOAuthCallbackUrl(req, 'facebook');
+  const state = typeof req.query.state === 'string' ? req.query.state : undefined;
+
+  req.session.save((err) => {
+    if (err) console.error('OAuth session save failed:', err);
+    passport.authenticate('facebook', {
+      scope: ['public_profile'],
+      callbackURL,
+      ...(state ? { state } : {}),
+    })(req, res, next);
+  });
 });
 
 router.get('/facebook/callback',
-  passport.authenticate('facebook', { session: true, failureRedirect: '/login?error=facebook_auth_failed' }),
+  (req, res, next) => {
+    const callbackURL = getOAuthCallbackUrl(req, 'facebook');
+    passport.authenticate('facebook', {
+      session: true,
+      failureRedirect: '/login?error=facebook_auth_failed',
+      callbackURL,
+    })(req, res, next);
+  },
   async (req, res) => {
     try {
       const user = req.user;
-      
-      // Get role from session if available (only set during registration)
-      const role = req.session?.oauthRole;
-      delete req.session?.oauthRole;
-      
-      // Only update role for new users (registration)
-      // Check if user was just created (has default role 'player' or was created within last 5 seconds)
-      const userCreatedRecently = (Date.now() - new Date(user.createdAt).getTime()) < 5000;
-      const hasDefaultRole = user.role === 'player' || !user.role;
-      
-      if (role && (role === 'player' || role === 'court') && (userCreatedRecently || hasDefaultRole)) {
-        // This is a new user (registration), set the role
-        user.role = role;
+      const isNewUser = consumeOAuthOnboarding(req, user);
+      if (isNewUser) {
         await user.save();
       }
-      // If role doesn't exist in session or user is not new, keep existing role (login)
-      
+
       setTokenCookie(res, user._id.toString());
-      const newUserQuery = userCreatedRecently ? '&newUser=1' : '';
+      const newUserQuery = isNewUser ? '&newUser=1' : '';
       res.redirect(`/auth/callback?user=${encodeURIComponent(JSON.stringify({
         _id: user._id,
         name: user.name,
         email: user.email,
         avatarUrl: user.avatarUrl,
-        role: user.role
+        role: user.role,
+        preferredSports: user.preferredSports || [],
+        emailVerified: isEmailVerified(user),
+        provider: user.provider,
       }))}${newUserQuery}`);
     } catch (error) {
       console.error('Facebook OAuth callback error:', error);
@@ -581,6 +756,9 @@ router.post('/instagram', async (req, res) => {
       if (!user.name || user.name.trim() === '') {
         user.name = fbProfile.name || igProfile.username || `${fbProfile.first_name || ''} ${fbProfile.last_name || ''}`.trim();
       }
+      if (fbProfile.email && !user.emailVerified) {
+        user.emailVerified = true;
+      }
       await user.save();
     } else {
       // New user - registration (use role from request)
@@ -606,6 +784,7 @@ router.post('/instagram', async (req, res) => {
       user = await User.create({
         name: fbProfile.name || igProfile.username || `${fbProfile.first_name || ''} ${fbProfile.last_name || ''}`.trim() || 'User',
         email: fbProfile.email || `${igProfile.id}@instagram.com`,
+        emailVerified: true,
         provider: 'instagram',
         providerId: igProfile.id,
         providerData: { 
@@ -630,6 +809,8 @@ router.post('/instagram', async (req, res) => {
       email: user.email, 
       avatarUrl: user.avatarUrl,
       role: user.role,
+      emailVerified: isEmailVerified(user),
+      provider: user.provider,
       token
     });
   } catch (error) {

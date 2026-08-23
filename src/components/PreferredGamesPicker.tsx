@@ -1,5 +1,18 @@
-import { useState, type ReactElement, type ReactNode } from 'react';
-import { Box, Chip, Stack, Typography, Alert } from '@mui/material';
+import { type ReactElement, type ReactNode } from 'react';
+import {
+  Box,
+  Checkbox,
+  Chip,
+  FormControl,
+  InputLabel,
+  ListItemText,
+  MenuItem,
+  Select,
+  Stack,
+  Typography,
+  Alert,
+} from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
 import CasinoIcon from '@mui/icons-material/Casino';
 import SportsBarIcon from '@mui/icons-material/SportsBar';
@@ -7,7 +20,6 @@ import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import {
   CATEGORY_LIST,
   CategoryId,
-  getCategoriesFromGameIds,
   getGamesByCategory,
   getGameTypeName,
 } from '../constants/games';
@@ -31,139 +43,107 @@ type PreferredGamesPickerProps = {
   value: string[];
   onChange: (gameIds: string[]) => void;
   disabled?: boolean;
+  categoryTitle?: string;
+  categoryHint?: string;
+  gamesTitle?: string;
+  gamesHint?: string;
 };
 
 /**
- * Multi-select: categories + game types.
- * Step 1: pick one or more categories → Step 2: pick any games from those categories.
+ * One dropdown per category. Opening a category lets you multi-select game types.
  */
 export default function PreferredGamesPicker({
   value,
   onChange,
   disabled = false,
+  categoryTitle = 'Odaberi igre',
+  categoryHint = 'Otvori kategoriju i izaberi jednu ili više igara',
 }: PreferredGamesPickerProps) {
-  // Categories stay selected independently of which games are picked
-  const [selectedCategories, setSelectedCategories] = useState<CategoryId[]>(() =>
-    getCategoriesFromGameIds(value)
-  );
-
-  function toggleCategory(category: CategoryId) {
+  function handleCategoryChange(category: CategoryId, event: SelectChangeEvent<string[]>) {
     if (disabled) return;
-
-    const isSelected = selectedCategories.includes(category);
-    if (isSelected) {
-      const nextCategories = selectedCategories.filter((c) => c !== category);
-      setSelectedCategories(nextCategories);
-      const allowed = new Set(
-        nextCategories.flatMap((c) => getGamesByCategory(c).map((game) => game.id))
-      );
-      onChange(value.filter((id) => allowed.has(id)));
-    } else {
-      setSelectedCategories([...selectedCategories, category]);
-    }
-  }
-
-  function toggleGame(gameId: string) {
-    if (disabled) return;
-    if (value.includes(gameId)) {
-      onChange(value.filter((id) => id !== gameId));
-    } else {
-      onChange([...value, gameId]);
-    }
+    const nextInCategory = event.target.value as string[];
+    const categoryGameIds = new Set(getGamesByCategory(category).map((game) => game.id));
+    const kept = value.filter((id) => !categoryGameIds.has(id));
+    onChange([...kept, ...nextInCategory]);
   }
 
   return (
-    <Stack spacing={2.5}>
+    <Stack spacing={2}>
       <Box>
         <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
-          1. Odaberi kategorije
+          {categoryTitle}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-          Možeš izabrati više kategorija odjednom
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          {categoryHint}
         </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-          {CATEGORY_LIST.map((cat) => {
-            const active = selectedCategories.includes(cat.id);
-            return (
-              <Chip
-                key={cat.id}
-                icon={categoryIcons[cat.id] as ReactElement}
-                label={cat.label}
-                onClick={() => toggleCategory(cat.id)}
-                disabled={disabled}
-                color={active ? 'primary' : 'default'}
-                variant={active ? 'filled' : 'outlined'}
-                sx={{
-                  fontWeight: 700,
-                  minHeight: 40,
-                  borderColor: active ? undefined : categoryColors[cat.id],
-                  '& .MuiChip-icon': {
-                    color: active ? 'inherit' : categoryColors[cat.id],
-                  },
-                }}
-              />
-            );
-          })}
-        </Box>
       </Box>
 
-      <Box>
-        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.5 }}>
-          2. Odaberi igre / sportove
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-          {selectedCategories.length === 0
-            ? 'Izaberi barem jednu kategoriju da vidiš dostupne opcije'
-            : 'Možeš izabrati više igara iz svake kategorije'}
-        </Typography>
+      {CATEGORY_LIST.map((cat) => {
+        const games = getGamesByCategory(cat.id);
+        const selected = games.filter((game) => value.includes(game.id)).map((game) => game.id);
 
-        {selectedCategories.length === 0 ? (
-          <Alert severity="info" sx={{ borderRadius: 2 }}>
-            Nije izabrana nijedna kategorija.
-          </Alert>
-        ) : (
-          <Stack spacing={2}>
-            {selectedCategories.map((categoryId) => {
-              const games = getGamesByCategory(categoryId);
-              const meta = CATEGORY_LIST.find((c) => c.id === categoryId);
-              return (
-                <Box key={categoryId}>
-                  <Typography
-                    variant="caption"
-                    fontWeight={700}
-                    sx={{ color: categoryColors[categoryId], display: 'block', mb: 1 }}
-                  >
-                    {meta?.label} · {games.length} opcija
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {games.map((game) => {
-                      const active = value.includes(game.id);
-                      return (
-                        <Chip
-                          key={game.id}
-                          label={game.name}
-                          onClick={() => toggleGame(game.id)}
-                          disabled={disabled}
-                          color={active ? 'secondary' : 'default'}
-                          variant={active ? 'filled' : 'outlined'}
-                          sx={{ fontWeight: 600, minHeight: 40 }}
-                        />
-                      );
-                    })}
-                  </Box>
+        return (
+          <FormControl key={cat.id} fullWidth disabled={disabled}>
+            <InputLabel id={`games-${cat.id}-label`}>
+              {cat.label}
+              {selected.length > 0 ? ` (${selected.length})` : ''}
+            </InputLabel>
+            <Select
+              labelId={`games-${cat.id}-label`}
+              multiple
+              value={selected}
+              label={`${cat.label}${selected.length > 0 ? ` (${selected.length})` : ''}`}
+              onChange={(event) => handleCategoryChange(cat.id, event)}
+              startAdornment={
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    pl: 0.5,
+                    color: categoryColors[cat.id],
+                  }}
+                >
+                  {categoryIcons[cat.id] as ReactElement}
                 </Box>
-              );
-            })}
-          </Stack>
-        )}
-      </Box>
+              }
+              renderValue={(picked) =>
+                picked.length === 0
+                  ? cat.description
+                  : picked.map((id) => getGameTypeName(id)).join(', ')
+              }
+              MenuProps={{
+                PaperProps: {
+                  sx: { maxHeight: 320, borderRadius: 2 },
+                },
+              }}
+            >
+              {games.map((game) => (
+                <MenuItem key={game.id} value={game.id}>
+                  <Checkbox checked={selected.includes(game.id)} size="small" />
+                  <ListItemText primary={game.name} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        );
+      })}
 
       {value.length > 0 && (
         <Alert severity="success" sx={{ borderRadius: 2 }} icon={false}>
-          <Typography variant="caption" fontWeight={700} display="block" sx={{ mb: 0.5 }}>
+          <Typography variant="caption" fontWeight={700} display="block" sx={{ mb: 1 }}>
             Odabrano ({value.length}):
           </Typography>
-          <Typography variant="body2">{value.map(getGameTypeName).join(' · ')}</Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+            {value.map((id) => (
+              <Chip
+                key={id}
+                label={getGameTypeName(id)}
+                size="small"
+                color="secondary"
+                onDelete={disabled ? undefined : () => onChange(value.filter((gameId) => gameId !== id))}
+              />
+            ))}
+          </Box>
         </Alert>
       )}
     </Stack>

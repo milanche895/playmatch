@@ -1,6 +1,6 @@
 'use client';
 
-import { Component, ReactNode, useEffect } from 'react';
+import { Component, ReactNode, Suspense, useEffect } from 'react';
 import {
   ThemeProvider as MuiThemeProvider,
   CssBaseline,
@@ -65,14 +65,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
-        <CircularProgress />
-      </Box>
-    );
-  }
-
   return (
     <MuiThemeProvider theme={theme}>
       <CssBaseline />
@@ -101,7 +93,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
               px: { xs: 0, sm: 1 },
             }}
           >
-            {children}
+            {loading ? (
+              <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+                <CircularProgress />
+              </Box>
+            ) : (
+              children
+            )}
           </Container>
         </Box>
       </Box>
@@ -115,7 +113,15 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <ErrorBoundary>
         <CustomThemeProvider>
           <AuthProvider>
-            <AppShell>{children}</AppShell>
+            <Suspense
+              fallback={
+                <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+                  <CircularProgress />
+                </Box>
+              }
+            >
+              <AppShell>{children}</AppShell>
+            </Suspense>
           </AuthProvider>
         </CustomThemeProvider>
       </ErrorBoundary>

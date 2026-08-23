@@ -85,3 +85,20 @@ module.exports = {
     gaming_generic: g('gaming_generic', 'Gaming (opšte)', 'esports', 2, 10),
   },
 };
+
+function sanitizeGameIds(ids) {
+  if (!Array.isArray(ids)) return [];
+  const seen = new Set();
+  const result = [];
+  for (const raw of ids) {
+    if (typeof raw !== 'string') continue;
+    const id = raw.trim();
+    if (module.exports.GAME_TYPES[id] && !seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+  }
+  return result;
+}
+
+module.exports.sanitizeGameIds = sanitizeGameIds;

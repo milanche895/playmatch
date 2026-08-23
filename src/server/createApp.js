@@ -9,7 +9,7 @@ const fieldRoutes = require('./routes/fields');
 const matchRoutesFactory = require('./routes/matches');
 const courtRoutes = require('./routes/courts');
 const playerRoutes = require('./routes/players');
-const { connectDb } = require('./db');
+const { connectDb, hasMongoUri } = require('./db');
 const { processExpiredMatches } = require('./utils/matchStatus');
 
 function createNoopIo() {
@@ -31,7 +31,12 @@ function attachApi(app, io = createNoopIo()) {
       next();
     } catch (err) {
       console.error('MongoDB connection failed:', err);
-      res.status(503).json({ message: 'Baza nije dostupna' });
+      res.status(503).json({
+        message: 'Baza nije dostupna',
+        reason: err.code === 'NO_MONGO_URI'
+          ? 'MONGO_URI is not set'
+          : (err.name || 'Mongo connection failed'),
+      });
     }
   });
 
@@ -55,7 +60,7 @@ function attachApi(app, io = createNoopIo()) {
   app.use('/api', passport.session());
 
   app.get('/api/health', (req, res) => {
-    res.json({ ok: true });
+    res.json({ ok: true, mongoUri: hasMongoUri() });
   });
 
   app.get('/api/cron/expired-matches', async (req, res) => {

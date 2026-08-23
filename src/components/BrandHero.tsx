@@ -2,6 +2,7 @@ import { Box, Button, Chip, Stack, Typography, useMediaQuery, useTheme } from '@
 import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import CasinoIcon from '@mui/icons-material/Casino';
+import SportsBarIcon from '@mui/icons-material/SportsBar';
 import { Link as RouterLink } from '@/lib/router';
 import PlejkoLogo, { PlejkoTagline } from './PlejkoLogo';
 import { brand } from '../theme';
@@ -12,7 +13,44 @@ const categories = [
   { label: 'Sport', icon: <SportsSoccerIcon fontSize="small" />, color: brand.green },
   { label: 'Gaming', icon: <SportsEsportsIcon fontSize="small" />, color: brand.purple },
   { label: 'Društvene igre', icon: <CasinoIcon fontSize="small" />, color: brand.cyan },
+  { label: 'Pub igre', icon: <SportsBarIcon fontSize="small" />, color: brand.orange },
 ];
+
+function CategoryChips({ compact, isDark }: { compact?: boolean; isDark?: boolean }) {
+  return (
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: 1,
+        width: '100%',
+        maxWidth: 420,
+        mx: compact ? 'auto' : 0,
+      }}
+    >
+      {categories.map((c) => (
+        <Chip
+          key={c.label}
+          icon={c.icon}
+          label={c.label}
+          size={compact ? 'small' : 'medium'}
+          variant="outlined"
+          sx={{
+            width: '100%',
+            justifyContent: 'flex-start',
+            pl: 1,
+            borderColor: compact ? c.color : 'rgba(255,255,255,0.35)',
+            color: compact ? (isDark ? '#fff' : 'text.primary') : '#fff',
+            bgcolor: compact ? 'transparent' : 'rgba(5,10,24,0.35)',
+            backdropFilter: compact ? undefined : 'blur(6px)',
+            '& .MuiChip-icon': { color: c.color, ml: 0.25 },
+            '& .MuiChip-label': { px: 0.75, flex: 1, textAlign: 'left' },
+          }}
+        />
+      ))}
+    </Box>
+  );
+}
 
 /** Branded hero — lifestyle banner + CTAs (guest-focused, compact when logged in) */
 export default function BrandHero() {
@@ -34,7 +72,8 @@ export default function BrandHero() {
             ? `linear-gradient(135deg, ${brand.navySoft} 0%, ${brand.navyCard} 60%, rgba(212,0,255,0.12) 100%)`
             : `linear-gradient(135deg, #EEF7FF 0%, #F5EEFF 100%)`,
           px: { xs: 2.5, sm: 3 },
-          py: { xs: 2, sm: 2.5 },
+          pt: { xs: 2, sm: 2.5 },
+          pb: { xs: 3, sm: 3.5 },
         }}
       >
         <Stack
@@ -46,22 +85,7 @@ export default function BrandHero() {
           <Typography variant="body2" color="text.secondary">
             Više od igre. Ljudi. Mečevi. Dobre priče.
           </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent="center">
-            {categories.map((c) => (
-              <Chip
-                key={c.label}
-                icon={c.icon}
-                label={c.label}
-                size="small"
-                variant="outlined"
-                sx={{
-                  borderColor: c.color,
-                  color: isDark ? '#fff' : 'text.primary',
-                  '& .MuiChip-icon': { color: c.color },
-                }}
-              />
-            ))}
-          </Stack>
+          <CategoryChips compact isDark={isDark} />
         </Stack>
       </Box>
     );
@@ -165,23 +189,7 @@ export default function BrandHero() {
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          {categories.map((c) => (
-            <Chip
-              key={c.label}
-              icon={c.icon}
-              label={c.label}
-              variant="outlined"
-              sx={{
-                color: '#fff',
-                borderColor: 'rgba(255,255,255,0.35)',
-                bgcolor: 'rgba(5,10,24,0.35)',
-                backdropFilter: 'blur(6px)',
-                '& .MuiChip-icon': { color: c.color },
-              }}
-            />
-          ))}
-        </Stack>
+        <CategoryChips />
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ pt: 0.5 }}>
           <Button

@@ -15,14 +15,7 @@ import SendIcon from '@mui/icons-material/Send';
 import api from '../lib/api';
 import { socket } from '../lib/socket';
 import { MatchQuickMessage } from '../types';
-
-export const QUICK_MESSAGE_PRESETS = [
-  'Donosim loptu',
-  'Zakasniću 5 minuta',
-  'Koju boju majica?',
-  'Ja bela',
-  'Ja crvena',
-] as const;
+import QUICK_MESSAGE_PRESETS from '../constants/quickMessagePresets.json';
 
 const MAX_LENGTH = 200;
 

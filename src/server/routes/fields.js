@@ -1,6 +1,7 @@
 const express = require('express');
 const Field = require('../models/Field');
 const auth = require('../middleware/auth');
+const { sanitizeGameIds } = require('../constants/games');
 
 const router = express.Router();
 
@@ -24,10 +25,10 @@ router.post('/', auth(true), async (req, res) => {
     const { name, sports, sport, lat, lng, price, registrationDeadlineHours } = req.body;
     
     // Support both 'sports' (array) and 'sport' (single string) for backward compatibility
-    const sportsArray = sports || (sport ? [sport] : null);
+    const sportsArray = sanitizeGameIds(sports || (sport ? [sport] : []));
     
-    if (!name || !sportsArray || !Array.isArray(sportsArray) || sportsArray.length === 0 || typeof lat !== 'number' || typeof lng !== 'number') {
-      return res.status(400).json({ message: 'Invalid payload - name, sports (array), lat, lng are required' });
+    if (!name || sportsArray.length === 0 || typeof lat !== 'number' || typeof lng !== 'number') {
+      return res.status(400).json({ message: 'Naziv, barem jedna validna igra i lokacija su obavezni' });
     }
     
     const User = require('../models/User');

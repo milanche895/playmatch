@@ -41,13 +41,13 @@ export default function RoleSelectionModal({ open, onClose, onSelect, provider }
       value: 'player' as const,
       icon: <SportsIcon sx={{ fontSize: 28 }} />,
       title: 'Igrač',
-      description: 'Tražim terene i mečeve',
+      description: 'Tražim mečeve i mesta za igru',
     },
     {
       value: 'court' as const,
       icon: <LocationOnIcon sx={{ fontSize: 28 }} />,
-      title: 'Vlasnik terena',
-      description: 'Upravljam terenima i rezervacijama',
+      title: 'Teren',
+      description: 'Nudim teren ili prostor za sport, kviz, društvene igre ili gaming',
     },
   ];
 

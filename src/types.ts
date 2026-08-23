@@ -11,6 +11,8 @@ export type User = {
   _id: string; 
   name: string; 
   email: string; 
+  emailVerified?: boolean;
+  provider?: 'local' | 'google' | 'facebook' | 'instagram';
   avatarUrl?: string;
   ratingAvg?: number;
   ratingsCount?: number;

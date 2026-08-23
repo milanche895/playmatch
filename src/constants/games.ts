@@ -144,6 +144,28 @@ export function getCategoriesFromGameIds(gameIds: string[]): CategoryId[] {
   return Array.from(set);
 }
 
+/** Label for a venue name field, based on what the place offers. */
+export function getVenueNameLabel(gameIds: string[]): string {
+  const cats = getCategoriesFromGameIds(gameIds);
+  if (cats.length === 1) {
+    if (cats[0] === 'sport') return 'Naziv terena';
+    if (cats[0] === 'pub') return 'Naziv lokala';
+    return 'Naziv mesta';
+  }
+  return 'Naziv mesta';
+}
+
+export function getVenueNamePlaceholder(gameIds: string[]): string {
+  const cats = getCategoriesFromGameIds(gameIds);
+  if (cats.length === 1) {
+    if (cats[0] === 'sport') return 'npr. SC Tašmajdan';
+    if (cats[0] === 'pub') return 'npr. Pub Kod Mije';
+    if (cats[0] === 'tabletop') return 'npr. Board game klub';
+    if (cats[0] === 'esports') return 'npr. Gaming arena';
+  }
+  return 'npr. Ime tvog mesta';
+}
+
 /** Legacy / alternate IDs used in older matches & fields */
 const SPORT_ALIASES: Record<string, string[]> = {
   football: ['football', 'futsal', 'mali fudbal'],
@@ -184,6 +206,20 @@ export function getSportSelectOptions(filterIds?: string[]): { value: string; la
       : GAME_TYPE_LIST;
 
   return list.map((g) => ({ value: g.id, label: g.name }));
+}
+
+/** Sports listed on a field, including the legacy single `sport` field. */
+export function getFieldSports(field: { sports?: string[]; sport?: string | null }): string[] {
+  if (field.sports && field.sports.length > 0) return field.sports;
+  return field.sport ? [field.sport] : [];
+}
+
+/** True if the field offers at least one of the given game type ids. */
+export function fieldOffersAnyPreferred(
+  field: { sports?: string[]; sport?: string | null },
+  preferredGameIds: string[]
+): boolean {
+  return intersectFieldSportsWithPreferred(getFieldSports(field), preferredGameIds).length > 0;
 }
 
 /** Intersect field sports with user's preferred game ids (canonical) */

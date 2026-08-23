@@ -177,10 +177,19 @@ export default function NotificationSettings() {
 
   const isSubscribed = status?.subscribed ?? false;
 
+  const cardSx = {
+    borderRadius: 4,
+    border: '1px solid',
+    borderColor: 'divider',
+    px: { xs: 3, sm: 4 },
+    py: { xs: 2.5, sm: 4 },
+  };
+  const cardContentSx = { p: '0 !important' };
+
   return (
-    <Box sx={{ maxWidth: 600, mx: 'auto' }}>
+    <Box sx={{ maxWidth: 600, mr: 'auto', ml: 0 }}>
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
+      <Box sx={{ mb: 4, px: { xs: 0.5, sm: 0 } }}>
         <Button
           startIcon={<ArrowBackIcon />}
           onClick={() => navigate(-1)}
@@ -209,15 +218,15 @@ export default function NotificationSettings() {
       )}
 
       {/* Status Card */}
-      <Card elevation={0} sx={{ mb: 3, borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent sx={{ p: { xs: 2, sm: 4 } }}>
+      <Card elevation={0} sx={{ ...cardSx, mb: 3 }}>
+        <CardContent sx={cardContentSx}>
           <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
             <SettingsIcon sx={{ mr: 1, verticalAlign: 'middle', color: 'primary.main' }} />
             Trenutno Stanje
           </Typography>
           
           <Stack spacing={3}>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 3, bgcolor: 'action.hover' }}>
+            <Paper elevation={0} sx={{ px: 3, py: 2.5, borderRadius: 3, bgcolor: 'action.hover' }}>
               <Stack
                 direction={{ xs: 'column', sm: 'row' }}
                 justifyContent="space-between"
@@ -239,7 +248,7 @@ export default function NotificationSettings() {
               </Stack>
             </Paper>
 
-            <Paper elevation={0} sx={{ p: 3, borderRadius: 3, bgcolor: 'action.hover' }}>
+            <Paper elevation={0} sx={{ px: 3, py: 2.5, borderRadius: 3, bgcolor: 'action.hover' }}>
               <Stack
                 direction={{ xs: 'column', sm: 'row' }}
                 justifyContent="space-between"
@@ -263,8 +272,8 @@ export default function NotificationSettings() {
         </CardContent>
       </Card>
 
-      <Card elevation={0} sx={{ mb: 3, borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent sx={{ p: { xs: 2, sm: 4 } }}>
+      <Card elevation={0} sx={{ ...cardSx, mb: 3 }}>
+        <CardContent sx={cardContentSx}>
           <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>
             Radijus obaveštenja
           </Typography>
@@ -299,8 +308,8 @@ export default function NotificationSettings() {
       </Card>
 
       {/* Actions Card */}
-      <Card elevation={0} sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <CardContent sx={{ p: { xs: 2, sm: 4 } }}>
+      <Card elevation={0} sx={cardSx}>
+        <CardContent sx={cardContentSx}>
           <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
             Akcije
           </Typography>

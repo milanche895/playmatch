@@ -53,6 +53,7 @@ import CampaignIcon from '@mui/icons-material/Campaign';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import api from '../lib/api';
+import { parseIntegerInput, selectNumberField } from '../lib/numberInput';
 import { Match, MatchRatingStatus, NearbyPlayer } from '../types';
 import { socket } from '../lib/socket';
 import { useAuth } from '../context/AuthContext';
@@ -861,17 +862,17 @@ export default function MatchDetails() {
 
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }} alignItems={{ sm: 'center' }}>
                     <TextField
-                      type="number"
+                      type="text"
                       label="Cena po igraču (RSD)"
                       size="small"
                       value={priceDraft}
+                      onFocus={selectNumberField}
                       onChange={(e) => {
-                        const raw = e.target.value;
-                        if (raw === '') { setPriceDraft(''); return; }
-                        const n = Number(raw);
-                        if (!Number.isNaN(n) && n >= 0) setPriceDraft(n);
+                        const n = parseIntegerInput(e.target.value);
+                        if (n === null) return;
+                        if (n === '' || n >= 0) setPriceDraft(n);
                       }}
-                      inputProps={{ min: 0, step: 50 }}
+                      inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
                       sx={{ maxWidth: 220 }}
                     />
                     <Button

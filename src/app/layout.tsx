@@ -1,4 +1,3 @@
-import { Suspense } from 'react';
 import type { Metadata, Viewport } from 'next';
 import Providers from './providers';
 
@@ -43,9 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <Suspense fallback={null}>
-          <Providers>{children}</Providers>
-        </Suspense>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

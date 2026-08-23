@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from '@/lib/router';
 import {
   Stack,
@@ -15,14 +15,10 @@ import {
   Alert,
   Box,
   Paper,
-  Stepper,
-  Step,
-  StepLabel,
+  LinearProgress,
   Card,
   CardContent,
   Chip,
-  Switch,
-  FormControlLabel,
   Divider,
   CircularProgress,
   useMediaQuery,
@@ -38,9 +34,13 @@ import {
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import api from "../lib/api";
+import { parseIntegerInput, parseNumberInput, selectNumberField, toNumberOr } from "../lib/numberInput";
 import { Field, Match } from "../types";
 import { useAuth } from "../context/AuthContext";
+import { isEmailVerified } from "../lib/emailVerified";
+import EmailVerificationNeeded from "../components/EmailVerificationNeeded";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
+import ParkIcon from "@mui/icons-material/Park";
 import AddIcon from "@mui/icons-material/Add";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
@@ -48,7 +48,10 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import {
+  CATEGORY_META,
   GAME_TYPES,
+  fieldOffersAnyPreferred,
+  getFieldSports,
   getGameType,
   getGameTypeName,
   getSportSelectOptions,
@@ -114,7 +117,10 @@ function MapCenter({ position }: { position: [number, number] }) {
 type AvailableTimeSlot = { date: string; time: string; datetime: string; display: string };
 
 export default function CreateMatch() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const [verificationChecked, setVerificationChecked] = useState(false);
+  const userRef = useRef(user);
+  userRef.current = user;
   const navigate = useNavigate();
   const query = useQuery();
   const theme = useTheme();
@@ -156,7 +162,7 @@ export default function CreateMatch() {
 
   const [sport, setSport] = useState<string>("");
   const [selectedDateTime, setSelectedDateTime] = useState<string>("");
-  const [minPlayers, setMinPlayers] = useState<number>(2);
+  const [minPlayers, setMinPlayers] = useState<number | "">(2);
   const [maxPlayers, setMaxPlayers] = useState<number | "">("");
   const [pricePerPlayer, setPricePerPlayer] = useState<number | "">("");
   const [error, setError] = useState<string | null>(null);
@@ -169,21 +175,23 @@ export default function CreateMatch() {
   const [newFieldSport, setNewFieldSport] = useState("football");
   const [newFieldLat, setNewFieldLat] = useState("");
   const [newFieldLng, setNewFieldLng] = useState("");
-  const [newFieldPrice, setNewFieldPrice] = useState<number>(0);
+  const [newFieldPrice, setNewFieldPrice] = useState<number | "">("");
   const [dialogMapCenter, setDialogMapCenter] = useState<[number, number]>(BELGRADE);
   const [dialogMarkerPosition, setDialogMarkerPosition] = useState<[number, number] | null>(null);
 
   // Formal: field sports ∩ preferred
   const allowedFieldSports = useMemo(() => {
     if (!selectedField) return sportOptions.map((o) => o.value);
-    const fieldSports = selectedField.sports || (selectedField.sport ? [selectedField.sport] : []);
+    const fieldSports = getFieldSports(selectedField);
     if (fieldSports.length === 0) return sportOptions.map((o) => o.value);
     return intersectFieldSportsWithPreferred(fieldSports, preferredSports);
   }, [selectedField, preferredSports, sportOptions]);
 
-  const fieldsNearUser = useMemo(() => {
-    if (!userLocation) return fields;
-    return [...fields].sort((a, b) => {
+  const matchingFields = useMemo(() => {
+    const gameIds = sport ? [sport] : preferredSports;
+    const filtered = fields.filter((field) => fieldOffersAnyPreferred(field, gameIds));
+    if (!userLocation) return filtered;
+    return [...filtered].sort((a, b) => {
       if (a.lat == null || a.lng == null) return 1;
       if (b.lat == null || b.lng == null) return -1;
       return (
@@ -191,12 +199,16 @@ export default function CreateMatch() {
         getDistance(userLocation[0], userLocation[1], b.lat, b.lng)
       );
     });
-  }, [fields, userLocation]);
+  }, [fields, userLocation, sport, preferredSports]);
 
-  // 2 koraka: lokacija → termin + igrači
-  const steps = isInformal
-    ? ["Lokacija", "Termin i igrači"]
-    : ["Teren", "Termin i igrači"];
+  const steps = ["Igra", "Mesto", "Termin i igrači"];
+  const stepSubtitles = [
+    "Izaberi igru za ovaj meč — samo ono što imaš na profilu",
+    isInformal
+      ? "Označi gde igrate, bez rezervacije terena"
+      : `Samo mesta koja nude ${sport ? getGameTypeName(sport) : "tvoju igru"}`,
+    "Odaberi termin i broj igrača",
+  ];
 
   function applyGameTypeDefaults(gameId: string) {
     const game = getGameType(gameId);
@@ -275,14 +287,81 @@ export default function CreateMatch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Default sport from preferred list
+  useEffect(() => {
+    let cancelled = false;
+
+    async function syncVerification() {
+      if (!isEmailVerified(userRef.current)) {
+        await refreshUser();
+      }
+      if (!cancelled) setVerificationChecked(true);
+    }
+
+    syncVerification();
+
+    function onVisible() {
+      if (document.visibilityState === 'hidden') return;
+      if (!isEmailVerified(userRef.current)) {
+        void refreshUser();
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [refreshUser, user?._id]);
+
+  // Default sport from preferred list (keep a preselected field's matching game)
   useEffect(() => {
     if (preferredSports.length === 0) return;
-    if (!sport || !preferredSports.includes(sport)) {
-      handleSportChange(preferredSports[0]);
+    if (sport && preferredSports.includes(sport)) return;
+    const preselected = fields.find((f) => f._id === fieldId);
+    if (preselected) {
+      const allowed = intersectFieldSportsWithPreferred(getFieldSports(preselected), preferredSports);
+      if (allowed.length > 0) {
+        handleSportChange(allowed[0]);
+        return;
+      }
     }
+    handleSportChange(preferredSports[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferredSports.join(",")]);
+
+  // Drop a selected field if it no longer matches the chosen game
+  useEffect(() => {
+    if (!fieldId || isInformal || !sport) return;
+    const field = fields.find((f) => f._id === fieldId) || selectedField;
+    if (!field) return;
+    if (!fieldOffersAnyPreferred(field, [sport])) {
+      setFieldId("");
+      setSelectedField(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sport]);
+
+  const queryFieldHandled = useRef(false);
+  useEffect(() => {
+    if (queryFieldHandled.current) return;
+    const qFieldId = query.get("fieldId");
+    if (!qFieldId || !sport || preferredSports.length === 0 || fields.length === 0) return;
+    const field = fields.find((f) => f._id === qFieldId);
+    if (!field) {
+      queryFieldHandled.current = true;
+      return;
+    }
+    if (!fieldOffersAnyPreferred(field, preferredSports)) {
+      queryFieldHandled.current = true;
+      setFieldId("");
+      setError("Ovaj teren ne podržava igre koje si odabrao na profilu. Izaberi drugo mesto.");
+      return;
+    }
+    if (!fieldOffersAnyPreferred(field, [sport])) return;
+    queryFieldHandled.current = true;
+    setFieldId(qFieldId);
+    setActiveStep(query.get("dateTime") ? 2 : 1);
+  }, [fields, sport, preferredSports, query]);
 
   useEffect(() => {
     if (newFieldSport && !GAME_TYPES[newFieldSport] && preferredSports[0]) {
@@ -359,7 +438,7 @@ export default function CreateMatch() {
       const fieldRes = await api.get<Field>(`/api/fields/${fieldId}`);
       const field = fieldRes.data;
       setSelectedField(field);
-      const fieldSports = field.sports || (field.sport ? [field.sport] : []);
+      const fieldSports = getFieldSports(field);
       const allowed = intersectFieldSportsWithPreferred(fieldSports, preferredSports);
       if (allowed.length > 0) {
         if (!allowed.includes(sport)) {
@@ -461,13 +540,14 @@ export default function CreateMatch() {
   // ── Mode toggle ──
   function handleModeToggle(informal: boolean) {
     setIsInformal(informal);
-    setActiveStep(0);
     setError(null);
     setSelectedDateTime("");
     setSelectedDate("");
     setInformalRegistrationDeadlineHours(1);
     setPresetApplied(false);
     if (informal) {
+      setFieldId("");
+      setSelectedField(null);
       if (userLocation) applyLocationToInformal(userLocation);
       else resolveUserLocation();
     }
@@ -495,12 +575,12 @@ export default function CreateMatch() {
       else resolveUserLocation();
       setInformalRegistrationDeadlineHours(lastPreset.informalRegistrationDeadlineHours || 1);
       setFieldId("");
-      setActiveStep(1);
+      setActiveStep(2);
     } else if (lastPreset.fieldId) {
       setFieldId(lastPreset.fieldId);
-      setActiveStep(1);
+      setActiveStep(2);
     } else {
-      setActiveStep(0);
+      setActiveStep(1);
     }
   }
 
@@ -513,7 +593,7 @@ export default function CreateMatch() {
       informalLocationName: isInformal ? informalLocationName.trim() : undefined,
       informalLat: isInformal ? informalMarkerPosition?.[0] : undefined,
       informalLng: isInformal ? informalMarkerPosition?.[1] : undefined,
-      minPlayers,
+      minPlayers: toNumberOr(minPlayers, 2),
       maxPlayers,
       pricePerPlayer,
       informalRegistrationDeadlineHours: isInformal ? informalRegistrationDeadlineHours : undefined,
@@ -532,19 +612,19 @@ export default function CreateMatch() {
         setError("Odaberi igru / sport za meč");
         return;
       }
+    }
+    if (activeStep === 1) {
       if (isInformal) {
         if (!informalLocationName.trim() || !informalMarkerPosition) {
           setError("Molimo unesite naziv lokacije i označite tačku na mapi");
           return;
         }
-      } else {
-        if (!fieldId) {
-          setError("Molimo odaberite teren");
-          return;
-        }
+      } else if (!fieldId) {
+        setError("Molimo odaberite mesto");
+        return;
       }
     }
-    if (activeStep === 1) {
+    if (activeStep === 2) {
       if (!isInformal && allowedFieldSports.length === 0) {
         setError("Ovaj teren ne podržava tvoje omiljene igre");
         return;
@@ -588,7 +668,7 @@ export default function CreateMatch() {
       let payload: Record<string, unknown> = {
         sport,
         dateTime: dateTimeToSend,
-        minPlayers,
+        minPlayers: toNumberOr(minPlayers, 1),
         maxPlayers: maxPlayers === "" ? undefined : maxPlayers,
       };
 
@@ -618,6 +698,8 @@ export default function CreateMatch() {
       if (err.response?.status === 401) {
         setError("Niste autentifikovani. Molimo ulogujte se ponovo.");
         setTimeout(() => navigate("/login"), 2000);
+      } else if (err.response?.data?.code === "EMAIL_NOT_VERIFIED") {
+        setError(err.response.data.message || "Potvrdi email da bi kreirao meč.");
       } else {
         setError(err.response?.data?.message || "Neuspešno kreiranje meča");
       }
@@ -629,11 +711,12 @@ export default function CreateMatch() {
     setOpenAddField(false);
     setError(null);
     setNewFieldName(""); setNewFieldLat(""); setNewFieldLng("");
-    setNewFieldPrice(0); setDialogMarkerPosition(null);
+    setNewFieldPrice(""); setDialogMarkerPosition(null);
     setDialogMapCenter(userLocation || BELGRADE);
   }
 
   function handleOpenAddField() {
+    setNewFieldSport(sport || preferredSports[0] || "football");
     if (userLocation) applyLocationToDialog(userLocation);
     else getUserLocationForDialog();
     setOpenAddField(true);
@@ -650,10 +733,11 @@ export default function CreateMatch() {
         sport: newFieldSport,
         lat: parseFloat(newFieldLat),
         lng: parseFloat(newFieldLng),
-        price: newFieldPrice,
+        price: toNumberOr(newFieldPrice, 0),
         registrationDeadlineHours: 0,
       });
       setFields([...fields, res.data]);
+      handleSportChange(newFieldSport);
       setFieldId(res.data._id);
       handleDialogClose();
     } catch {
@@ -681,13 +765,105 @@ export default function CreateMatch() {
   const renderStepContent = (step: number) => {
     switch (step) {
       case 0:
-        return isInformal ? renderStep0Informal() : renderStep0Formal();
+        return renderStepGame();
       case 1:
+        return renderStepPlace();
+      case 2:
         return renderStep1Combined();
       default:
         return null;
     }
   };
+
+  function renderStepGame() {
+    return (
+      <Stack spacing={2}>
+        {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+        {preferredSports.map((id) => {
+          const game = getGameType(id);
+          const selected = sport === id;
+          return (
+            <Paper
+              key={id}
+              elevation={0}
+              onClick={() => {
+                handleSportChange(id);
+                setError(null);
+                setActiveStep(1);
+              }}
+              sx={{
+                p: 2.5,
+                borderRadius: 3,
+                border: "2px solid",
+                borderColor: selected ? "primary.main" : "divider",
+                bgcolor: selected ? "primary.main" : "background.paper",
+                color: selected ? "primary.contrastText" : "text.primary",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                "&:hover": { borderColor: "primary.main", transform: "translateY(-2px)" },
+              }}
+            >
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle1" fontWeight={700}>
+                    {game?.name || getGameTypeName(id)}
+                  </Typography>
+                  {game && (
+                    <Typography
+                      variant="body2"
+                      sx={{ color: selected ? "rgba(255,255,255,0.8)" : "text.secondary" }}
+                    >
+                      {CATEGORY_META[game.category].label}
+                    </Typography>
+                  )}
+                </Box>
+                {selected && <CheckCircleIcon sx={{ color: "white" }} />}
+              </Stack>
+            </Paper>
+          );
+        })}
+      </Stack>
+    );
+  }
+
+  function renderVenueTypeCards() {
+    return (
+      <Stack spacing={1.5}>
+        <ChoiceCard
+          icon={<LocationOnIcon />}
+          title="Postojeće mesto"
+          description="Rezerviši teren, lokal ili klub koji već postoji"
+          selected={!isInformal}
+          onClick={() => handleModeToggle(false)}
+        />
+        <ChoiceCard
+          icon={<ParkIcon />}
+          title="Sopstvena lokacija"
+          description="Park, dvorište… bez rezervacije i odobrenja"
+          selected={isInformal}
+          onClick={() => handleModeToggle(true)}
+        />
+      </Stack>
+    );
+  }
+
+  function renderStepPlace() {
+    return (
+      <Stack spacing={3}>
+        {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+        {sport && (
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Chip label={getGameTypeName(sport)} color="primary" sx={{ fontWeight: 700 }} />
+            <Button size="small" onClick={() => { setActiveStep(0); setError(null); }}>
+              Promeni
+            </Button>
+          </Stack>
+        )}
+        {renderVenueTypeCards()}
+        {isInformal ? renderInformalLocation() : renderFormalFields()}
+      </Stack>
+    );
+  }
 
   function renderPlayersAndPriceFields() {
     return (
@@ -695,39 +871,46 @@ export default function CreateMatch() {
         <Divider sx={{ my: 1 }} />
         <Typography variant="subtitle2" fontWeight={600}>Broj igrača</Typography>
         <TextField
-          type="number" label="Minimalni broj igrača" value={minPlayers}
-          inputProps={{ min: 1 }} required fullWidth
+          type="text" label="Minimalni broj igrača" value={minPlayers}
+          inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }} required fullWidth
+          onFocus={selectNumberField}
           onChange={(e) => {
-            const raw = e.target.value;
-            if (raw === "") { setMinPlayers(1); return; }
-            const value = Number(raw);
+            const value = parseIntegerInput(e.target.value);
+            if (value === null) return;
+            if (value === "") { setMinPlayers(""); return; }
             if (value >= 1) {
               setMinPlayers(value);
               if (typeof maxPlayers === "number" && maxPlayers < value) setMaxPlayers("");
             }
           }}
+          onBlur={() => {
+            if (minPlayers === "" || minPlayers < 1) setMinPlayers(1);
+          }}
         />
         <TextField
-          type="number" label="Maksimalni broj igrača (opciono)" value={maxPlayers}
-          inputProps={{ min: minPlayers }} fullWidth
+          type="text" label="Maksimalni broj igrača (opciono)" value={maxPlayers}
+          inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }} fullWidth
+          onFocus={selectNumberField}
           onChange={(e) => {
-            const value = e.target.value === "" ? "" : parseInt(e.target.value);
-            if (value === "" || (!isNaN(value as number) && (value as number) >= minPlayers)) setMaxPlayers(value);
+            const value = parseIntegerInput(e.target.value);
+            if (value === null) return;
+            const min = typeof minPlayers === "number" ? minPlayers : 1;
+            if (value === "" || value >= min) setMaxPlayers(value);
           }}
           helperText={maxPlayers === "" ? "Ostavite prazno ako nema maksimuma" : `Maksimum: ${maxPlayers} igrača`}
         />
         <Typography variant="subtitle2" fontWeight={600}>Podela troškova (opciono)</Typography>
         <TextField
-          type="number"
+          type="text"
           label="Cena po igraču (RSD)"
           value={pricePerPlayer}
-          inputProps={{ min: 0, step: 50 }}
+          inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
           fullWidth
+          onFocus={selectNumberField}
           onChange={(e) => {
-            const raw = e.target.value;
-            if (raw === "") { setPricePerPlayer(""); return; }
-            const value = Number(raw);
-            if (!Number.isNaN(value) && value >= 0) setPricePerPlayer(value);
+            const value = parseIntegerInput(e.target.value);
+            if (value === null) return;
+            if (value === "" || value >= 0) setPricePerPlayer(value);
           }}
           helperText="Npr. 400 — prikazuje se u detaljima meča"
           placeholder="npr. 400"
@@ -749,30 +932,9 @@ export default function CreateMatch() {
     );
   }
 
-  function renderStep0Informal() {
+  function renderInformalLocation() {
     return (
       <Stack spacing={3}>
-        {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-
-        <TextField
-          select
-          label="Igra / sport"
-          value={sport}
-          onChange={(e) => handleSportChange(e.target.value)}
-          fullWidth
-          required
-          disabled={sportOptions.length === 0}
-          helperText={
-            sportOptions.length === 0
-              ? "Nemaš odabrane igre na profilu"
-              : "Samo igre koje si odabrao na profilu"
-          }
-        >
-          {sportOptions.map((s) => (
-            <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
-          ))}
-        </TextField>
-
         <TextField
           label="Naziv lokacije"
           placeholder="npr. Dvorište kod škole, Park Tašmajdan, Moj teren..."
@@ -843,10 +1005,9 @@ export default function CreateMatch() {
     );
   }
 
-  function renderStep0Formal() {
+  function renderFormalFields() {
     return (
       <Stack spacing={3}>
-        {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
         <Box>
           <Stack
             direction={{ xs: "column", sm: "row" }}
@@ -856,8 +1017,10 @@ export default function CreateMatch() {
             sx={{ mb: 2 }}
           >
             <Box>
-              <Typography variant="subtitle2" fontWeight={600}>Izaberite teren</Typography>
-              {userLocation && (
+              <Typography variant="subtitle2" fontWeight={600}>
+                Mesta za {sport ? getGameTypeName(sport) : "tvoje igre"}
+              </Typography>
+              {userLocation && matchingFields.length > 0 && (
                 <Typography variant="caption" color="text.secondary">
                   Sortirano po udaljenosti od tvoje lokacije
                 </Typography>
@@ -870,15 +1033,20 @@ export default function CreateMatch() {
               variant="outlined"
               sx={{ borderRadius: 2, alignSelf: { xs: "stretch", sm: "auto" } }}
             >
-              Dodaj teren
+              Dodaj mesto
             </Button>
           </Stack>
           {locationError && (
             <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>{locationError}</Alert>
           )}
+          {matchingFields.length === 0 ? (
+            <Alert severity="info" sx={{ borderRadius: 2 }}>
+              Nema mesta za {sport ? getGameTypeName(sport) : "tvoje igre"}. Dodaj mesto ili izaberi sopstvenu lokaciju.
+            </Alert>
+          ) : (
           <Paper elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 3, p: 1, maxHeight: 400, overflow: "auto" }}>
             <Stack spacing={1}>
-              {fieldsNearUser.map((field) => {
+              {matchingFields.map((field) => {
                 const distanceKm =
                   userLocation && field.lat != null && field.lng != null
                     ? getDistance(userLocation[0], userLocation[1], field.lat, field.lng)
@@ -907,8 +1075,17 @@ export default function CreateMatch() {
                       <Box sx={{ flex: 1 }}>
                         <Typography variant="subtitle1" fontWeight={600}>{field.name}</Typography>
                         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
-                          {(field.sports || [field.sport]).filter(Boolean).map((s) => (
-                            <Chip key={s} label={getGameTypeName(s!)} size="small" sx={{ bgcolor: fieldId === field._id ? "rgba(255,255,255,0.2)" : "action.hover", color: "inherit", fontWeight: 500 }} />
+                          {getFieldSports(field).map((s) => (
+                            <Chip
+                              key={s}
+                              label={getGameTypeName(s)}
+                              size="small"
+                              sx={{
+                                bgcolor: fieldId === field._id ? "rgba(255,255,255,0.2)" : "action.hover",
+                                color: "inherit",
+                                fontWeight: sport === (resolveToCanonicalGameId(s) || s) ? 700 : 500,
+                              }}
+                            />
                           ))}
                           {distanceKm != null && (
                             <Typography variant="body2" sx={{ opacity: 0.85, fontWeight: 600 }}>
@@ -928,6 +1105,7 @@ export default function CreateMatch() {
               })}
             </Stack>
           </Paper>
+          )}
         </Box>
       </Stack>
     );
@@ -1132,15 +1310,32 @@ export default function CreateMatch() {
 
   return (
     <Box sx={{ maxWidth: 600, mx: "auto" }}>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} sx={{ mb: 2, color: "text.secondary" }}>
+      <Box sx={{ mb: 3 }}>
+        <Button
+          startIcon={<ArrowBackIcon />}
+          onClick={() => (activeStep > 0 ? handleBack() : navigate(-1))}
+          sx={{ mb: 2, color: "text.secondary" }}
+        >
           Nazad
         </Button>
-        <Typography variant="h4" fontWeight={700}>Kreiraj meč</Typography>
-        <Typography variant="body1" color="text.secondary">Pronađite igrače i organizujte meč</Typography>
+        <Typography variant="h4" fontWeight={800} sx={{ mb: 1 }}>
+          Kreiraj meč
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          {preferredSports.length === 0
+            ? "Pronađi igrače i organizuj meč"
+            : stepSubtitles[activeStep]}
+        </Typography>
       </Box>
 
+      {!verificationChecked ? (
+        <Box display="flex" justifyContent="center" py={6}>
+          <CircularProgress />
+        </Box>
+      ) : !isEmailVerified(user) ? (
+        <EmailVerificationNeeded email={user?.email} />
+      ) : (
+      <>
       {preferredSports.length === 0 && (
         <Alert
           severity="warning"
@@ -1155,32 +1350,8 @@ export default function CreateMatch() {
         </Alert>
       )}
 
-      {/* Informal mode toggle */}
-      <Paper elevation={0} sx={{ p: 2, mb: 3, borderRadius: 3, border: "1px solid", borderColor: isInformal ? "warning.main" : "divider", bgcolor: isInformal ? "warning.light" : "background.paper" }}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={isInformal}
-              onChange={(e) => handleModeToggle(e.target.checked)}
-              color="warning"
-            />
-          }
-          label={
-            <Stack>
-              <Typography variant="subtitle2" fontWeight={600}>
-                Igraj na sopstvenom terenu
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {isInformal
-                  ? "Slobodan meč — bez rezervacije terena, bez odobrenja"
-                  : "Uključi za meč na privatnoj lokaciji (dvorište, park, itd.)"}
-              </Typography>
-            </Stack>
-          }
-        />
-      </Paper>
-
-      {/* Clone last match preset */}
+      {preferredSports.length > 0 && (
+      <>
       {lastPreset && !presetApplied && (
         <Paper
           elevation={0}
@@ -1227,17 +1398,17 @@ export default function CreateMatch() {
         </Alert>
       )}
 
-      {/* Stepper */}
-      <Stepper
-        activeStep={activeStep}
-        alternativeLabel={!isMobile}
-        orientation={isMobile ? "vertical" : "horizontal"}
-        sx={{ mb: 4 }}
-      >
-        {steps.map((label) => (
-          <Step key={label}><StepLabel>{label}</StepLabel></Step>
-        ))}
-      </Stepper>
+      {/* Progress */}
+      <Box sx={{ mb: 3 }}>
+        <LinearProgress
+          variant="determinate"
+          value={((activeStep + 1) / steps.length) * 100}
+          sx={{ height: 6, borderRadius: 3, mb: 1 }}
+        />
+        <Typography variant="caption" color="text.secondary">
+          Korak {activeStep + 1} / {steps.length} · {steps[activeStep]}
+        </Typography>
+      </Box>
 
       {/* Step Content */}
       <Box sx={{ mb: 4 }}>{renderStepContent(activeStep)}</Box>
@@ -1266,6 +1437,8 @@ export default function CreateMatch() {
           {activeStep === steps.length - 1 ? "Kreiraj meč" : "Dalje"}
         </Button>
       </Stack>
+      </>
+      )}
 
       {/* Add Field Dialog */}
       <Dialog
@@ -1277,18 +1450,30 @@ export default function CreateMatch() {
         PaperProps={{ sx: { borderRadius: isMobile ? 0 : 4, p: 1 } }}
       >
         <DialogTitle>
-          <Typography variant="h5" fontWeight={700}>Dodaj novi teren</Typography>
+          <Typography variant="h5" fontWeight={700}>Dodaj novo mesto</Typography>
         </DialogTitle>
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 1 }}>
             {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-            <TextField label="Naziv terena" value={newFieldName} onChange={(e) => setNewFieldName(e.target.value)} required fullWidth />
+            <TextField label="Naziv mesta" value={newFieldName} onChange={(e) => setNewFieldName(e.target.value)} required fullWidth />
             <TextField select label="Igra / sport" value={newFieldSport} onChange={(e) => setNewFieldSport(e.target.value)} required fullWidth>
-              {getSportSelectOptions().map((s) => <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>)}
+              {getSportSelectOptions(preferredSports.length ? preferredSports : undefined).map((s) => <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>)}
             </TextField>
-            <TextField type="number" label="Cena (EUR) - opciono" value={newFieldPrice} onChange={(e) => setNewFieldPrice(parseFloat(e.target.value) || 0)} fullWidth inputProps={{ min: 0 }} />
+            <TextField
+              type="text"
+              label="Cena (EUR) - opciono"
+              value={newFieldPrice}
+              onFocus={selectNumberField}
+              onChange={(e) => {
+                const value = parseNumberInput(e.target.value);
+                if (value === null) return;
+                if (value === "" || value >= 0) setNewFieldPrice(value);
+              }}
+              fullWidth
+              inputProps={{ inputMode: "decimal" }}
+            />
             <Box>
-              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>Lokacija terena</Typography>
+              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>Lokacija mesta</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 Podrazumevano se koristi tvoja lokacija. Možeš pomeriti tačku klikom na mapu.
               </Typography>
@@ -1312,9 +1497,74 @@ export default function CreateMatch() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={handleDialogClose} variant="outlined" sx={{ borderRadius: 3, px: 3, width: { xs: "100%", sm: "auto" } }}>Otkaži</Button>
-          <Button onClick={handleAddField} variant="contained" disabled={!newFieldLat || !newFieldLng || !newFieldName} sx={{ borderRadius: 3, px: 3, width: { xs: "100%", sm: "auto" } }}>Dodaj teren</Button>
+          <Button onClick={handleAddField} variant="contained" disabled={!newFieldLat || !newFieldLng || !newFieldName} sx={{ borderRadius: 3, px: 3, width: { xs: "100%", sm: "auto" } }}>Dodaj mesto</Button>
         </DialogActions>
       </Dialog>
+      </>
+      )}
     </Box>
+  );
+}
+
+function ChoiceCard({
+  icon,
+  title,
+  description,
+  selected,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Paper
+      onClick={onClick}
+      elevation={0}
+      sx={{
+        p: 2.5,
+        borderRadius: 3,
+        border: "2px solid",
+        borderColor: selected ? "primary.main" : "divider",
+        bgcolor: selected ? "primary.main" : "background.paper",
+        color: selected ? "primary.contrastText" : "text.primary",
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+        "&:hover": {
+          borderColor: "primary.main",
+          transform: "translateY(-2px)",
+        },
+      }}
+    >
+      <Stack direction="row" spacing={2} alignItems="center">
+        <Box
+          sx={{
+            width: 48,
+            height: 48,
+            borderRadius: 2,
+            bgcolor: selected ? "rgba(255,255,255,0.2)" : "action.hover",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {icon}
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle1" fontWeight={700}>
+            {title}
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{ color: selected ? "rgba(255,255,255,0.8)" : "text.secondary" }}
+          >
+            {description}
+          </Typography>
+        </Box>
+        {selected && <CheckCircleIcon sx={{ color: "white" }} />}
+      </Stack>
+    </Paper>
   );
 }

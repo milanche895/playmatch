@@ -23,7 +23,7 @@ import {
 import MenuIcon from "@mui/icons-material/Menu";
 import HomeIcon from "@mui/icons-material/Home";
 import AddCircleIcon from "@mui/icons-material/AddCircle";
-import SportsIcon from "@mui/icons-material/Sports";
+import LocationOnIcon from "@mui/icons-material/LocationOn";
 import PersonIcon from "@mui/icons-material/Person";
 import PeopleIcon from "@mui/icons-material/People";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -72,10 +72,10 @@ export default function Navbar() {
       icon: <HomeIcon fontSize="small" />
     },
     {
-      label: user?.role === "court" ? "Moji Tereni" : "Kreiraj Meč",
+      label: user?.role === "court" ? "Moja mesta" : "Kreiraj Meč",
       path: user?.role === "court" ? "/manage-fields" : "/create",
       show: !!user,
-      icon: user?.role === "court" ? <SportsIcon fontSize="small" /> : <AddCircleIcon fontSize="small" />
+      icon: user?.role === "court" ? <LocationOnIcon fontSize="small" /> : <AddCircleIcon fontSize="small" />
     },
     {
       label: "Moji Termini",
@@ -160,7 +160,7 @@ export default function Navbar() {
                 {user.name}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {user.role === 'court' ? 'Vlasnik terena' : 'Igrač'}
+                {user.role === 'court' ? 'Teren' : 'Igrač'}
               </Typography>
             </Box>
           </Stack>

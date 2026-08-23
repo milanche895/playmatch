@@ -5,6 +5,7 @@ const User = require('../models/User');
 const auth = require('../middleware/auth');
 const { rewardReliabilityForCompletedMatch } = require('../utils/reliability');
 const { awardMatchCompletionXp } = require('../utils/gamification');
+const { sanitizeGameIds } = require('../constants/games');
 
 const router = express.Router();
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
@@ -13,7 +14,7 @@ const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
 async function requireCourt(req, res, next) {
   const user = await User.findById(req.user.id);
   if (!user || user.role !== 'court') {
-    return res.status(403).json({ message: 'Samo tereni mogu pristupiti ovom endpoint-u' });
+    return res.status(403).json({ message: 'Samo vlasnici prostora mogu pristupiti ovom endpoint-u' });
   }
   req.court = user;
   next();
@@ -601,10 +602,12 @@ router.put('/fields/:fieldId', auth(true), requireCourt, async (req, res) => {
     if (name !== undefined) field.name = name;
     
     // Support both 'sports' (array) and 'sport' (single string) for backward compatibility
-    if (sports !== undefined && Array.isArray(sports) && sports.length > 0) {
-      field.sports = sports;
-    } else if (sport !== undefined) {
-      field.sports = [sport]; // Convert single sport to array
+    if (sports !== undefined || sport !== undefined) {
+      const nextSports = sanitizeGameIds(sports || (sport ? [sport] : []));
+      if (nextSports.length === 0) {
+        return res.status(400).json({ message: 'Izaberite barem jednu validnu igru' });
+      }
+      field.sports = nextSports;
     }
     
     if (typeof lat === 'number') field.lat = lat;

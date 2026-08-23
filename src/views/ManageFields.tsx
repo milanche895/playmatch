@@ -14,7 +14,6 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  MenuItem,
   Chip,
   Collapse,
   IconButton,
@@ -42,9 +41,17 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useNavigate } from '@/lib/router';
 import api from '../lib/api';
+import { parseIntegerInput, parseNumberInput, selectNumberField, toNumberOr } from '../lib/numberInput';
 import { Field, Match } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { GAME_TYPE_LIST, getGameTypeName } from '../constants/games';
+import PreferredGamesPicker from '../components/PreferredGamesPicker';
+import {
+  CATEGORY_META,
+  getCategoriesFromGameIds,
+  getGameTypeName,
+  getVenueNameLabel,
+  getVenueNamePlaceholder,
+} from '../constants/games';
 
 // Fix Leaflet icon issue
 // @ts-ignore
@@ -108,14 +115,11 @@ export default function ManageFields() {
   const [workingHours, setWorkingHours] = useState<Record<string, { start: string; end: string; closed: boolean }>>({});
   
   const [name, setName] = useState('');
-  const [sports, setSports] = useState<string[]>(['football']);
+  const [sports, setSports] = useState<string[]>([]);
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
-  const [price, setPrice] = useState<number>(0);
-  const [registrationDeadlineHours, setRegistrationDeadlineHours] = useState<number>(0);
-
-  // Available game types (same list as rest of the app)
-  const availableSports = GAME_TYPE_LIST.map((g) => ({ id: g.id, label: g.name }));
+  const [price, setPrice] = useState<number | ''>(0);
+  const [registrationDeadlineHours, setRegistrationDeadlineHours] = useState<number | ''>(0);
   const [mapCenter, setMapCenter] = useState<[number, number]>([44.7866, 20.4489]);
   const [markerPosition, setMarkerPosition] = useState<[number, number] | null>(null);
 
@@ -131,7 +135,7 @@ export default function ManageFields() {
       const res = await api.get<Field[]>('/api/courts/fields');
       setFields(res.data);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Neuspešno učitavanje terena');
+      setError(err.response?.data?.message || 'Neuspešno učitavanje mesta');
     } finally {
       setLoading(false);
     }
@@ -231,7 +235,7 @@ export default function ManageFields() {
   function openAddDialog() {
     setEditingField(null);
     setName('');
-    setSports(['football']);
+    setSports(user?.preferredSports?.length ? [...user.preferredSports] : []);
     setLat('');
     setLng('');
     setPrice(0);
@@ -246,7 +250,7 @@ export default function ManageFields() {
     setEditingField(field);
     setName(field.name);
     // Use sports array if available, otherwise fall back to single sport
-    setSports(field.sports || (field.sport ? [field.sport] : ['football']));
+    setSports(field.sports || (field.sport ? [field.sport] : []));
     setLat(field.lat.toString());
     setLng(field.lng.toString());
     setPrice(field.price || 0);
@@ -254,16 +258,6 @@ export default function ManageFields() {
     setMarkerPosition([field.lat, field.lng]);
     setError(null);
     setOpenDialog(true);
-  }
-
-  function handleSportToggle(sportId: string) {
-    setSports(prev => {
-      if (prev.includes(sportId)) {
-        return prev.filter(s => s !== sportId);
-      } else {
-        return [...prev, sportId];
-      }
-    });
   }
 
   function handleOpenWorkingHoursDialog(field: Field) {
@@ -297,8 +291,18 @@ export default function ManageFields() {
     if (!editingWorkingHoursField) return;
     try {
       setError(null);
+      const normalizedHours = Object.fromEntries(
+        Object.entries(workingHours).map(([day, hours]) => [
+          day,
+          {
+            ...hours,
+            start: hours.start === '' ? '0' : hours.start,
+            end: hours.end === '' ? '0' : hours.end,
+          },
+        ])
+      );
       await api.put(`/api/courts/fields/${editingWorkingHoursField._id}/working-hours`, {
-        workingHours
+        workingHours: normalizedHours
       });
       await loadFields();
       closeWorkingHoursDialog();
@@ -316,24 +320,20 @@ export default function ManageFields() {
 
   async function handleSubmit() {
     if (!name || sports.length === 0 || !lat || !lng) {
-      setError('Molimo popunite sva polja, odaberite barem jedan sport i izaberite lokaciju na mapi');
+      setError('Popunite naziv, izaberite barem jednu igru i označite lokaciju na mapi');
       return;
     }
 
     try {
       setError(null);
       if (editingField) {
-        const deadlineHours = typeof registrationDeadlineHours === 'number' && !isNaN(registrationDeadlineHours) 
-          ? registrationDeadlineHours 
-          : parseInt(String(registrationDeadlineHours ?? 0));
-        
         await api.put(`/api/courts/fields/${editingField._id}`, {
           name,
           sports,
           lat: parseFloat(lat),
           lng: parseFloat(lng),
-          price: typeof price === 'number' ? price : parseFloat(String(price || 0)),
-          registrationDeadlineHours: deadlineHours
+          price: toNumberOr(price, 0),
+          registrationDeadlineHours: toNumberOr(registrationDeadlineHours, 0)
         });
         await loadFields();
       } else {
@@ -342,19 +342,19 @@ export default function ManageFields() {
           sports,
           lat: parseFloat(lat),
           lng: parseFloat(lng),
-          price,
-          registrationDeadlineHours
+          price: toNumberOr(price, 0),
+          registrationDeadlineHours: toNumberOr(registrationDeadlineHours, 0)
         });
         await loadFields();
       }
       closeDialog();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Neuspešno čuvanje terena');
+      setError(err.response?.data?.message || 'Neuspešno čuvanje mesta');
     }
   }
 
   if (user?.role !== 'court') {
-    return <Alert severity="error" sx={{ borderRadius: 2 }}>Samo tereni mogu pristupiti ovoj stranici</Alert>;
+    return <Alert severity="error" sx={{ borderRadius: 2 }}>Samo vlasnici prostora mogu pristupiti ovoj stranici</Alert>;
   }
 
   return (
@@ -375,7 +375,7 @@ export default function ManageFields() {
           spacing={2}
         >
           <Typography variant="h4" fontWeight={700}>
-            Moji Tereni
+            Moja mesta
           </Typography>
           <Button
             variant="contained"
@@ -383,7 +383,7 @@ export default function ManageFields() {
             onClick={openAddDialog}
             sx={{ borderRadius: 3, width: { xs: '100%', sm: 'auto' } }}
           >
-            Dodaj Teren
+            Dodaj mesto
           </Button>
         </Stack>
       </Box>
@@ -395,9 +395,17 @@ export default function ManageFields() {
           <CircularProgress />
         </Box>
       ) : fields.length === 0 ? (
-        <Alert severity="info" sx={{ borderRadius: 2 }}>
-          Još nemate terene. Kliknite "Dodaj Teren" da kreirate jedan.
-        </Alert>
+        <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
+          <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
+            Dodaj prvo mesto
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Teren, lokal, board game klub ili gaming arena — igrači će ovde moći da rezervišu termine.
+          </Typography>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openAddDialog} sx={{ borderRadius: 3 }}>
+            Dodaj mesto
+          </Button>
+        </Paper>
       ) : (
         <Stack spacing={3}>
           {fields.map((field) => {
@@ -431,6 +439,9 @@ export default function ManageFields() {
                             {field.name}
                           </Typography>
                           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
+                            {getCategoriesFromGameIds((field.sports || [field.sport]).filter(Boolean) as string[]).map((cat) => (
+                              <Chip key={cat} label={CATEGORY_META[cat].label} size="small" variant="outlined" />
+                            ))}
                             {(field.sports || [field.sport]).filter(Boolean).map((s) => (
                               <Chip key={s} label={getGameTypeName(s!)} size="small" color="primary" />
                             ))}
@@ -546,7 +557,7 @@ export default function ManageFields() {
                           
                           {fieldAppointments.pending.length === 0 && fieldAppointments.reserved.length === 0 && (
                             <Grid item xs={12}>
-                              <Alert severity="info" sx={{ borderRadius: 2 }}>Nema aktivnih termina za ovaj teren</Alert>
+                              <Alert severity="info" sx={{ borderRadius: 2 }}>Nema aktivnih termina za ovo mesto</Alert>
                             </Grid>
                           )}
                         </Grid>
@@ -570,66 +581,70 @@ export default function ManageFields() {
         PaperProps={{ sx: { borderRadius: isMobile ? 0 : 4 } }}
       >
         <DialogTitle sx={{ pb: 1, fontSize: '1.5rem', fontWeight: 700 }}>
-          {editingField ? 'Izmeni Teren' : 'Dodaj Novi Teren'}
+          {editingField ? 'Izmeni mesto' : 'Dodaj novo mesto'}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 1 }}>
             {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-            <TextField label="Naziv terena" value={name} onChange={(e) => setName(e.target.value)} required fullWidth />
+            <TextField
+              label={getVenueNameLabel(sports)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              fullWidth
+              placeholder={getVenueNamePlaceholder(sports)}
+            />
 
-            {/* Sports Selection with Checkboxes */}
-            <Box>
-              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
-                Sportovi * (odaberite jedan ili više)
-              </Typography>
-              <Paper
-                elevation={0}
-                sx={{
-                  border: '1px solid',
-                  borderColor: sports.length === 0 ? 'error.main' : 'divider',
-                  borderRadius: 2,
-                  p: 2,
-                  maxHeight: 300,
-                  overflow: 'auto',
-                }}
-              >
-                <Grid container spacing={1}>
-                  {availableSports.map((sport) => (
-                    <Grid item xs={6} sm={4} key={sport.id}>
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={sports.includes(sport.id)}
-                            onChange={() => handleSportToggle(sport.id)}
-                            color="primary"
-                          />
-                        }
-                        label={
-                          <Typography variant="body2">{sport.label}</Typography>
-                        }
-                      />
-                    </Grid>
-                  ))}
-                </Grid>
-              </Paper>
-              {sports.length === 0 && (
-                <Typography variant="caption" color="error" sx={{ mt: 0.5 }}>
-                  Molimo odaberite barem jedan sport
-                </Typography>
-              )}
-              {sports.length > 0 && (
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                  Odabrani sportovi: {sports.map(s => availableSports.find(as => as.id === s)?.label).join(', ')}
-                </Typography>
-              )}
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: sports.length === 0 ? 'error.main' : 'divider',
+                bgcolor: 'background.default',
+              }}
+            >
+              <PreferredGamesPicker
+                key={openDialog ? (editingField?._id ?? 'new') : 'closed'}
+                value={sports}
+                onChange={setSports}
+                categoryTitle="Šta nudiš *"
+                categoryHint="Otvori kategoriju i izaberi igre koje ovo mesto pokriva"
+              />
             </Box>
-            <TextField type="number" label="Cena (EUR)" value={price} onChange={(e) => setPrice(parseFloat(e.target.value))} required fullWidth />
-            <TextField type="number" label="Rok za prijavu (sati pre meča)" value={registrationDeadlineHours} onChange={(e) => {
-              const value = parseInt(e.target.value);
-              if (!isNaN(value) && value >= 0 && value <= 168) {
-                setRegistrationDeadlineHours(value);
-              }
-            }} required fullWidth helperText="Koliko sati pre meča se zatvara prijava" />
+            <TextField
+              type="text"
+              label="Cena (EUR)"
+              value={price}
+              onFocus={selectNumberField}
+              onChange={(e) => {
+                const value = parseNumberInput(e.target.value);
+                if (value === null) return;
+                if (value === '' || value >= 0) setPrice(value);
+              }}
+              required
+              fullWidth
+              inputProps={{ inputMode: 'decimal' }}
+            />
+            <TextField
+              type="text"
+              label="Rok za prijavu (sati pre meča)"
+              value={registrationDeadlineHours}
+              onFocus={selectNumberField}
+              onChange={(e) => {
+                const value = parseIntegerInput(e.target.value);
+                if (value === null) return;
+                if (value === '') { setRegistrationDeadlineHours(''); return; }
+                if (value >= 0 && value <= 168) setRegistrationDeadlineHours(value);
+              }}
+              onBlur={() => {
+                if (registrationDeadlineHours === '') setRegistrationDeadlineHours(0);
+              }}
+              required
+              fullWidth
+              helperText="Koliko sati pre meča se zatvara prijava"
+              inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+            />
             
             <Box>
               <Stack
@@ -662,8 +677,8 @@ export default function ManageFields() {
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
           <Button onClick={closeDialog} variant="outlined" sx={{ borderRadius: 3, px: 3, width: { xs: '100%', sm: 'auto' } }}>Otkaži</Button>
-          <Button onClick={handleSubmit} variant="contained" disabled={(!lat || !lng || !name)} sx={{ borderRadius: 3, px: 3, width: { xs: '100%', sm: 'auto' } }}>
-            {editingField ? 'Ažuriraj Teren' : 'Dodaj Teren'}
+          <Button onClick={handleSubmit} variant="contained" disabled={!lat || !lng || !name || sports.length === 0} sx={{ borderRadius: 3, px: 3, width: { xs: '100%', sm: 'auto' } }}>
+            {editingField ? 'Ažuriraj mesto' : 'Dodaj mesto'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -704,17 +719,49 @@ export default function ManageFields() {
                     />
                     {!dayData.closed && (
                       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-                        <TextField type="number" label="Od (sat)" value={startHour} onChange={(e) => {
-                          const hour = parseInt(e.target.value) || 0;
-                          const clampedHour = Math.max(0, Math.min(23, hour));
-                          setWorkingHours({ ...workingHours, [day]: { ...dayData, start: clampedHour.toString() }});
-                        }} inputProps={{ min: 0, max: 23 }} sx={{ width: { xs: '100%', sm: 100 } }} />
+                        <TextField
+                          type="text"
+                          label="Od (sat)"
+                          value={startHour}
+                          onFocus={selectNumberField}
+                          onChange={(e) => {
+                            const hour = parseIntegerInput(e.target.value);
+                            if (hour === null) return;
+                            setWorkingHours({
+                              ...workingHours,
+                              [day]: { ...dayData, start: hour === '' ? '' : Math.max(0, Math.min(23, hour)).toString() }
+                            });
+                          }}
+                          onBlur={() => {
+                            if (startHour === '') {
+                              setWorkingHours({ ...workingHours, [day]: { ...dayData, start: '0' } });
+                            }
+                          }}
+                          inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+                          sx={{ width: { xs: '100%', sm: 100 } }}
+                        />
                         <Typography variant="body1" sx={{ display: { xs: 'none', sm: 'block' } }}>-</Typography>
-                        <TextField type="number" label="Do (sat)" value={endHour} onChange={(e) => {
-                          const hour = parseInt(e.target.value) || 0;
-                          const clampedHour = Math.max(0, Math.min(23, hour));
-                          setWorkingHours({ ...workingHours, [day]: { ...dayData, end: clampedHour.toString() }});
-                        }} inputProps={{ min: 0, max: 23 }} sx={{ width: { xs: '100%', sm: 100 } }} />
+                        <TextField
+                          type="text"
+                          label="Do (sat)"
+                          value={endHour}
+                          onFocus={selectNumberField}
+                          onChange={(e) => {
+                            const hour = parseIntegerInput(e.target.value);
+                            if (hour === null) return;
+                            setWorkingHours({
+                              ...workingHours,
+                              [day]: { ...dayData, end: hour === '' ? '' : Math.max(0, Math.min(23, hour)).toString() }
+                            });
+                          }}
+                          onBlur={() => {
+                            if (endHour === '') {
+                              setWorkingHours({ ...workingHours, [day]: { ...dayData, end: '0' } });
+                            }
+                          }}
+                          inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+                          sx={{ width: { xs: '100%', sm: 100 } }}
+                        />
                       </Stack>
                     )}
                   </Stack>

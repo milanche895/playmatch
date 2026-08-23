@@ -22,6 +22,7 @@ const {
 } = require('../utils/quickMessages');
 const { GAME_TYPES } = require('../constants/games');
 const { awardMatchCompletionXp, evaluateBadges, DEFAULT_STARTING_CREDITS, awardCredits } = require('../utils/gamification');
+const { isEmailVerified } = require('../utils/emailVerification');
 
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
 
@@ -539,9 +540,16 @@ function matchesRoutesFactory(io) {
         return res.status(400).json({ message: 'Nepoznat tip igre / sporta' });
       }
 
-      const creator = await User.findById(req.user.id).select('role preferredSports');
+      const creator = await User.findById(req.user.id).select('role preferredSports emailVerified provider');
       if (!creator) {
         return res.status(401).json({ message: 'Korisnik nije pronađen' });
+      }
+
+      if (!isEmailVerified(creator)) {
+        return res.status(403).json({
+          message: 'Potvrdi email da bi kreirao meč. Poslali smo ti link za verifikaciju.',
+          code: 'EMAIL_NOT_VERIFIED',
+        });
       }
 
       if (creator.role === 'player') {

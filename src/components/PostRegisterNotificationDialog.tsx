@@ -65,6 +65,7 @@ export default function PostRegisterNotificationDialog() {
 
   useEffect(() => {
     if (!user?._id || user.role !== 'player') return;
+    if (location.pathname === '/welcome' || location.pathname === '/register' || location.pathname === '/create') return;
 
     const fromNav = Boolean(navState?.promptNotifications);
     if (!fromNav && !hasPromptFlag()) return;

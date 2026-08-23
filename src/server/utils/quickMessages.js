@@ -1,12 +1,4 @@
-const QUICK_MESSAGE_PRESETS = [
-  'Donosim loptu',
-  'Zasmetaću 5 min',
-  'Imam rezervne majice',
-  'Koju boju majica?',
-  'Ja bela',
-  'Ja crvena',
-  'Sve OK, vidimo se',
-];
+const QUICK_MESSAGE_PRESETS = require('../../constants/quickMessagePresets.json');
 
 const QUICK_MESSAGE_MAX_LENGTH = 200;
 const QUICK_MESSAGE_MAX_STORED = 100;

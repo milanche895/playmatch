@@ -5,6 +5,10 @@ const userSchema = new mongoose.Schema(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true, index: true },
     password: { type: String }, // Made optional for OAuth users
+    emailVerified: { type: Boolean, default: false },
+    emailVerifyTokenHash: { type: String },
+    emailVerifyExpires: { type: Date },
+    emailVerifySentAt: { type: Date },
     avatarUrl: { type: String },
     // OAuth provider information
     provider: { 

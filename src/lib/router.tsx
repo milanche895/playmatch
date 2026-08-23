@@ -7,7 +7,7 @@ import {
   useParams as useNextParams,
   useSearchParams as useNextSearchParams,
 } from 'next/navigation';
-import { forwardRef } from 'react';
+import { forwardRef, useCallback, useRef } from 'react';
 
 type NavigateOptions = {
   replace?: boolean;
@@ -32,7 +32,7 @@ export const RouterLink = Link;
 export function useNavigate() {
   const router = useRouter();
 
-  return (to: string | number, opts?: NavigateOptions) => {
+  return useCallback((to: string | number, opts?: NavigateOptions) => {
     if (typeof to === 'number') {
       if (to < 0) router.back();
       return;
@@ -49,7 +49,7 @@ export function useNavigate() {
 
     if (opts?.replace) router.replace(to);
     else router.push(to);
-  };
+  }, [router]);
 }
 
 export function useLocation() {
@@ -70,7 +70,12 @@ export function useParams<T extends Record<string, string | undefined> = Record<
 
 export function useSearchParams() {
   const params = useNextSearchParams();
-  return [params ?? new URLSearchParams()] as const;
+  const fallbackRef = useRef<URLSearchParams>();
+  if (!params) {
+    if (!fallbackRef.current) fallbackRef.current = new URLSearchParams();
+    return [fallbackRef.current] as const;
+  }
+  return [params] as const;
 }
 
 export { usePathname, useRouter };
