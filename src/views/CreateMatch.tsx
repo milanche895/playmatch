@@ -1361,7 +1361,7 @@ export default function CreateMatch() {
 
       {preferredSports.length > 0 && (
       <>
-      {canCloneLastMatch && !presetApplied && (
+      {lastPreset && canCloneLastMatch && !presetApplied && (
         <Paper
           elevation={0}
           sx={{
