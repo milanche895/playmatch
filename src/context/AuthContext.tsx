@@ -8,7 +8,7 @@ import { mergeAuthUser } from '../lib/emailVerified';
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
-  setUser: (u: User | null) => void;
+  setUser: React.Dispatch<React.SetStateAction<User | null>>;
   refreshUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (
