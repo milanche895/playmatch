@@ -109,6 +109,6 @@ matchSchema.pre('save', function(next) {
   next();
 });
 
-module.exports = mongoose.model('Match', matchSchema);
+module.exports = mongoose.models.Match || mongoose.model('Match', matchSchema);
 
 

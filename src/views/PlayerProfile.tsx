@@ -39,7 +39,7 @@ import {
   PhotoCamera as PhotoCameraIcon,
   MilitaryTech as BadgeIcon,
 } from '@mui/icons-material';
-import { useNavigate, Link } from '@/lib/router';
+import { useNavigate, Link, useSearchParams } from '@/lib/router';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { User, PlayerAnalytics } from '../types';
@@ -51,11 +51,17 @@ import { BADGE_CATALOG, getXpProgress, getCreditsDisplay } from '../lib/gamifica
 export default function PlayerProfile() {
   const { user: currentUser, refreshUser } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [analytics, setAnalytics] = useState<PlayerAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  const gamesSectionRef = useRef<HTMLDivElement>(null);
+  const shouldOpenPreferredGames = useRef(
+    searchParams.get('edit') === 'igre' ||
+    (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('edit') === 'igre')
+  );
   const [error, setError] = useState<React.ReactNode | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -77,7 +83,19 @@ export default function PlayerProfile() {
   useEffect(() => {
     loadProfile();
     loadAnalytics();
+    if (shouldOpenPreferredGames.current) {
+      setEditing(true);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!shouldOpenPreferredGames.current || !editing || loading || !user) return;
+    const timer = window.setTimeout(() => {
+      gamesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      shouldOpenPreferredGames.current = false;
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [editing, loading, user]);
 
   async function loadProfile() {
     try {
@@ -768,7 +786,10 @@ export default function PlayerProfile() {
                   </TextField>
 
                   {/* Preferred games: category → game type */}
-                  <Box>
+                  <Box
+                    ref={gamesSectionRef}
+                    sx={{ scrollMarginTop: 96 }}
+                  >
                     <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
                       Omiljene igre
                     </Typography>

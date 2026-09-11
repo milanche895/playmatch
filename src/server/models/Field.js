@@ -23,6 +23,6 @@ const fieldSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Field', fieldSchema);
+module.exports = mongoose.models.Field || mongoose.model('Field', fieldSchema);
 
 

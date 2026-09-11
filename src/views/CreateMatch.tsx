@@ -168,6 +168,11 @@ export default function CreateMatch() {
   const [error, setError] = useState<string | null>(null);
   const [lastPreset, setLastPreset] = useState<LastMatchPreset | null>(null);
   const [presetApplied, setPresetApplied] = useState(false);
+  const lastPresetSport = lastPreset
+    ? resolveToCanonicalGameId(lastPreset.sport) || lastPreset.sport
+    : null;
+  const canCloneLastMatch =
+    Boolean(lastPreset && lastPresetSport && sport && lastPresetSport === sport);
 
   // ── Add Field dialog ──
   const [openAddField, setOpenAddField] = useState(false);
@@ -220,6 +225,10 @@ export default function CreateMatch() {
   function handleSportChange(gameId: string) {
     setSport(gameId);
     applyGameTypeDefaults(gameId);
+    const presetSport = lastPreset
+      ? resolveToCanonicalGameId(lastPreset.sport) || lastPreset.sport
+      : null;
+    if (presetSport !== gameId) setPresetApplied(false);
   }
 
   function applyLocationToInformal(loc: [number, number]) {
@@ -1341,7 +1350,7 @@ export default function CreateMatch() {
           severity="warning"
           sx={{ mb: 3, borderRadius: 2 }}
           action={
-            <Button color="inherit" size="small" onClick={() => navigate("/profil")}>
+            <Button color="inherit" size="small" onClick={() => navigate("/profil?edit=igre")}>
               Profil
             </Button>
           }
@@ -1352,7 +1361,7 @@ export default function CreateMatch() {
 
       {preferredSports.length > 0 && (
       <>
-      {lastPreset && !presetApplied && (
+      {canCloneLastMatch && !presetApplied && (
         <Paper
           elevation={0}
           sx={{
