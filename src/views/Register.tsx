@@ -79,9 +79,12 @@ export default function Register() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const referralId = searchParams.get('ref') || undefined;
-  const requestedStep = isStep(searchParams.get('step')) ? searchParams.get('step')! : 'method';
-  const roleFromUrl = isRole(searchParams.get('role')) ? searchParams.get('role') : null;
-  const methodFromUrl = isMethod(searchParams.get('method')) ? searchParams.get('method') : null;
+  const stepParam = searchParams.get('step');
+  const roleParam = searchParams.get('role');
+  const methodParam = searchParams.get('method');
+  const requestedStep = isStep(stepParam) ? stepParam : 'method';
+  const roleFromUrl = isRole(roleParam) ? roleParam : null;
+  const methodFromUrl = isMethod(methodParam) ? methodParam : null;
 
   const [method, setMethod] = useState<Method | null>(() => methodFromUrl ?? readDraft()?.method ?? null);
   const [role, setRole] = useState<Role | null>(() => roleFromUrl ?? readDraft()?.role ?? null);
