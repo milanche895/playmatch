@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { getRequiredSecret } = require('../utils/secrets');
 
 function auth(required = true) {
   return (req, res, next) => {
@@ -19,7 +20,14 @@ function auth(required = true) {
         req.user = null;
         return next();
       }
-      const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev_secret');
+      let secret;
+      try {
+        secret = getRequiredSecret('JWT_SECRET', 'dev_secret');
+      } catch (err) {
+        console.error(err.message);
+        return res.status(500).json({ message: 'Autentifikacija servera nije podešena' });
+      }
+      const payload = jwt.verify(token, secret);
       req.user = { id: payload.id };
       return next();
     } catch (err) {

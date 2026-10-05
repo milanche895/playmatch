@@ -28,6 +28,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PlejkoLogo from '../components/PlejkoLogo';
 import PreferredGamesPicker from '../components/PreferredGamesPicker';
+import { markOnboardingTourPending } from '../lib/onboardingTour';
 
 type Method = 'email' | 'google' | 'facebook';
 type Role = 'player' | 'court';
@@ -199,6 +200,7 @@ export default function Register() {
     setLoading(true);
     try {
       await register(name, email, password, activeRole, preferredGames, referralId);
+      markOnboardingTourPending();
       clearDraft();
       await new Promise((resolve) => setTimeout(resolve, 100));
       navigate('/welcome');

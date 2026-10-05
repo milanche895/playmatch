@@ -52,6 +52,7 @@ import {
   getVenueNameLabel,
   getVenueNamePlaceholder,
 } from '../constants/games';
+import { formatPlayersCount } from '../lib/matchPlayers';
 
 // Fix Leaflet icon issue
 // @ts-ignore
@@ -86,16 +87,6 @@ type Appointments = {
   cancelled: Match[];
   free: any[];
 };
-
-function formatPlayersCount(match: Match): string {
-  const current = match.players.length;
-  const min = match.minPlayers ?? match.playersNeeded;
-  const max = match.maxPlayers;
-  if (max) {
-    return `${current}/${min}-${max}`;
-  }
-  return `${current}/${min}`;
-}
 
 export default function ManageFields() {
   const { user } = useAuth();

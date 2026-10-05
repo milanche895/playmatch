@@ -10,13 +10,14 @@ import {
   Typography,
   Button,
 } from '@mui/material';
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v14-appRouter';
+import { AppRouterCacheProvider } from '@mui/material-nextjs/v16-appRouter';
 import { ThemeProvider as CustomThemeProvider, useThemeMode } from '../context/ThemeContext';
 import createAppTheme from '../theme';
 import Navbar from '../components/Navbar';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { trackPlayerLocation } from '../lib/location';
 import PostRegisterNotificationDialog from '../components/PostRegisterNotificationDialog';
+import OnboardingTour from '../components/OnboardingTour';
 import { initPushNotifications } from '../lib/notifications';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -77,6 +78,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         }}
       >
         <Navbar />
+        <OnboardingTour />
         <PostRegisterNotificationDialog />
         <Box
           component="main"

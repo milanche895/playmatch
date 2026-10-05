@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import PlejkoLogo from '../components/PlejkoLogo';
 import { getGameTypeName } from '../constants/games';
 import { markPromptNotificationsAfterRegister } from '../components/PostRegisterNotificationDialog';
+import { markOnboardingTourPending } from '../lib/onboardingTour';
 import SportsIcon from '@mui/icons-material/Sports';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 
@@ -17,6 +18,9 @@ export default function Welcome() {
   useEffect(() => {
     if (!loading && !user) {
       navigate('/register', { replace: true });
+    }
+    if (user) {
+      markOnboardingTourPending();
     }
     if (user && user.role !== 'court') {
       markPromptNotificationsAfterRegister();

@@ -6,6 +6,7 @@ import { Box, CircularProgress, Typography } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { mergeAuthUser } from '../lib/emailVerified';
 import api from '../lib/api';
+import { markOnboardingTourPending } from '../lib/onboardingTour';
 
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
@@ -29,6 +30,7 @@ export default function AuthCallback() {
     api.get('/api/auth/me')
       .then((res) => {
         if (res.data) setUser((prev) => mergeAuthUser(prev, res.data));
+        if (isNewUser) markOnboardingTourPending();
         navigate(isNewUser ? '/welcome' : '/', { replace: true });
       })
       .catch(() => {

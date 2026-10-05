@@ -6,6 +6,7 @@ const auth = require('../middleware/auth');
 const { rewardReliabilityForCompletedMatch } = require('../utils/reliability');
 const { awardMatchCompletionXp } = require('../utils/gamification');
 const { sanitizeGameIds } = require('../constants/games');
+const { getCourtCompleteBlock } = require('../utils/matchLifecycle');
 
 const router = express.Router();
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
@@ -143,6 +144,24 @@ router.post('/matches/:id/complete', auth(true), requireCourt, async (req, res) 
   try {
     const match = await Match.findById(req.params.id);
     if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+
+    const completeBlock = getCourtCompleteBlock(match);
+    if (completeBlock === 'informal') {
+      return res.status(400).json({ message: 'Privatni meč potvrđuje organizator' });
+    }
+    if (completeBlock === 'already') {
+      return res.status(400).json({ message: 'Meč je već završen' });
+    }
+    if (completeBlock === 'cancelled') {
+      return res.status(400).json({ message: 'Otkazan meč ne može biti označen kao završen' });
+    }
+    if (completeBlock === 'not_approved') {
+      return res.status(400).json({ message: 'Meč nije odobren od strane terena' });
+    }
+    if (completeBlock === 'too_early') {
+      return res.status(400).json({ message: 'Ne možete završiti meč pre početka' });
+    }
+
     const field = await Field.findById(match.fieldId);
     if (!field || field.courtOwner?.toString() !== req.user.id) {
       return res.status(403).json({ message: 'Ne posedujete ovaj teren' });

@@ -16,6 +16,8 @@ const {
   issueAndSendVerificationEmail,
   RESEND_COOLDOWN_MS,
 } = require('../utils/emailVerification');
+const { getRequiredSecret } = require('../utils/secrets');
+const { authRateLimit } = require('../middleware/rateLimit');
 
 const router = express.Router();
 
@@ -334,7 +336,7 @@ function consumeOAuthOnboarding(req, user) {
 function setTokenCookie(res, userId) {
   const token = jwt.sign(
     { id: userId },
-    process.env.JWT_SECRET || 'dev_secret',
+    getRequiredSecret('JWT_SECRET', 'dev_secret'),
     { expiresIn: '7d' }
   );
 
@@ -350,7 +352,7 @@ function setTokenCookie(res, userId) {
 }
 
 
-router.post('/register', async (req, res) => {
+router.post('/register', authRateLimit, async (req, res) => {
   try {
     const { name, email, password, avatarUrl, role, preferredSports, referredBy } = req.body;
     if (!name || !email || !password) return res.status(400).json({ message: 'Nedostaju polja' });
@@ -407,10 +409,6 @@ router.post('/register', async (req, res) => {
       console.error('Verification email failed after register:', emailError.message);
     }
     
-    // Generate token
-    const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
-    
-    // Set cookie before sending response
     setTokenCookie(res, user._id.toString());
     
     res.json({ 
@@ -424,7 +422,6 @@ router.post('/register', async (req, res) => {
       xp: user.xp ?? 0,
       level: user.level ?? 1,
       emailVerified: false,
-      token // Include token in response for localStorage
     });
   } catch (e) {
     console.error('Registration error:', e);
@@ -432,7 +429,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', authRateLimit, async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
@@ -451,7 +448,6 @@ router.post('/login', async (req, res) => {
     
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ message: 'Neispravni podaci za prijavu' });
-    const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
     setTokenCookie(res, user._id.toString());
     res.json({ 
       _id: user._id, 
@@ -464,7 +460,6 @@ router.post('/login', async (req, res) => {
       notificationRadius: user.notificationRadius,
       emailVerified: isEmailVerified(user),
       provider: user.provider,
-      token // Include token in response for localStorage
     });
   } catch (e) {
     res.status(500).json({ message: 'Server error' });
@@ -496,7 +491,7 @@ router.get('/me', auth(true), async (req, res) => {
   }
 });
 
-router.post('/verify-email', async (req, res) => {
+router.post('/verify-email', authRateLimit, async (req, res) => {
   try {
     const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     if (!token) {
@@ -538,7 +533,7 @@ router.post('/verify-email', async (req, res) => {
   }
 });
 
-router.post('/resend-verification', auth(true), async (req, res) => {
+router.post('/resend-verification', authRateLimit, auth(true), async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'Korisnik nije pronađen' });
@@ -683,7 +678,7 @@ router.get('/facebook/callback',
 );
 
 // Instagram OAuth - uses Facebook token (Instagram Basic Display API requires Facebook login)
-router.post('/instagram', async (req, res) => {
+router.post('/instagram', authRateLimit, async (req, res) => {
   try {
     const { accessToken, role } = req.body;
     if (!accessToken) {
@@ -800,9 +795,8 @@ router.post('/instagram', async (req, res) => {
       });
     }
 
-    const token = jwt.sign({ id: user._id.toString() }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
     setTokenCookie(res, user._id.toString());
-    
+
     res.json({ 
       _id: user._id, 
       name: user.name, 
@@ -811,7 +805,6 @@ router.post('/instagram', async (req, res) => {
       role: user.role,
       emailVerified: isEmailVerified(user),
       provider: user.provider,
-      token
     });
   } catch (error) {
     console.error('Instagram OAuth error:', error);

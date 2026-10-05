@@ -2,6 +2,7 @@
 // Uses native browser Push API with web-push library
 
 const webpush = require('web-push');
+const { debugLog } = require('./debugLog');
 
 // VAPID keys from environment variables
 const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || '').trim().replace(/^["']|["']$/g, '');
@@ -68,7 +69,7 @@ function hasPushEndpoint(subscription) {
  */
 async function sendPushNotification(subscription, payload) {
   const subInfo = describeSubscription(subscription);
-  console.log('[PushDebug] sendPushNotification start', {
+  debugLog('[PushDebug] sendPushNotification start', {
     title: payload?.title,
     matchId: payload?.matchId,
     tag: payload?.tag,
@@ -99,7 +100,7 @@ async function sendPushNotification(subscription, payload) {
 
   try {
     await webpush.sendNotification(subscription, notificationPayload);
-    console.log('[PushDebug] web-push accepted notification', {
+    debugLog('[PushDebug] web-push accepted notification', {
       title,
       endpointHost: subInfo.endpointHost
     });
@@ -130,7 +131,7 @@ async function sendPushNotification(subscription, payload) {
  * @returns {Promise<{ success: number, failed: number, expiredSubscriptions: Array }>}
  */
 async function sendPushNotifications(subscriptions, payload) {
-  console.log('[PushDebug] sendPushNotifications batch', {
+  debugLog('[PushDebug] sendPushNotifications batch', {
     count: Array.isArray(subscriptions) ? subscriptions.length : 0,
     title: payload?.title,
     matchId: payload?.matchId
@@ -169,7 +170,7 @@ async function sendPushNotifications(subscriptions, payload) {
 
   await Promise.allSettled(promises);
 
-  console.log('[PushDebug] batch finished', { success, failed, expired: expiredSubscriptions.length });
+  debugLog('[PushDebug] batch finished', { success, failed, expired: expiredSubscriptions.length });
 
   return {
     success,

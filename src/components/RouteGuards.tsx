@@ -41,18 +41,19 @@ export function PlayerRoute({ children }: { children: React.ReactNode }) {
 
 export function CourtRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.replace('/login');
+      router.replace(`/login?from=${encodeURIComponent(safeFrom(pathname ?? '/'))}`);
       return;
     }
     if (user.role !== 'court') {
       router.replace('/');
     }
-  }, [loading, user, router]);
+  }, [loading, user, pathname, router]);
 
   if (loading) return <Loader />;
   if (!user || user.role !== 'court') return <Loader />;

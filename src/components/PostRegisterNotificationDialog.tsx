@@ -13,12 +13,19 @@ import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import { useLocation, useNavigate } from '@/lib/router';
 import { useAuth } from '../context/AuthContext';
 import { subscribeToPushNotifications } from '../lib/notifications';
+import {
+  ONBOARDING_TOUR_FINISHED_EVENT,
+  isOnboardingTourPending,
+} from '../lib/onboardingTour';
 
 const PROMPT_KEY = 'plejko:prompt-notifications';
+const PROMPT_ARMED_KEY = 'plejko:prompt-notifications-armed';
 
 export function markPromptNotificationsAfterRegister() {
   try {
+    if (sessionStorage.getItem(PROMPT_ARMED_KEY) === '1') return;
     sessionStorage.setItem(PROMPT_KEY, '1');
+    sessionStorage.setItem(PROMPT_ARMED_KEY, '1');
   } catch {
     // sessionStorage may be unavailable in some private-mode browsers
   }
@@ -66,6 +73,7 @@ export default function PostRegisterNotificationDialog() {
   useEffect(() => {
     if (!user?._id || user.role !== 'player') return;
     if (location.pathname === '/welcome' || location.pathname === '/register' || location.pathname === '/create') return;
+    if (isOnboardingTourPending()) return;
 
     const fromNav = Boolean(navState?.promptNotifications);
     if (!fromNav && !hasPromptFlag()) return;
@@ -76,6 +84,17 @@ export default function PostRegisterNotificationDialog() {
       navigate(`${location.pathname}${location.search}`, { replace: true, state: {} });
     }
   }, [user?._id, user?.role, navState?.promptNotifications, location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    const onTourFinished = () => {
+      if (!user?._id || user.role !== 'player') return;
+      if (!hasPromptFlag()) return;
+      if (location.pathname === '/welcome' || location.pathname === '/register' || location.pathname === '/create') return;
+      setOpen(true);
+    };
+    window.addEventListener(ONBOARDING_TOUR_FINISHED_EVENT, onTourFinished);
+    return () => window.removeEventListener(ONBOARDING_TOUR_FINISHED_EVENT, onTourFinished);
+  }, [user?._id, user?.role, location.pathname]);
 
   function handleLater() {
     clearPromptNotificationsAfterRegister();

@@ -18,7 +18,6 @@ import {
   useMediaQuery,
   Avatar,
   Tooltip,
-  Badge,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import HomeIcon from "@mui/icons-material/Home";
@@ -62,6 +61,29 @@ export default function Navbar() {
   };
 
   const isActive = (path: string) => location.pathname === path;
+
+  const tourIdForPath = (path: string) => {
+    switch (path) {
+      case "/":
+        return "tour-nav-home";
+      case "/create":
+        return "tour-nav-create";
+      case "/manage-fields":
+        return "tour-nav-fields";
+      case "/moji-termini":
+        return "tour-nav-slots";
+      case "/moji-mecevi":
+        return "tour-nav-matches";
+      case "/moji-igraci":
+        return "tour-nav-players";
+      case "/notification-settings":
+        return "tour-nav-notifications";
+      case "/profil":
+        return "tour-nav-profile";
+      default:
+        return undefined;
+    }
+  };
 
   // Navigation items with icons
   const getNavItems = () => [
@@ -181,6 +203,7 @@ export default function Navbar() {
               to={item.path}
               selected={isActive(item.path)}
               onClick={() => setMobileOpen(false)}
+              data-tour={tourIdForPath(item.path)}
               sx={{
                 borderRadius: 2,
                 py: 1.5,
@@ -307,6 +330,7 @@ export default function Navbar() {
                 component={RouterLink}
                 to={item.path}
                 startIcon={item.icon}
+                data-tour={tourIdForPath(item.path)}
                 sx={{
                   color: isActive(item.path) ? 'primary.main' : 'text.secondary',
                   fontWeight: isActive(item.path) ? 600 : 500,
@@ -375,6 +399,7 @@ export default function Navbar() {
               color="inherit"
               aria-label="open drawer"
               onClick={handleDrawerToggle}
+              data-tour="tour-nav-menu"
               sx={{
                 color: 'text.primary',
               }}

@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Match = require('../models/Match');
 const auth = require('../middleware/auth');
 const { uploadImageBuffer } = require('../utils/cloudinary');
+const { debugLog } = require('../utils/debugLog');
 
 const router = express.Router();
 
@@ -290,7 +291,7 @@ router.post('/location', auth(true), async (req, res) => {
     }
 
     res.json({ message: 'Lokacija ažurirana', location: updatedUser.lastKnownLocation });
-    console.log('[PushDebug] location updated', {
+    debugLog('[PushDebug] location updated', {
       userId: req.user.id,
       lat: updatedUser.lastKnownLocation?.lat,
       lng: updatedUser.lastKnownLocation?.lng
@@ -336,7 +337,7 @@ router.post('/push-subscription', auth(true), async (req, res) => {
     res.json({ 
       message: 'Push subscription sačuvana'
     });
-    console.log('[PushDebug] push subscription saved', {
+    debugLog('[PushDebug] push subscription saved', {
       userId: req.user.id,
       endpointHost: (() => {
         try { return new URL(subscription.endpoint).host; } catch { return 'invalid'; }

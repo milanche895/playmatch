@@ -61,6 +61,8 @@ import { getTrustBadge } from '../lib/reliability';
 import MatchQuickChat from '../components/MatchQuickChat';
 import { getGameTypeName } from '../constants/games';
 import { getCreditsDisplay } from '../lib/gamification';
+import { formatPlayersCount } from '../lib/matchPlayers';
+import { debugLog } from '../lib/debugLog';
 
 // Fix default Leaflet icon URLs
 // @ts-ignore
@@ -70,18 +72,6 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
 });
-
-// Helper function to format players count display
-function formatPlayersCount(match: Match): string {
-  const current = match.players.length;
-  const min = match.minPlayers ?? match.playersNeeded;
-  const max = match.maxPlayers;
-
-  if (max) {
-    return `${current}/${min}-${max}`;
-  }
-  return `${current}/${min}`;
-}
 
 function paymentPlayerId(playerId: { _id: string } | string): string {
   return typeof playerId === 'object' ? playerId._id : playerId;
@@ -499,7 +489,7 @@ export default function MatchDetails() {
       setBoosting(true);
       setPromoError(null);
       const res = await api.post(`/api/matches/${id}/boost`, {}, { timeout: 30000 });
-      console.log('[PushDebug] boost response', res.data);
+      debugLog('[PushDebug] boost response', res.data);
       setBoostDialogOpen(false);
       const sent = res.data?.sent ?? 0;
       setPromoMessage(
@@ -524,7 +514,7 @@ export default function MatchDetails() {
       setPromoError(null);
       setSelectedInviteIds(new Set());
       const res = await api.get(`/api/matches/${id}/nearby-players`);
-      console.log('[PushDebug] nearby-players response', res.data);
+      debugLog('[PushDebug] nearby-players response', res.data);
       setNearbyPlayers(Array.isArray(res.data) ? res.data : []);
     } catch (err: any) {
       console.error('[PushDebug] nearby-players failed', err.response?.status, err.response?.data || err.message);
@@ -556,7 +546,7 @@ export default function MatchDetails() {
       const res = await api.post(`/api/matches/${id}/invite-players`, {
         playerIds: [...selectedInviteIds],
       }, { timeout: 30000 });
-      console.log('[PushDebug] invite-players response', res.data);
+      debugLog('[PushDebug] invite-players response', res.data);
       setInviteModalOpen(false);
       setPromoMessage(
         `Pozivnice poslate: ${res.data?.sent ?? 0}. Preostalo kredita: ${res.data?.creditsRemaining ?? 0}.`

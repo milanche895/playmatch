@@ -50,6 +50,7 @@ import {
   getGameTypeName,
   matchBelongsToPreferredGames,
 } from '../constants/games';
+import { formatPlayersCount } from '../lib/matchPlayers';
 
 // Custom icons using HTML div icons for better customization
 function createCustomIcon(color: string) {
@@ -96,18 +97,6 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
 });
-
-// Helper function to format players count display
-function formatPlayersCount(match: Match): string {
-  const current = match.players.length;
-  const min = match.minPlayers ?? match.playersNeeded;
-  const max = match.maxPlayers;
-
-  if (max) {
-    return `${current}/${min}-${max}`;
-  }
-  return `${current}/${min}`;
-}
 
 function formatRelativeMatchTime(dateTimeString: string): string {
   const matchDate = new Date(dateTimeString);
@@ -179,6 +168,7 @@ function MatchCard({
   onJoinWaitlist,
   userLocation,
   joiningId,
+  highlightTour,
 }: {
   match: Match;
   user: any;
@@ -188,6 +178,7 @@ function MatchCard({
   onJoinWaitlist: (id: string) => void;
   userLocation: [number, number] | null;
   joiningId?: string | null;
+  highlightTour?: boolean;
 }) {
   const navigate = useNavigate();
   const isFull = match.players.length >= (match.maxPlayers || 100);
@@ -213,6 +204,7 @@ function MatchCard({
   return (
     <Card
       elevation={0}
+      data-tour={highlightTour ? 'tour-match-card' : undefined}
       sx={{
         border: '1px solid',
         borderColor: 'divider',
@@ -478,7 +470,7 @@ export default function Home() {
 
   async function handleJoinMatch(matchId: string) {
     if (!user) {
-      navigate('/login');
+      navigate('/login?from=/');
       return;
     }
     try {
@@ -495,7 +487,7 @@ export default function Home() {
 
   async function handleJoinWaitlist(matchId: string) {
     if (!user) {
-      navigate('/login');
+      navigate('/login?from=/');
       return;
     }
     try {
@@ -663,7 +655,7 @@ export default function Home() {
           alignItems={{ xs: 'stretch', sm: 'flex-start' }}
           spacing={2}
         >
-          <Box>
+          <Box data-tour="tour-home-heading">
             <Typography variant="h4" fontWeight={700} sx={{ mb: 1 }}>
               Mečevi u blizini
             </Typography>
@@ -685,6 +677,7 @@ export default function Home() {
                 exclusive
                 onChange={handleSportFilterChange}
                 size="small"
+                data-tour="tour-sport-filter"
                 sx={{
                   bgcolor: 'background.paper',
                   border: '1px solid',
@@ -713,6 +706,7 @@ export default function Home() {
               exclusive
               onChange={handleViewModeChange}
               size="small"
+              data-tour="tour-view-mode"
               sx={{
                 alignSelf: { xs: 'stretch', sm: 'flex-end' },
                 bgcolor: 'background.paper',
@@ -848,7 +842,7 @@ export default function Home() {
               gap: 2,
             }}
           >
-            {upcomingMatches.map((match) => (
+            {upcomingMatches.map((match, index) => (
               <MatchCard
                 key={match._id}
                 match={match}
@@ -859,6 +853,7 @@ export default function Home() {
                 onJoinWaitlist={handleJoinWaitlist}
                 userLocation={userLocation}
                 joiningId={joiningId}
+                highlightTour={index === 0}
               />
             ))}
           </Box>
@@ -1281,6 +1276,7 @@ export default function Home() {
           color="primary"
           aria-label="Kreiraj meč"
           onClick={() => navigate('/create')}
+          data-tour="tour-fab-create"
           sx={{
             position: 'fixed',
             bottom: { xs: 16, sm: 24 },

@@ -31,6 +31,7 @@ import { useAuth } from '../context/AuthContext';
 import { Match } from '../types';
 import { getTrustBadge } from '../lib/reliability';
 import { getGameTypeName } from '../constants/games';
+import { formatPlayersCount } from '../lib/matchPlayers';
 
 export default function MojiMecevi() {
   const { user: currentUser } = useAuth();
@@ -68,14 +69,6 @@ export default function MojiMecevi() {
       hour: '2-digit',
       minute: '2-digit'
     });
-  }
-
-  function formatPlayersCount(match: Match): string {
-    const current = match.players.length;
-    const min = match.minPlayers ?? match.playersNeeded;
-    const max = match.maxPlayers;
-    if (max) return `${current}/${min}-${max}`;
-    return `${current}/${min}`;
   }
 
   function getMatchStatusColor(match: Match): 'default' | 'primary' | 'success' | 'warning' | 'error' {

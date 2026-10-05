@@ -22,7 +22,6 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   loginWithGoogle: (role?: 'player' | 'court', preferredSports?: string[]) => void;
   loginWithFacebook: (role?: 'player' | 'court', preferredSports?: string[]) => void;
-  loginWithInstagram: (accessToken: string, role?: 'player' | 'court') => Promise<void>;
   resendVerification: () => Promise<void>;
 };
 
@@ -124,22 +123,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = url;
   }
 
-  async function loginWithInstagram(accessToken: string, role?: 'player' | 'court') {
-    try {
-      const res = await api.post('/api/auth/instagram', { accessToken, role });
-      const { token: _token, ...userData } = res.data;
-      setUser(userData);
-    } catch (error) {
-      throw error;
-    }
-  }
-
   async function resendVerification() {
     await api.post('/api/auth/resend-verification');
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, setUser, refreshUser, login, register, logout, loginWithGoogle, loginWithFacebook, loginWithInstagram, resendVerification }}>
+    <AuthContext.Provider value={{ user, loading, setUser, refreshUser, login, register, logout, loginWithGoogle, loginWithFacebook, resendVerification }}>
       {children}
     </AuthContext.Provider>
   );

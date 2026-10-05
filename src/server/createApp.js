@@ -11,6 +11,7 @@ const courtRoutes = require('./routes/courts');
 const playerRoutes = require('./routes/players');
 const { connectDb, hasMongoUri } = require('./db');
 const { processExpiredMatches } = require('./utils/matchStatus');
+const { getRequiredSecret } = require('./utils/secrets');
 
 function createNoopIo() {
   return {
@@ -47,7 +48,7 @@ function attachApi(app, io = createNoopIo()) {
 
   app.use('/api', express.json({ limit: '10mb' }));
   app.use('/api', session({
-    secret: process.env.SESSION_SECRET || 'dev_session_secret',
+    secret: getRequiredSecret('SESSION_SECRET', 'dev_session_secret'),
     resave: false,
     saveUninitialized: false,
     cookie: {

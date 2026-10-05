@@ -33,23 +33,22 @@ router.post('/', auth(true), async (req, res) => {
     
     const User = require('../models/User');
     const user = await User.findById(req.user.id);
-    
-    // If user is a court, set them as the owner
-    const fieldData = { name, sports: sportsArray, lat, lng };
-    if (user && user.role === 'court') {
-      fieldData.courtOwner = req.user.id;
-      if (typeof price === 'number') {
-        fieldData.price = price;
-      } else if (user.defaultPrice) {
-        fieldData.price = user.defaultPrice;
-      }
-      if (typeof registrationDeadlineHours === 'number' && registrationDeadlineHours >= 0) {
-        fieldData.registrationDeadlineHours = registrationDeadlineHours;
-      } else if (typeof user.defaultRegistrationDeadlineHours === 'number' && user.defaultRegistrationDeadlineHours >= 0) {
-        fieldData.registrationDeadlineHours = user.defaultRegistrationDeadlineHours;
-      } else {
-        fieldData.registrationDeadlineHours = 0;
-      }
+    if (!user || user.role !== 'court') {
+      return res.status(403).json({ message: 'Samo vlasnici terena mogu da dodaju teren' });
+    }
+
+    const fieldData = { name, sports: sportsArray, lat, lng, courtOwner: req.user.id };
+    if (typeof price === 'number') {
+      fieldData.price = price;
+    } else if (user.defaultPrice) {
+      fieldData.price = user.defaultPrice;
+    }
+    if (typeof registrationDeadlineHours === 'number' && registrationDeadlineHours >= 0) {
+      fieldData.registrationDeadlineHours = registrationDeadlineHours;
+    } else if (typeof user.defaultRegistrationDeadlineHours === 'number' && user.defaultRegistrationDeadlineHours >= 0) {
+      fieldData.registrationDeadlineHours = user.defaultRegistrationDeadlineHours;
+    } else {
+      fieldData.registrationDeadlineHours = 0;
     }
     
     const field = await Field.create(fieldData);

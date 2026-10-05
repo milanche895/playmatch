@@ -23,6 +23,13 @@ const {
 const { GAME_TYPES } = require('../constants/games');
 const { awardMatchCompletionXp, evaluateBadges, DEFAULT_STARTING_CREDITS, awardCredits } = require('../utils/gamification');
 const { isEmailVerified } = require('../utils/emailVerification');
+const { debugLog } = require('../utils/debugLog');
+const {
+  isMatchAtCapacity,
+  applyFullStatus,
+  applyOpenStatusIfBelowMin,
+  getMatchAccessBlock,
+} = require('../utils/matchLifecycle');
 
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
 
@@ -34,37 +41,6 @@ function removePlayerPayment(match, playerId) {
   );
 }
 
-function getMaxPlayersValue(match) {
-  return match.maxPlayers || 100;
-}
-
-function isMatchAtCapacity(match) {
-  return match.players.length >= getMaxPlayersValue(match);
-}
-
-function getMinPlayersValue(match) {
-  return match.minPlayers || match.playersNeeded || 1;
-}
-
-function applyFullStatus(match) {
-  if (match.players.length >= getMinPlayersValue(match)) {
-    match.status = 'full';
-    if (match.courtApproval === 'pending') {
-      match.courtApproval = 'approved';
-      match.courtApprovedAt = new Date();
-    }
-  }
-}
-
-function applyOpenStatusIfBelowMin(match) {
-  if (match.players.length < getMinPlayersValue(match)) {
-    match.status = 'open';
-    if (!match.isInformal && match.courtApproval === 'approved') {
-      match.courtApproval = 'pending';
-      match.courtApprovedAt = undefined;
-    }
-  }
-}
 
 async function notifyWaitlistPromotion(user, match) {
   try {
@@ -179,7 +155,7 @@ async function recalculateUserRatings(userId) {
 // Helper function to notify nearby players about a new match
 async function notifyNearbyPlayers(match, field) {
   try {
-    console.log('[PushDebug] notifyNearbyPlayers start', {
+    debugLog('[PushDebug] notifyNearbyPlayers start', {
       matchId: match?._id?.toString(),
       sport: match?.sport,
       isInformal: !!match?.isInformal,
@@ -192,11 +168,11 @@ async function notifyNearbyPlayers(match, field) {
     const locationName = match.isInformal ? (match.informalLocation?.name || 'Privatni teren') : (field?.name || 'Teren');
 
     if (fieldLat == null || fieldLng == null) {
-      console.log('[PushDebug] skip: no match coordinates', { isInformal: !!match.isInformal, fieldLat, fieldLng });
+      debugLog('[PushDebug] skip: no match coordinates', { isInformal: !!match.isInformal, fieldLat, fieldLng });
       return { success: 0, failed: 0 };
     }
 
-    console.log('[PushDebug] match location', { locationName, fieldLat, fieldLng });
+    debugLog('[PushDebug] match location', { locationName, fieldLat, fieldLng });
 
     // Build query for players with PWA push subscriptions
     const playersQuery = {
@@ -210,10 +186,10 @@ async function notifyNearbyPlayers(match, field) {
     // Get all players with notifications enabled and valid location
     const players = await User.find(playersQuery);
 
-    console.log(`[PushDebug] candidates with push+location+enabled: ${players.length}`);
+    debugLog(`[PushDebug] candidates with push+location+enabled: ${players.length}`);
 
     if (players.length === 0) {
-      console.log('[PushDebug] skip: no players have notificationEnabled + lastKnownLocation + pushSubscription');
+      debugLog('[PushDebug] skip: no players have notificationEnabled + lastKnownLocation + pushSubscription');
       return { success: 0, failed: 0 };
     }
     const nearbyPlayers = [];
@@ -221,7 +197,7 @@ async function notifyNearbyPlayers(match, field) {
     // Filter players by distance
     for (const player of players) {
       if (idString(player._id) === idString(match.createdBy)) {
-        console.log('[PushDebug] skip candidate: creator', { name: player.name, id: idString(player._id) });
+        debugLog('[PushDebug] skip candidate: creator', { name: player.name, id: idString(player._id) });
         continue;
       }
 
@@ -233,7 +209,7 @@ async function notifyNearbyPlayers(match, field) {
       const subInfo = describeSubscription(player.pushSubscription);
 
       if (distance > radius) {
-        console.log('[PushDebug] skip candidate: outside radius', {
+        debugLog('[PushDebug] skip candidate: outside radius', {
           name: player.name,
           distanceKm: Number(distance.toFixed(2)),
           radiusKm: radius,
@@ -244,11 +220,11 @@ async function notifyNearbyPlayers(match, field) {
       }
 
       if (!player.pushSubscription) {
-        console.log('[PushDebug] skip candidate: no pushSubscription', { name: player.name });
+        debugLog('[PushDebug] skip candidate: no pushSubscription', { name: player.name });
         continue;
       }
 
-      console.log('[PushDebug] nearby candidate OK', {
+      debugLog('[PushDebug] nearby candidate OK', {
         name: player.name,
         distanceKm: Number(distance.toFixed(2)),
         radiusKm: radius,
@@ -257,10 +233,10 @@ async function notifyNearbyPlayers(match, field) {
       nearbyPlayers.push(player);
     }
 
-    console.log(`[PushDebug] nearby after filters: ${nearbyPlayers.length}`);
+    debugLog(`[PushDebug] nearby after filters: ${nearbyPlayers.length}`);
 
     if (nearbyPlayers.length === 0) {
-      console.log('[PushDebug] skip: nobody in radius (or all were creator)');
+      debugLog('[PushDebug] skip: nobody in radius (or all were creator)');
       return { success: 0, failed: 0 };
     }
 
@@ -288,17 +264,17 @@ async function notifyNearbyPlayers(match, field) {
       .filter(player => player.pushSubscription && player.pushSubscription.endpoint)
       .map(player => player.pushSubscription);
 
-    console.log('[PushDebug] subscriptions with endpoint', {
+    debugLog('[PushDebug] subscriptions with endpoint', {
       nearby: nearbyPlayers.length,
       withEndpoint: subscriptions.length
     });
 
     if (subscriptions.length === 0) {
-      console.log('[PushDebug] skip: nearby players exist but none have subscription.endpoint');
+      debugLog('[PushDebug] skip: nearby players exist but none have subscription.endpoint');
       return { success: 0, failed: 0 };
     }
 
-    console.log('[PushDebug] sending create-match pushes', { count: subscriptions.length, payload });
+    debugLog('[PushDebug] sending create-match pushes', { count: subscriptions.length, payload });
     const result = await sendPushNotifications(subscriptions, payload);
 
     // Remove expired subscriptions
@@ -313,7 +289,7 @@ async function notifyNearbyPlayers(match, field) {
       }
     }
 
-    console.log('[PushDebug] notifyNearbyPlayers done', result);
+    debugLog('[PushDebug] notifyNearbyPlayers done', result);
     return { success: result.success, failed: result.failed };
   } catch (error) {
     console.error('[PushDebug] notifyNearbyPlayers error:', error);
@@ -375,7 +351,7 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
   } = options;
 
   const { lat, lng } = getMatchCoords(match, field);
-  console.log('[PushDebug] findNearbyPlayerCandidates', {
+  debugLog('[PushDebug] findNearbyPlayerCandidates', {
     matchId: idString(match._id),
     lat,
     lng,
@@ -385,7 +361,7 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
     excludeJoined: (match.players || []).length
   });
   if (lat == null || lng == null) {
-    console.log('[PushDebug] findNearby: no coords');
+    debugLog('[PushDebug] findNearby: no coords');
     return [];
   }
 
@@ -409,7 +385,7 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
   const players = await User.find(query).select(
     'name avatarUrl reliabilityScore preferredSports notificationRadius lastKnownLocation pushSubscription blockedPlayers notificationEnabled'
   );
-  console.log('[PushDebug] findNearby DB hits', { count: players.length, requirePush, requireNotificationEnabled });
+  debugLog('[PushDebug] findNearby DB hits', { count: players.length, requirePush, requireNotificationEnabled });
 
   const matchSport = match.sport;
   const matchCategory = GAME_TYPES[matchSport]?.category;
@@ -418,15 +394,15 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
   for (const player of players) {
     const playerId = idString(player._id);
     if (exclude.has(playerId)) {
-      console.log('[PushDebug] findNearby skip: already in match/creator', { name: player.name, id: playerId });
+      debugLog('[PushDebug] findNearby skip: already in match/creator', { name: player.name, id: playerId });
       continue;
     }
     if (creatorBlocked.has(playerId)) {
-      console.log('[PushDebug] findNearby skip: blocked by creator', { name: player.name });
+      debugLog('[PushDebug] findNearby skip: blocked by creator', { name: player.name });
       continue;
     }
     if ((player.blockedPlayers || []).some((id) => idString(id) === creatorId)) {
-      console.log('[PushDebug] findNearby skip: player blocked creator', { name: player.name });
+      debugLog('[PushDebug] findNearby skip: player blocked creator', { name: player.name });
       continue;
     }
 
@@ -438,7 +414,7 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
     );
     const radius = Math.max(Number(player.notificationRadius) || 10, minRadiusKm);
     if (distance > radius) {
-      console.log('[PushDebug] findNearby skip: too far', {
+      debugLog('[PushDebug] findNearby skip: too far', {
         name: player.name,
         distanceKm: Number(distance.toFixed(2)),
         radiusKm: radius
@@ -455,7 +431,7 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
       if (!prefs.length) {
         // Legacy / incomplete profiles: still eligible so promotion is not empty
       } else if (!matchesSport && !matchesCategory) {
-        console.log('[PushDebug] findNearby skip: sport/category mismatch', {
+        debugLog('[PushDebug] findNearby skip: sport/category mismatch', {
           name: player.name,
           prefs,
           matchSport,
@@ -465,7 +441,7 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
       }
     }
 
-    console.log('[PushDebug] findNearby keep', {
+    debugLog('[PushDebug] findNearby keep', {
       name: player.name,
       distanceKm: Number(distance.toFixed(2)),
       hasPush: hasPushEndpoint(player.pushSubscription),
@@ -474,7 +450,7 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
     results.push({ player, distance: Number(distance.toFixed(2)) });
   }
 
-  console.log('[PushDebug] findNearby result count', results.length);
+  debugLog('[PushDebug] findNearby result count', results.length);
 
   results.sort((a, b) => a.distance - b.distance);
   return results;
@@ -755,7 +731,7 @@ function matchesRoutesFactory(io) {
       const populated = await findPopulatedMatch(match._id);
 
       // Send push notifications to nearby players (non-blocking)
-      console.log('[PushDebug] match created, triggering nearby push', {
+      debugLog('[PushDebug] match created, triggering nearby push', {
         matchId: match._id.toString(),
         isInformal: !!match.isInformal,
         sport: match.sport
@@ -800,14 +776,15 @@ function matchesRoutesFactory(io) {
       return res.status(403).json({ message: 'Organizator meča vam je zabranio pristup' });
     }
     
-    // Check if registration deadline has passed
-    if (new Date() > match.registrationDeadline) {
-      return res.status(400).json({ message: 'Rok za prijavu je istekao' });
+    const accessBlock = getMatchAccessBlock(match);
+    if (accessBlock?.code === 'closed') {
+      return res.status(400).json({ message: `Ne možete se pridružiti meču sa statusom: ${accessBlock.status}` });
     }
-    
-    // Check if match has failed
-    if (match.status === 'failed') {
-      return res.status(400).json({ message: `Ne možete se pridružiti meču sa statusom: ${match.status}` });
+    if (accessBlock?.code === 'rejected') {
+      return res.status(400).json({ message: 'Teren nije odobrio ovaj meč' });
+    }
+    if (accessBlock?.code === 'deadline') {
+      return res.status(400).json({ message: 'Rok za prijavu je istekao' });
     }
 
     // Check if match has reached maxPlayers (if set), otherwise allow up to a reasonable limit
@@ -857,9 +834,19 @@ function matchesRoutesFactory(io) {
         return res.status(400).json({ message: 'Niste prijavljeni na ovaj meč' });
       }
 
+      if (match.status === 'completed' || match.status === 'otkazano' || match.status === 'failed') {
+        return res.status(400).json({ message: 'Ne možete napustiti meč koji je završen ili otkazan' });
+      }
+
       // Don't allow leaving if you're the creator and match is full/completed
       if (match.createdBy.toString() === req.user.id && (match.status === 'full' || match.status === 'completed')) {
         return res.status(400).json({ message: 'Ne možete napustiti meč koji ste kreirali i koji je već rezervisan' });
+      }
+
+      const hoursBeforeMatch = (new Date(match.dateTime).getTime() - Date.now()) / (1000 * 60 * 60);
+      const penaltyPoints = getReliabilityPenaltyPoints(hoursBeforeMatch);
+      if (penaltyPoints > 0) {
+        await penalizeReliability(req.user.id, penaltyPoints, User);
       }
 
       // Remove player from match
@@ -966,11 +953,14 @@ function matchesRoutesFactory(io) {
         return res.status(403).json({ message: 'Organizator meča vam je zabranio pristup' });
       }
 
-      if (match.status === 'failed' || match.status === 'otkazano' || match.status === 'completed') {
-        return res.status(400).json({ message: `Ne možete stati u red za meč sa statusom: ${match.status}` });
+      const accessBlock = getMatchAccessBlock(match);
+      if (accessBlock?.code === 'closed') {
+        return res.status(400).json({ message: `Ne možete stati u red za meč sa statusom: ${accessBlock.status}` });
       }
-
-      if (new Date() > match.registrationDeadline) {
+      if (accessBlock?.code === 'rejected') {
+        return res.status(400).json({ message: 'Teren nije odobrio ovaj meč' });
+      }
+      if (accessBlock?.code === 'deadline') {
         return res.status(400).json({ message: 'Rok za prijavu je istekao' });
       }
 
@@ -1207,7 +1197,7 @@ function matchesRoutesFactory(io) {
       }
 
       const nearby = await findNearbyPlayerCandidates(match, field, { minRadiusKm: 25 });
-      console.log('[PushDebug] GET nearby-players', {
+      debugLog('[PushDebug] GET nearby-players', {
         matchId: req.params.id,
         count: nearby.length,
         names: nearby.map(({ player, distance }) => ({
@@ -1292,7 +1282,7 @@ function matchesRoutesFactory(io) {
         }
       }
 
-      console.log('[PushDebug] POST invite-players', {
+      debugLog('[PushDebug] POST invite-players', {
         matchId: req.params.id,
         requested: playerIds,
         found: targets.map((p) => ({
@@ -1304,7 +1294,7 @@ function matchesRoutesFactory(io) {
       });
 
       if (subscriptions.length === 0) {
-        console.log('[PushDebug] invite abort: no push endpoints');
+        debugLog('[PushDebug] invite abort: no push endpoints');
         return res.status(400).json({
           message: 'Izabrani igrači trenutno nemaju uključena obaveštenja, pa pozivnice nisu poslate'
         });
@@ -1376,7 +1366,7 @@ function matchesRoutesFactory(io) {
         field = await Field.findById(match.fieldId);
       }
 
-      console.log('[PushDebug] POST boost start', {
+      debugLog('[PushDebug] POST boost start', {
         matchId: req.params.id,
         credits: currentCredits,
         isInformal: !!match.isInformal
@@ -1387,20 +1377,20 @@ function matchesRoutesFactory(io) {
         matchSportOrCategory: true,
         minRadiusKm: 25
       });
-      console.log('[PushDebug] boost nearby (sport filter)', nearby.length);
+      debugLog('[PushDebug] boost nearby (sport filter)', nearby.length);
       if (nearby.length === 0) {
         nearby = await findNearbyPlayerCandidates(match, field, {
           requirePush: true,
           minRadiusKm: 25
         });
-        console.log('[PushDebug] boost nearby (fallback no sport filter)', nearby.length);
+        debugLog('[PushDebug] boost nearby (fallback no sport filter)', nearby.length);
       }
 
       const subscriptions = nearby
         .map(({ player }) => player.pushSubscription)
         .filter((sub) => hasPushEndpoint(sub));
 
-      console.log('[PushDebug] boost subscriptions', {
+      debugLog('[PushDebug] boost subscriptions', {
         nearby: nearby.map(({ player, distance }) => ({
           name: player.name,
           distance,
@@ -1410,7 +1400,7 @@ function matchesRoutesFactory(io) {
       });
 
       if (subscriptions.length === 0) {
-        console.log('[PushDebug] boost abort: no nearby push endpoints');
+        debugLog('[PushDebug] boost abort: no nearby push endpoints');
         return res.status(400).json({
           message: 'Nema igrača u blizini sa uključenim obaveštenjima'
         });

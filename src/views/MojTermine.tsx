@@ -39,6 +39,7 @@ import api from '../lib/api';
 import { Match, Field } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { getGameTypeName } from '../constants/games';
+import { formatPlayersCount } from '../lib/matchPlayers';
 
 function translateMatchStatus(status: string): string {
   switch (status) {
@@ -74,14 +75,6 @@ type AppointmentsData = {
   cancelled?: Match[];
   fields: Array<{ _id: string; name: string; sport: string }>;
 };
-
-function formatPlayersCount(match: Match): string {
-  const current = match.players.length;
-  const min = match.minPlayers ?? match.playersNeeded;
-  const max = match.maxPlayers;
-  if (max) return `${current}/${min}-${max}`;
-  return `${current}/${min}`;
-}
 
 // Match Card Component
 function MatchCard({ match, onComplete, onCancel }: { match: Match; onComplete?: (id: string) => void; onCancel?: (id: string) => void }) {
