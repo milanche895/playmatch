@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plejko — mockup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --cyan: #00d4ff;
+      --blue: #2b6cff;
+      --magenta: #d400ff;
+      --green: #00e676;
+      --orange: #ff9100;
+      --navy: #050a18;
+      --card: #121a33;
+      --line: rgba(255, 255, 255, 0.08);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --danger: #ff3b5c;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: "Nunito", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 480px at 15% -10%, rgba(0, 212, 255, 0.18), transparent 60%),
+        radial-gradient(700px 420px at 90% 0%, rgba(212, 0, 255, 0.16), transparent 55%),
+        #070b16;
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 36px 24px 64px;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 40px;
+      align-items: start;
+    }
+
+    h1 {
+      margin: 12px 0 8px;
+      font-size: 40px;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+    }
+    .lede { color: var(--muted); margin: 0 0 22px; line-height: 1.55; }
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--cyan);
+    }
+
+    .nav {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .nav button {
+      text-align: left;
+      border: 1px solid var(--line);
+      background: rgba(18, 26, 51, 0.7);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .nav button small {
+      display: block;
+      color: var(--muted);
+      font-weight: 600;
+      margin-top: 2px;
+    }
+    .nav button.active {
+      border-color: transparent;
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.22), rgba(212, 0, 255, 0.22));
+      box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.45);
+    }
+
+    .stage { display: flex; justify-content: center; }
+
+    .phone {
+      width: 390px;
+      height: 844px;
+      background: var(--navy);
+      border-radius: 42px;
+      border: 10px solid #1a2238;
+      box-shadow:
+        0 30px 80px rgba(0, 0, 0, 0.45),
+        0 0 0 1px rgba(255, 255, 255, 0.06),
+        0 0 80px rgba(0, 212, 255, 0.08);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .status {
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 22px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #cbd5e1;
+      flex-shrink: 0;
+    }
+
+    .appbar {
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--cyan), var(--magenta));
+      color: #041018;
+    }
+
+    .screen {
+      display: none;
+      flex: 1;
+      overflow: auto;
+      padding: 16px;
+    }
+    .screen.active { display: block; }
+    .screen::-webkit-scrollbar { width: 0; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+    }
+    .stack { display: flex; flex-direction: column; gap: 12px; }
+    .row { display: flex; align-items: center; gap: 8px; }
+    .between { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .muted { color: var(--muted); }
+    .title { font-weight: 800; letter-spacing: -0.02em; }
+    h2 { margin: 0; font-size: 22px; letter-spacing: -0.03em; }
+    p { margin: 0; }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+    }
+    .chip.ok { background: rgba(0, 230, 118, 0.16); color: #69f0ae; }
+    .chip.warn { background: rgba(255, 145, 0, 0.16); color: #ffb74d; }
+    .chip.info { background: rgba(0, 212, 255, 0.14); color: #80eaff; }
+    .chip.mag { background: rgba(212, 0, 255, 0.16); color: #e9a8ff; }
+
+    .btn {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      width: 100%;
+    }
+    .btn.primary {
+      color: #041018;
+      background: linear-gradient(90deg, var(--cyan), #5b8cff 55%, var(--magenta));
+    }
+    .btn.ghost {
+      background: transparent;
+      color: var(--text);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+    }
+    .btn.half { width: auto; flex: 1; }
+    .actions { display: flex; gap: 8px; }
+
+    .seg {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: #0b1228;
+      border-radius: 12px;
+      padding: 4px;
+      gap: 4px;
+    }
+    .seg button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-weight: 800;
+      border-radius: 10px;
+      padding: 8px;
+      cursor: pointer;
+    }
+    .seg button.on {
+      background: var(--card);
+      color: var(--text);
+      box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.35);
+    }
+
+    .sport { color: var(--cyan); font-weight: 800; font-size: 13px; }
+    .loc { font-weight: 800; margin-top: 2px; }
+
+    .map {
+      height: 430px;
+      border-radius: 18px;
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(5, 10, 24, 0.15), rgba(5, 10, 24, 0.55)),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 48px),
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 48px),
+        #16324a;
+    }
+    .river {
+      position: absolute;
+      left: -20px;
+      top: 80px;
+      width: 140%;
+      height: 90px;
+      background: rgba(0, 180, 220, 0.35);
+      transform: rotate(-12deg);
+      filter: blur(0.2px);
+    }
+    .pin {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      background: var(--cyan);
+      box-shadow: 0 0 0 6px rgba(0, 212, 255, 0.2);
+    }
+    .pin.hot { background: var(--orange); box-shadow: 0 0 0 6px rgba(255, 145, 0, 0.25); }
+    .pin span {
+      position: absolute;
+      left: 22px;
+      top: -2px;
+      transform: rotate(45deg);
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+      color: white;
+      text-shadow: 0 1px 4px #000;
+    }
+    .sheet {
+      margin-top: -28px;
+      position: relative;
+    }
+
+    .hero-card {
+      text-align: center;
+      padding: 28px 18px;
+      background:
+        linear-gradient(180deg, rgba(0, 212, 255, 0.1), transparent 42%),
+        var(--card);
+    }
+    .games { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+
+    .players { display: flex; }
+    .players .avatar { margin-right: -8px; border: 2px solid var(--card); width: 36px; height: 36px; }
+    .statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat { background: #0b1228; border-radius: 14px; padding: 12px; }
+    .stat b { display: block; font-size: 22px; }
+    .bar {
+      height: 8px;
+      border-radius: 99px;
+      background: #0b1228;
+      overflow: hidden;
+    }
+    .bar i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--cyan), var(--magenta));
+    }
+    label.field {
+      display: block;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    input, select {
+      width: 100%;
+      margin-top: 6px;
+      background: #0b1228;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      font: inherit;
+      font-weight: 700;
+    }
+    .toast {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 18px;
+      background: #06281a;
+      color: #b9f6ca;
+      border: 1px solid rgba(0, 230, 118, 0.4);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-weight: 800;
+      display: none;
+    }
+    .toast.show { display: block; }
+
+    @media (max-width: 860px) {
+      .page { grid-template-columns: 1fr; padding-top: 20px; }
+      .phone { width: min(390px, 100%); height: 760px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <aside>
+      <div class="kicker">Plejko · mockup</div>
+      <h1>Tok igrača</h1>
+      <p class="lede">Vizuelni pregled glavnih ekrana. Nije povezan sa bazom — služi da se vidi raspored, ton i redosled.</p>
+      <div class="nav" id="nav">
+        <button data-screen="welcome" class="active">1. Dobrodošlica<small>Posle registracije</small></button>
+        <button data-screen="home">2. Početna<small>Lista mečeva u blizini</small></button>
+        <button data-screen="map">3. Mapa<small>Tereni i privatni mečevi</small></button>
+        <button data-screen="match">4. Detalji meča<small>Igrači, mesto, prijava</small></button>
+        <button data-screen="create">5. Kreiraj meč<small>Sport, vreme, broj igrača</small></button>
+        <button data-screen="profile">6. Profil<small>Ocena i pouzdanost</small></button>
+      </div>
+    </aside>
+
+    <div class="stage">
+      <div class="phone" id="phone">
+        <div class="status"><span>17:42</span><span>5G</span></div>
+        <div class="appbar">
+          <div class="brand">
+            <svg width="28" height="28" viewBox="0 0 120 120" aria-hidden="true">
+              <defs>
+                <linearGradient id="p" x1="20%" y1="0%" x2="70%" y2="100%">
+                  <stop offset="0%" stop-color="#00E5FF"/>
+                  <stop offset="40%" stop-color="#2B6CFF"/>
+                  <stop offset="100%" stop-color="#E000FF"/>
+                </linearGradient>
+              </defs>
+              <rect x="8" y="38" width="22" height="8" rx="4" fill="#00E676"/>
+              <rect x="4" y="54" width="28" height="8" rx="4" fill="#FF9100"/>
+              <rect x="10" y="70" width="18" height="8" rx="4" fill="#D400FF"/>
+              <path fill="url(#p)" d="M38 22C38 18 42 14 48 14H78C98 14 110 28 110 48C110 68 98 82 78 82H58V106C58 110 54 114 50 114C46 114 42 110 42 106V28C42 24 40 22 38 22ZM58 36V60H76C86 60 92 54 92 48C92 42 86 36 76 36H58Z"/>
+            </svg>
+            Plejko
+          </div>
+          <div class="avatar">M</div>
+        </div>
+
+        <section class="screen active" id="welcome">
+          <div class="card hero-card stack">
+            <svg width="72" height="72" viewBox="0 0 120 120" style="margin:0 auto" aria-hidden="true">
+              <rect x="8" y="38" width="22" height="8" rx="4" fill="#00E676"/>
+              <rect x="4" y="54" width="28" height="8" rx="4" fill="#FF9100"/>
+              <rect x="10" y="70" width="18" height="8" rx="4" fill="#D400FF"/>
+              <path fill="url(#p)" d="M38 22C38 18 42 14 48 14H78C98 14 110 28 110 48C110 68 98 82 78 82H58V106C58 110 54 114 50 114C46 114 42 110 42 106V28C42 24 40 22 38 22ZM58 36V60H76C86 60 92 54 92 48C92 42 86 36 76 36H58Z"/>
+            </svg>
+            <h2>Dobrodošao u Plejko, Marko!</h2>
+            <p class="muted">Pronađi mečeve u blizini, okupi ekipu i igraj. Sve što si izabrao čeka te na početnoj.</p>
+            <div><span class="chip info">Igrač</span></div>
+            <div>
+              <div class="muted" style="font-size:12px;font-weight:800;margin-bottom:8px">Tvoje igre</div>
+              <div class="games">
+                <span class="chip mag">Fudbal</span>
+                <span class="chip mag">Košarka</span>
+                <span class="chip mag">Tenis</span>
+              </div>
+            </div>
+            <button class="btn primary" data-go="create">Kreiraj prvi meč</button>
+            <button class="btn ghost" data-go="home">Idi na početnu</button>
+          </div>
+        </section>
+
+        <section class="screen" id="home">
+          <div class="stack">
+            <div>
+              <h2>Mečevi u blizini</h2>
+              <p class="muted" style="margin-top:4px">U krugu od 10 km · Beograd</p>
+            </div>
+            <div class="seg" data-seg>
+              <button class="on" type="button">Moje igre</button>
+              <button type="button">Sve</button>
+            </div>
+            <div class="seg" data-seg>
+              <button class="on" type="button">Lista</button>
+              <button type="button" data-go="map">Mapa</button>
+            </div>
+
+            <article class="card stack" id="card-ada">
+              <div class="between">
+                <div>
+                  <div class="sport">Fudbal · danas 19:00</div>
+                  <div class="loc">Ada Ciganlija · 1,2 km</div>
+                </div>
+                <span class="chip ok">Otvoren</span>
+              </div>
+              <div class="row">
+                <span class="chip warn">Treba još 3</span>
+                <span class="muted" style="font-size:12px;font-weight:700">7 / 10 igrača</span>
+              </div>
+              <div class="actions">
+                <button class="btn primary half" id="join-ada">Prijavi se</button>
+                <button class="btn ghost half" data-go="match">Detalji</button>
+              </div>
+            </article>
+
+            <article class="card stack">
+              <div class="between">
+                <div>
+                  <div class="sport">Košarka · sutra 18:00</div>
+                  <div class="loc">SC Tašmajdan · 3,4 km</div>
+                </div>
+                <span class="chip warn">Pun</span>
+              </div>
+              <div class="row">
+                <span class="chip">10 / 10</span>
+                <span class="muted" style="font-size:12px;font-weight:700">Lista čekanja</span>
+              </div>
+              <button class="btn ghost">Stani u red</button>
+            </article>
+
+            <article class="card stack">
+              <div class="between">
+                <div>
+                  <div class="sport">Tenis · petak 10:00</div>
+                  <div class="loc">Kalemegdan, kod fontane · 2,1 km</div>
+                </div>
+                <span class="chip" style="background:rgba(249,115,22,.18);color:#fdba74">Privatni teren</span>
+              </div>
+              <div class="row"><span class="chip warn">Treba još 1</span></div>
+              <div class="actions">
+                <button class="btn primary half">Prijavi se</button>
+                <button class="btn ghost half">Detalji</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="screen" id="map">
+          <div class="stack">
+            <div class="between">
+              <div>
+                <h2>Mapa terena</h2>
+                <p class="muted">3 terena · 1 privatni meč</p>
+              </div>
+              <button class="btn ghost" style="width:auto;padding:8px 12px" data-go="home">Lista</button>
+            </div>
+            <div class="map">
+              <div class="river"></div>
+              <div class="pin" style="left:28%;top:34%"><span>Ada · 2 meča</span></div>
+              <div class="pin" style="left:62%;top:22%"><span>Tašmajdan</span></div>
+              <div class="pin hot" style="left:48%;top:58%"><span>Privatni</span></div>
+            </div>
+            <div class="card sheet stack">
+              <div class="sport">Fudbal</div>
+              <div class="title">Ada Ciganlija</div>
+              <p class="muted">2 meča na ovom terenu · od 1.500 RSD</p>
+              <button class="btn primary" data-go="match">Otvori meč u 19:00</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="screen" id="match">
+          <div class="stack">
+            <div class="between">
+              <div>
+                <div class="sport">Fudbal</div>
+                <h2>Ada Ciganlija</h2>
+                <p class="muted">Danas, 19:00 · 1,2 km</p>
+              </div>
+              <span class="chip ok" id="match-status">Otvoren</span>
+            </div>
+            <div class="card stack">
+              <div class="between">
+                <span class="title">Igrači</span>
+                <span class="muted" id="count-label">7 / 10</span>
+              </div>
+              <div class="players" id="roster">
+                <div class="avatar">A</div>
+                <div class="avatar" style="background:linear-gradient(135deg,#00e676,#2b6cff)">N</div>
+                <div class="avatar" style="background:linear-gradient(135deg,#ff9100,#d400ff)">J</div>
+                <div class="avatar" style="background:#334155;color:#fff">+4</div>
+              </div>
+              <p class="muted">Organizator: Ana · ocena 4,8 · pouzdanost 92</p>
+            </div>
+            <div class="statgrid">
+              <div class="stat"><span class="muted">Rok prijave</span><b style="font-size:16px">18:00</b></div>
+              <div class="stat"><span class="muted">Teren</span><b style="font-size:16px">Odobren</b></div>
+            </div>
+            <button class="btn primary" id="join-detail">Prijavi se na meč</button>
+            <button class="btn ghost" data-go="home">Nazad na listu</button>
+          </div>
+        </section>
+
+        <section class="screen" id="create">
+          <div class="stack">
+            <h2>Novi meč</h2>
+            <div class="seg" id="mode">
+              <button class="on" type="button">Na terenu</button>
+              <button type="button">Privatno</button>
+            </div>
+            <label class="field">Sport
+              <select>
+                <option>Fudbal</option>
+                <option>Košarka</option>
+                <option>Tenis</option>
+              </select>
+            </label>
+            <label class="field">Datum i vreme
+              <input value="2026-10-05T19:00" type="text" readonly />
+            </label>
+            <div class="statgrid">
+              <label class="field">Minimum
+                <input value="8" readonly />
+              </label>
+              <label class="field">Maksimum
+                <input value="10" readonly />
+              </label>
+            </div>
+            <label class="field" id="place-label">Teren
+              <input value="Ada Ciganlija" readonly />
+            </label>
+            <div class="card">
+              <div class="muted" style="font-size:12px;font-weight:800">PREGLED</div>
+              <p class="title" style="margin-top:6px" id="preview">Fudbal · Ada Ciganlija · sutra 19:00</p>
+              <p class="muted">Rok prijave se računa iz pravila terena.</p>
+            </div>
+            <button class="btn primary" id="publish">Objavi meč</button>
+          </div>
+        </section>
+
+        <section class="screen" id="profile">
+          <div class="stack">
+            <div class="card" style="text-align:center">
+              <div class="avatar" style="width:72px;height:72px;margin:0 auto 10px;font-size:28px">M</div>
+              <h2>Marko Petrović</h2>
+              <p class="muted">Igrač · Beograd</p>
+              <div class="games" style="margin-top:10px">
+                <span class="chip ok">Ocena 4,6</span>
+                <span class="chip info">Pouzdanost 88</span>
+              </div>
+            </div>
+            <div class="card stack">
+              <div class="between"><span>Fudbal</span><span class="muted">4 / 5</span></div>
+              <div class="bar"><i style="width:80%"></i></div>
+              <div class="between"><span>Košarka</span><span class="muted">3 / 5</span></div>
+              <div class="bar"><i style="width:60%"></i></div>
+              <div class="between"><span>Tenis</span><span class="muted">2 / 5</span></div>
+              <div class="bar"><i style="width:40%"></i></div>
+            </div>
+            <div class="statgrid">
+              <div class="stat"><span class="muted">Odigrano</span><b>24</b></div>
+              <div class="stat"><span class="muted">Organizovano</span><b>6</b></div>
+            </div>
+            <button class="btn ghost" data-go="home">Nazad na početnu</button>
+          </div>
+        </section>
+
+        <div class="toast" id="toast">Prijavljen si na meč.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const screens = document.querySelectorAll(".screen");
+    const navButtons = document.querySelectorAll("#nav button");
+    const toast = document.getElementById("toast");
+
+    function show(id) {
+      screens.forEach((s) => s.classList.toggle("active", s.id === id));
+      navButtons.forEach((b) => b.classList.toggle("active", b.dataset.screen === id));
+      document.querySelector(".screen.active")?.scrollTo(0, 0);
+    }
+
+    navButtons.forEach((b) => b.addEventListener("click", () => show(b.dataset.screen)));
+    document.querySelectorAll("[data-go]").forEach((el) => {
+      el.addEventListener("click", () => show(el.dataset.go));
+    });
+
+    document.querySelectorAll("[data-seg]").forEach((seg) => {
+      seg.querySelectorAll("button").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (btn.dataset.go) return;
+          seg.querySelectorAll("button").forEach((b) => b.classList.remove("on"));
+          btn.classList.add("on");
+        });
+      });
+    });
+
+    function flash(message) {
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(flash._t);
+      flash._t = setTimeout(() => toast.classList.remove("show"), 1800);
+    }
+
+    document.getElementById("join-ada").addEventListener("click", () => {
+      document.getElementById("join-ada").textContent = "Pridružen";
+      document.getElementById("join-ada").disabled = true;
+      flash("Prijavljen si na meč na Adi.");
+    });
+
+    document.getElementById("join-detail").addEventListener("click", () => {
+      const roster = document.getElementById("roster");
+      if (!document.getElementById("me")) {
+        const me = document.createElement("div");
+        me.id = "me";
+        me.className = "avatar";
+        me.textContent = "M";
+        roster.appendChild(me);
+      }
+      document.getElementById("count-label").textContent = "8 / 10";
+      document.getElementById("match-status").textContent = "Prijavljen";
+      document.getElementById("join-detail").textContent = "Već si na meču";
+      document.getElementById("join-detail").disabled = true;
+      flash("Prijavljen si. Ostala su još 2 mesta.");
+    });
+
+    document.getElementById("mode").querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const privatno = btn.textContent.includes("Privatno");
+        document.getElementById("place-label").firstChild.textContent = privatno ? "Mesto " : "Teren ";
+        document.querySelector("#place-label input").value = privatno ? "Kalemegdan, kod fontane" : "Ada Ciganlija";
+        document.getElementById("preview").textContent = privatno
+          ? "Tenis · privatni teren · petak 10:00"
+          : "Fudbal · Ada Ciganlija · sutra 19:00";
+      });
+    });
+
+    document.getElementById("publish").addEventListener("click", () => {
+      flash("Meč je objavljen. Igrači u blizini dobijaju obaveštenje.");
+      setTimeout(() => show("home"), 900);
+    });
+  </script>
+</body>
+</html>

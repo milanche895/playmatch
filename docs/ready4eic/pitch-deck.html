@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Plejko — Ready4EIC Pitch Deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --cyan: #00D4FF;
+      --blue: #2B6CFF;
+      --magenta: #D400FF;
+      --purple: #8A2BE2;
+      --green: #00E676;
+      --orange: #FF9100;
+      --yellow: #FFD600;
+      --navy: #050A18;
+      --navy-soft: #0B1228;
+      --navy-card: #121A33;
+      --text: #F8FAFC;
+      --muted: #94A3B8;
+      --line: rgba(255,255,255,0.10);
+      --grad: linear-gradient(135deg, #00D4FF 0%, #2B6CFF 45%, #D400FF 100%);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      background: #000;
+      color: var(--text);
+      font-family: "Nunito", "Segoe UI", sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    @page {
+      size: 13.333in 7.5in;
+      margin: 0;
+    }
+    .slide {
+      width: 13.333in;
+      height: 7.5in;
+      page-break-after: always;
+      break-after: page;
+      position: relative;
+      overflow: hidden;
+      background: var(--navy);
+      padding: 0.42in 0.52in 0.46in;
+    }
+    .slide:last-child { page-break-after: auto; break-after: auto; }
+    .bg-grid {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image:
+        radial-gradient(ellipse 70% 55% at 85% -10%, rgba(212,0,255,0.18), transparent 55%),
+        radial-gradient(ellipse 60% 50% at -5% 110%, rgba(0,212,255,0.14), transparent 50%),
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: auto, auto, 36px 36px, 36px 36px;
+    }
+    .topbar {
+      display: flex; justify-content: space-between; align-items: center;
+      position: relative; z-index: 2; margin-bottom: 0.18in;
+    }
+    .brand-mini { display: flex; align-items: center; gap: 8px; }
+    .brand-mini img { width: 28px; height: 28px; border-radius: 7px; }
+    .brand-mini span { font-weight: 800; font-size: 13px; letter-spacing: 0.04em; }
+    .slide-num { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.08em; }
+    .footer {
+      position: absolute; left: 0.52in; right: 0.52in; bottom: 0.18in;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 0.04em;
+      z-index: 3;
+    }
+    .footer::before {
+      content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 2px;
+      background: var(--grad); opacity: 0.85; border-radius: 2px;
+    }
+    h1 {
+      font-size: 32px; font-weight: 900; letter-spacing: -0.03em; line-height: 1.12;
+      position: relative; z-index: 2;
+    }
+    h1 .accent { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .kicker {
+      font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--cyan); margin-bottom: 8px; position: relative; z-index: 2;
+    }
+    .lede {
+      font-size: 15px; font-weight: 600; color: var(--muted); line-height: 1.45;
+      max-width: 11.8in; margin-top: 8px; position: relative; z-index: 2;
+    }
+    .grid { display: grid; gap: 12px; position: relative; z-index: 2; margin-top: 16px; }
+    .g2 { grid-template-columns: 1fr 1fr; }
+    .g3 { grid-template-columns: 1fr 1fr 1fr; }
+    .g4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+    .card {
+      background: rgba(18,26,51,0.88);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 16px;
+    }
+    .card h3 { font-size: 14px; font-weight: 800; margin-bottom: 6px; }
+    .card p, .card li { font-size: 12.5px; font-weight: 600; color: #CBD5E1; line-height: 1.4; }
+    .card ul { padding-left: 16px; }
+    .card li { margin: 3px 0; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 800;
+      border: 1px solid rgba(0,212,255,0.35); color: var(--cyan);
+      background: rgba(0,212,255,0.10);
+    }
+    .stat { text-align: left; }
+    .stat .n { font-size: 26px; font-weight: 900; letter-spacing: -0.03em; color: var(--cyan); line-height: 1; }
+    .stat .l { font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 6px; line-height: 1.3; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; position: relative; z-index: 2; }
+    th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cyan); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--line); font-weight: 600; color: #E2E8F0; vertical-align: middle; }
+    td.yes { color: var(--green); font-weight: 800; }
+    td.no { color: #64748B; }
+    td.mid { color: var(--orange); }
+    .check { color: var(--green); font-weight: 900; }
+    .cross { color: #64748B; }
+
+    /* Cover */
+    .cover { padding: 0; }
+    .cover-inner {
+      height: 100%; display: grid; grid-template-columns: 1.15fr 0.85fr;
+    }
+    .cover-left { padding: 0.55in 0.55in 0.5in; position: relative; z-index: 2; }
+    .cover-right {
+      position: relative;
+      background: #000 url("assets/desktop-hero.png") center / cover no-repeat;
+    }
+    .cover-right::after {
+      content: ""; position: absolute; inset: 0;
+      background: linear-gradient(90deg, #050A18 0%, rgba(5,10,24,0.25) 38%, rgba(5,10,24,0.15) 100%);
+    }
+    .logo-row { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+    .logo-row img.icon { width: 72px; height: 72px; border-radius: 18px; box-shadow: 0 0 28px rgba(0,212,255,0.28); }
+    .logo-row img.word { height: 42px; }
+    .cover h1 { font-size: 42px; max-width: 6.6in; margin-top: 10px; }
+    .tagline {
+      margin-top: 14px; font-size: 16px; font-weight: 800; letter-spacing: 0.18em;
+      text-transform: uppercase; color: var(--cyan);
+    }
+    .cover-meta { margin-top: 36px; display: flex; flex-direction: column; gap: 8px; }
+    .cover-meta p { font-size: 13.5px; font-weight: 700; color: #CBD5E1; }
+    .badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+    .badge {
+      font-size: 11px; font-weight: 800; padding: 6px 12px; border-radius: 999px;
+      background: rgba(255,255,255,0.06); border: 1px solid var(--line); color: #E2E8F0;
+    }
+
+    .need-list { list-style: none; padding: 0; }
+    .need-list li {
+      display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start;
+      margin: 8px 0; font-size: 13px; font-weight: 600; color: #E2E8F0; line-height: 1.35;
+    }
+    .dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--grad); color: #fff; font-size: 11px; font-weight: 900;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .two-col { display: grid; grid-template-columns: 1.35fr 0.65fr; gap: 16px; position: relative; z-index: 2; margin-top: 14px; }
+    .quote {
+      border-left: 3px solid var(--magenta); padding-left: 12px;
+      font-size: 13.5px; font-weight: 700; color: #E2E8F0; line-height: 1.45;
+    }
+    .flow { display: flex; gap: 10px; align-items: stretch; position: relative; z-index: 2; margin-top: 14px; }
+    .flow .step { flex: 1; }
+    .arrow { display: flex; align-items: center; color: var(--cyan); font-size: 22px; font-weight: 900; }
+    .cat { text-align: center; padding: 12px 8px; }
+    .cat .emoji { font-size: 22px; margin-bottom: 4px; }
+    .cat h3 { margin-bottom: 2px; }
+    .cat p { font-size: 11.5px; }
+  </style>
+</head>
+<body>
+
+  <!-- 1 COVER -->
+  <section class="slide cover">
+    <div class="bg-grid"></div>
+    <div class="cover-inner">
+      <div class="cover-left">
+        <div class="logo-row">
+          <img class="icon" src="assets/plejko-app-icon.png" alt="Plejko" />
+          <img class="word" src="assets/plejko-wordmark.png" alt="Plejko" />
+        </div>
+        <div class="pill">Ready4EIC application · August 2026</div>
+        <h1>The social play platform that turns “who wants to play?” into a trusted match.</h1>
+        <div class="tagline">Find · Gather · Play</div>
+        <p class="lede" style="max-width:6.8in;margin-top:14px;">
+          A live Progressive Web App for sport, board games, pub games and gaming —
+          connecting players and venues across Serbia, with a path to the Western Balkans and the EU.
+        </p>
+        <div class="badge-row">
+          <span class="badge">Serbia · EU enlargement</span>
+          <span class="badge">Local hub: STP Belgrade</span>
+          <span class="badge">Digital marketplace</span>
+          <span class="badge">Confidential</span>
+        </div>
+        <div class="cover-meta">
+          <p>Prepared for Ready4EIC — Accessing funding and enabling growth</p>
+          <p style="color:#64748B;font-size:12px;">European Commission programme for innovative SMEs in enlargement countries</p>
+        </div>
+      </div>
+      <div class="cover-right"></div>
+    </div>
+  </section>
+
+  <!-- 2 SNAPSHOT -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">02 / 12</div>
+    </div>
+    <div class="kicker">Company snapshot</div>
+    <h1>An innovative digital service, ready to professionalise growth.</h1>
+    <p class="lede">We are applying for Round 1 capacity-building — then Round 2 investment readiness and European funding pathways (Horizon Europe / EIC).</p>
+    <div class="grid g4" style="margin-top:18px;">
+      <div class="card stat"><div class="n">PWA</div><div class="l">Live product: map, matches, courts, push, ratings, chat</div></div>
+      <div class="card stat"><div class="n">2-sided</div><div class="l">Players + court owners in one marketplace</div></div>
+      <div class="card stat"><div class="n">4</div><div class="l">Play categories: sport, tabletop, pub, gaming</div></div>
+      <div class="card stat"><div class="n">RS → WB</div><div class="l">Serbia first, then Western Balkans &amp; enlargement</div></div>
+    </div>
+    <div class="grid g3" style="margin-top:12px;">
+      <div class="card">
+        <h3>What we are</h3>
+        <p>Founder-led digital startup from Serbia. Brand: <b style="color:#fff">Plejko</b>. Born from a real gap: wanting a football game abroad and finding neither the pitch nor the people. Now a location-based play network with a trust layer and venue tools for sports SMEs.</p>
+      </div>
+      <div class="card">
+        <h3>Stage</h3>
+        <p>Product-ready (software TRL 6–7). Pre-scale go-to-market. Seeking structured growth planning, unit economics, investor engagement and a realistic EU funding route — not a grant today, a preparation programme.</p>
+      </div>
+      <div class="card">
+        <h3>The ask</h3>
+        <p>Accept Plejko into Ready4EIC Round 1 with Innovation Advisors at <b style="color:#fff">Science Technology Park Belgrade</b>. Ambition: qualify for Round 2 (scaling &amp; investment readiness).</p>
+      </div>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <!-- 3 PROBLEM -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">03 / 12</div>
+    </div>
+    <div class="kicker">The problem · founder insight</div>
+    <h1>I wanted a game. I had <span class="accent">no pitch and no people.</span></h1>
+    <p class="lede">On holiday in another country I wanted to play football — and could find neither the fields nor anyone to play with. Locals fail the same way every week, in closed WhatsApp groups. Venues stay empty. Newcomers never get invited.</p>
+    <div class="grid g4">
+      <div class="card">
+        <h3>1. Coordination failure</h3>
+        <p>Finding enough players at the right hour is social friction, not a sports problem. Groups die in chat threads. Newcomers never get invited.</p>
+      </div>
+      <div class="card">
+        <h3>2. Empty courts, analogue SMEs</h3>
+        <p>Small sports venues (the backbone of amateur sport) have no digital booking, no community feed, no show-up data. Demand is invisible.</p>
+      </div>
+      <div class="card">
+        <h3>3. No-shows destroy supply</h3>
+        <p>Without reputation, cancellations are free. Organisers stop hosting. The marketplace never reaches critical mass.</p>
+      </div>
+      <div class="card">
+        <h3>4. Tools are too narrow</h3>
+        <p>Playtomic = racket booking. Meetup = generic events. Instagram = discovery without operations. Nothing is built for Balkan pickup culture across sport + games.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <p class="quote">That holiday moment is not a tourist anecdote — it is the product. The same gap hits travelers, students, diaspora and locals. Across enlargement countries, play is still unbundled into private chats: a mobility, health and SME-digitalisation problem.</p>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <!-- 4 SOLUTION -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">04 / 12</div>
+    </div>
+    <div class="kicker">The solution</div>
+    <h1>Plejko: find people, gather a match, play.</h1>
+    <p class="lede">One installable web app. Map-first discovery. Formal venues and informal meetups. Trust, payments split, chat and ratings after the game.</p>
+    <div class="flow">
+      <div class="card step">
+        <div class="pill" style="margin-bottom:8px;">01</div>
+        <h3>Pronađi — Find</h3>
+        <p>See nearby matches and fields on a live map. Filter by preferred games. Get push when something opens in your radius.</p>
+      </div>
+      <div class="arrow">→</div>
+      <div class="card step">
+        <div class="pill" style="margin-bottom:8px;">02</div>
+        <h3>Okupi — Gather</h3>
+        <p>Create or join. Waitlist if full. Court approval for registered venues. Cost splitter. Quick chat. Reliability stays visible.</p>
+      </div>
+      <div class="arrow">→</div>
+      <div class="card step">
+        <div class="pill" style="margin-bottom:8px;">03</div>
+        <h3>Igraj — Play</h3>
+        <p>Show up. Complete the match. Rate teammates (skill + fair play). Trust score updates. Come back next week.</p>
+      </div>
+    </div>
+    <div class="grid g4" style="margin-top:12px;">
+      <div class="card cat"><div class="emoji">⚽</div><h3>Sport</h3><p>Football, basketball, padel, running…</p></div>
+      <div class="card cat"><div class="emoji">🎲</div><h3>Board games</h3><p>Catan, chess, UNO, D&amp;D…</p></div>
+      <div class="card cat"><div class="emoji">🎯</div><h3>Pub games</h3><p>Darts, billiards, bowling, quiz…</p></div>
+      <div class="card cat"><div class="emoji">🎮</div><h3>Gaming</h3><p>FIFA, LoL, CS2, Valorant…</p></div>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <!-- 5 PRODUCT -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">05 / 12</div>
+    </div>
+    <div class="kicker">Product</div>
+    <h1>Two roles. One network effect.</h1>
+    <div class="grid g2" style="margin-top:16px;">
+      <div class="card">
+        <div class="pill" style="margin-bottom:10px;">Players</div>
+        <h3>Social play, with consequences that are fair</h3>
+        <ul>
+          <li>Map + list of open matches; geo push in a chosen radius</li>
+          <li>Formal (registered field) and informal (pin on the map) matches</li>
+          <li>Join / waitlist / cancel-attendance with reliability impact</li>
+          <li>Match chat, cost splitter (RSD), post-match ratings</li>
+          <li>Trust badge from reliability score (0–100)</li>
+          <li>OAuth (Google / Facebook) + cookie-based secure session</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="pill" style="margin-bottom:10px;border-color:rgba(212,0,255,.4);color:#E866FF;background:rgba(212,0,255,.12);">Court owners · local SMEs</div>
+        <h3>Digital operations for venues</h3>
+        <ul>
+          <li>Create and manage fields, sports, price, working hours</li>
+          <li>Approve / reject / complete match reservations</li>
+          <li>Reserve empty slots; occupancy becomes visible</li>
+          <li>Player community that returns — not one-off Instagram DMs</li>
+          <li>Pathway to paid listing, commission and venue SaaS</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <p><b style="color:#fff;">Stack (built, not mocked):</b> React + TypeScript PWA · Node/Express · MongoDB · Socket.IO real-time · Web Push · Cloudinary · deployed on Render (EU/Frankfurt). Installable on home screen — no app-store gate for first markets.</p>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <!-- 6 INNOVATION -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">06 / 12</div>
+    </div>
+    <div class="kicker">Innovation</div>
+    <h1>Not another sports listing. A <span class="accent">trust protocol</span> for real-world play.</h1>
+    <p class="lede">Ready4EIC scope: innovative product + business model. We are digital / social-tech, not deep-tech hardware — honest positioning, high regional relevance.</p>
+    <div class="grid g2">
+      <div class="card">
+        <h3>Trust as infrastructure</h3>
+        <p>Reliability score, timed cancellation penalties, no-show marking, fair-play ratings. This is the missing layer that WhatsApp cannot provide — and the reason two-sided marketplaces usually stall.</p>
+      </div>
+      <div class="card">
+        <h3>Dual-mode supply</h3>
+        <p>Registered courts (approval workflow, overlap control, deadlines) plus informal pins (parks, homes, pubs). Captures both the SME venue economy and grassroots pickup culture.</p>
+      </div>
+      <div class="card">
+        <h3>Multi-category identity</h3>
+        <p>One profile across football, Catan, darts and FIFA. Cross-category liquidity is a business-model innovation: evening board-game players become weekend teammates.</p>
+      </div>
+      <div class="card">
+        <h3>PWA for enlargement markets</h3>
+        <p>No store tax, instant updates, Web Push, works on mid-range Android first. Designed for Serbia and replicable across AL, BA, ME, MK, XK, TR, MD, GE, UA.</p>
+      </div>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <!-- 7 MARKET -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">07 / 12</div>
+    </div>
+    <div class="kicker">Market</div>
+    <h1>Serbia is the beachhead. Enlargement is the region.</h1>
+    <p class="lede">Same culture of pickup sport, café games and late-night squads — fragmented digital tools. We scale language-by-language, city-by-city.</p>
+    <div class="grid g3">
+      <div class="card stat">
+        <div class="n">~6.6M</div>
+        <div class="l">Serbia population. First GTM: Belgrade, Novi Sad, Niš. Target: digitally active 18–40 who already organise play in chats.</div>
+      </div>
+      <div class="card stat">
+        <div class="n">~18M</div>
+        <div class="l">Western Balkans. Shared product-market fit; Ready4EIC sister hubs in AL, BA, ME, MK, XK are a distribution channel, not just mentoring.</div>
+      </div>
+      <div class="card stat">
+        <div class="n">EU next</div>
+        <div class="l">Diaspora cities + recreational-sport digitalisation (Playtomic proved racket booking). Plejko aims at community liquidity, not only court checkout.</div>
+      </div>
+    </div>
+    <div class="grid g2" style="margin-top:12px;">
+      <div class="card">
+        <h3>Where money sits</h3>
+        <p>Players pay for pitch time, equipment, drinks. Venues lose yield on empty hours. Brands want authentic local sport audiences. The platform sits between all three — starting with venue digitalisation (B2B) and network density (B2C free).</p>
+      </div>
+      <div class="card">
+        <h3>Why now</h3>
+        <p>PWA + push is mature. Post-covid social rebuild is incomplete. Court sports (padel, small-sided football) are investing in facilities. Young users will not download a 12th native app — they will add an icon if the match is tonight.</p>
+      </div>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <!-- 8 BUSINESS MODEL -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">08 / 12</div>
+    </div>
+    <div class="kicker">Business model</div>
+    <h1>Free liquidity. Paid infrastructure.</h1>
+    <p class="lede">Players grow the graph. Venues and promotions pay for yield. Ready4EIC workstream: turn this logic into a financial model, pricing tests and an investor narrative.</p>
+    <div class="grid g4">
+      <div class="card">
+        <h3>Now — grow</h3>
+        <p>Free for players. Court owners list fields. Goal: density in 1–2 cities. Cost splitter already in-product (offline payment mark-off).</p>
+      </div>
+      <div class="card">
+        <h3>B2B venues</h3>
+        <p>Subscription for field management, featured placement, reservation tools. Optional commission on confirmed bookings once volume exists.</p>
+      </div>
+      <div class="card">
+        <h3>Promotions</h3>
+        <p>Sports brands, pubs, board-game cafés: sponsored matches, featured events, local campaigns to a geo-qualified audience.</p>
+      </div>
+      <div class="card">
+        <h3>Later — premium</h3>
+        <p>Organiser tools, verified identity, tournament mode, white-label for clubs / municipalities. Open to EU public-sport partnerships.</p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;">
+      <p><b style="color:#fff;">Unit-economics hypothesis (to be stress-tested in the programme):</b> one active court SME + recurring weekly matches can justify a software fee far below a no-show’s lost slot. Network value compounds; CAC should stay low via geo-push and share-links rather than paid UA in year one.</p>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <!-- 9 COMPETITION -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">09 / 12</div>
+    </div>
+    <div class="kicker">Competition</div>
+    <h1>We do not out-padel Playtomic. We out-community WhatsApp.</h1>
+    <table style="margin-top:14px;">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Pickup + trust</th>
+          <th>Venue ops</th>
+          <th>Multi-category</th>
+          <th>Local language / Balkans</th>
+          <th>No-show cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:#00D4FF;font-weight:900;">Plejko</td>
+          <td class="yes">Yes</td>
+          <td class="yes">Yes</td>
+          <td class="yes">Sport + games + pub + e-sport</td>
+          <td class="yes">Serbian-first</td>
+          <td class="yes">Reliability score</td>
+        </tr>
+        <tr>
+          <td>WhatsApp / IG</td>
+          <td class="no">Closed groups</td>
+          <td class="no">No</td>
+          <td class="mid">Ad hoc</td>
+          <td class="yes">Native</td>
+          <td class="no">None</td>
+        </tr>
+        <tr>
+          <td>Playtomic</td>
+          <td class="mid">Booking-led</td>
+          <td class="yes">Strong (rackets)</td>
+          <td class="no">Narrow sports</td>
+          <td class="mid">EU, not RS-native community</td>
+          <td class="mid">Cancellation policy</td>
+        </tr>
+        <tr>
+          <td>Meetup / FB events</td>
+          <td class="mid">Events, not matches</td>
+          <td class="no">No court workflow</td>
+          <td class="yes">Broad</td>
+          <td class="mid">Generic</td>
+          <td class="no">RSVP theatre</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="card" style="margin-top:14px;">
+      <p><b style="color:#fff;">Defensibility:</b> local supply (courts + informal spots) + reputation graph + category breadth. Data on who actually shows up is the asset. We treat Playtomic as a signal that venue digitalisation funds, not as a clone target.</p>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <!-- 10 STATUS -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">10 / 12</div>
+    </div>
+    <div class="kicker">Status &amp; roadmap</div>
+    <h1>Built. Now we must become a company that scales.</h1>
+    <p class="lede">No vanity user metrics in this deck. The product exists; the growth system, funding story and regional GTM do not yet — that is exactly why Ready4EIC fits.</p>
+    <div class="two-col">
+      <div>
+        <div class="card">
+          <h3>Already in production</h3>
+          <ul>
+            <li>Full match lifecycle: create, join, waitlist, complete, rate</li>
+            <li>Court owner console: fields, approvals, reservations</li>
+            <li>Informal matches with map pin + deadline rules</li>
+            <li>PWA install, Web Push, real-time match rooms</li>
+            <li>Trust / reliability engine; block list; cost splitter; chat</li>
+            <li>sr-RS UI, EU hosting (Frankfurt)</li>
+          </ul>
+        </div>
+        <div class="card" style="margin-top:10px;">
+          <h3>12-month product &amp; GTM (draft — to be challenged by advisors)</h3>
+          <p>Q1: 1–2 city density + 20–40 partner venues. Q2: payments / invoicing experiments, organiser tools. Q3: Montenegro / BiH language pack + hub intros. Q4: investor materials + Horizon/EIC call mapping.</p>
+        </div>
+      </div>
+      <div class="card" style="background:linear-gradient(180deg, rgba(0,212,255,0.12), rgba(18,26,51,0.9));">
+        <h3>Gaps we admit</h3>
+        <ul>
+          <li>Formal financial model &amp; cap table hygiene</li>
+          <li>Measured traction dashboard for investors</li>
+          <li>Legal entity / IP / ToS hardening for EU scale</li>
+          <li>Sales motion for court SMEs</li>
+          <li>English product layer for enlargement</li>
+          <li>Clear “EIC or not EIC” decision</li>
+        </ul>
+        <p style="margin-top:10px;color:var(--cyan);font-weight:800;font-size:12.5px;">These gaps are the curriculum, not a reason to wait.</p>
+      </div>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <!-- 11 WHY READY4EIC -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">11 / 12</div>
+    </div>
+    <div class="kicker">Why Ready4EIC</div>
+    <h1>We need advisors before we need a cheque.</h1>
+    <p class="lede">Programme fit: innovative digital service from Serbia, seeking funding readiness, investor engagement, and a serious look at Horizon Europe / EIC — delivered with STP Belgrade.</p>
+    <div class="grid g2">
+      <div class="card">
+        <h3>Round 1 — what we will use immediately</h3>
+        <ul class="need-list">
+          <li><span class="dot">1</span><span>Innovation &amp; growth plan: city-by-city GTM, venue sales script, KPI tree (liquidity, show-up rate, venue NRR).</span></li>
+          <li><span class="dot">2</span><span>Tools inside the company: simple financial model, pricing experiments, data room skeleton.</span></li>
+          <li><span class="dot">3</span><span>1:1 with STP Belgrade Innovation Advisors: legal/IP checklist, positioning vs. “deep-tech” calls we should not force-fit.</span></li>
+          <li><span class="dot">4</span><span>Investor-facing story: problem, unfair advantage, 18-month milestones — practised, not improvised.</span></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Round 2 ambition — if selected</h3>
+        <ul class="need-list">
+          <li><span class="dot">A</span><span>Investment readiness: term-sheet literacy, raise/no-raise decision, intro path via the hub network.</span></li>
+          <li><span class="dot">B</span><span>European funding map: which HE/EIC/cascade instruments actually match a marketplace PWA (and which do not).</span></li>
+          <li><span class="dot">C</span><span>Regional scale design using Ready4EIC hubs: BA, ME, MK, AL, XK as launch partners, not just slides.</span></li>
+          <li><span class="dot">D</span><span>If deep-tech funding is not the right box, leave with a cleaner alternative (EIC Accelerator later only if tech depth warrants it).</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <!-- 12 CLOSE -->
+  <section class="slide">
+    <div class="bg-grid"></div>
+    <div class="topbar">
+      <div class="brand-mini"><img src="assets/plejko-icon.png" alt="" /><span>PLEJKO</span></div>
+      <div class="slide-num">12 / 12</div>
+    </div>
+    <div class="kicker">Next step</div>
+    <h1>Let people in enlargement countries <span class="accent">find a game tonight.</span></h1>
+    <p class="lede">Plejko is already software. Ready4EIC is how we become a fundable, scalable company — with STP Belgrade as the local innovation hub.</p>
+    <div class="grid g3" style="margin-top:18px;">
+      <div class="card">
+        <h3>Vision</h3>
+        <p>The default way to gather a match in the Western Balkans — then a European social-play layer that makes empty courts and lonely evenings rarer.</p>
+      </div>
+      <div class="card">
+        <h3>Decision we ask</h3>
+        <p>Admit Plejko to Ready4EIC Round 1 (online via Webex, from September 2026). Assign Innovation Advisors at Science Technology Park Belgrade.</p>
+      </div>
+      <div class="card" style="border-color:rgba(0,212,255,0.35);">
+        <h3>Contact</h3>
+        <p>Brand: <b style="color:#fff;">Plejko</b><br/>Country: Serbia<br/>Hub: STP Belgrade<br/>Tagline: Pronađi · Okupi · Igraj</p>
+        <p style="margin-top:8px;color:var(--muted);font-size:11.5px;">Legal name, founder and email: as submitted in the EUSurvey form.</p>
+      </div>
+    </div>
+    <div style="position:relative;z-index:2;margin-top:22px;display:flex;align-items:center;gap:14px;">
+      <img src="assets/plejko-app-icon.png" alt="" style="width:48px;height:48px;border-radius:12px;" />
+      <div>
+        <div style="font-weight:900;font-size:20px;">Ajde na Plejko.</div>
+        <div style="font-weight:700;font-size:13px;color:var(--muted);">Find · Gather · Play &nbsp;·&nbsp; More than a game. People. Matches. Good stories.</div>
+      </div>
+    </div>
+    <div class="footer"><span>PLEJKO · FIND · GATHER · PLAY</span><span>READY4EIC 2026 · SERBIA · CONFIDENTIAL</span></div>
+  </section>
+
+  <script>
+    (function () {
+      var m = /[?&]slide=(\d+)/.exec(location.search || "");
+      if (!m) return;
+      var n = parseInt(m[1], 10);
+      document.querySelectorAll(".slide").forEach(function (s, i) {
+        s.style.display = i === n - 1 ? "block" : "none";
+      });
+    })();
+  </script>
+</body>
+</html>
