@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  // react-leaflet 4.x creates the map in a ref callback; React 19 StrictMode (dev only)
+  // double-invokes it and throws "Map container is already initialized".
+  reactStrictMode: false,
   transpilePackages: ['@mui/material', '@mui/system', '@mui/icons-material'],
   // Keep Node-only server deps out of the Vercel function bundle.
   serverExternalPackages: [

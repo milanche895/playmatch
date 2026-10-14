@@ -30,8 +30,9 @@ const {
   applyOpenStatusIfBelowMin,
   getMatchAccessBlock,
 } = require('../utils/matchLifecycle');
+const { notifyUsers } = require('../utils/inAppNotifications');
 
-const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
+const PLAYER_PUBLIC_FIELDS = 'name avatarUrl ratingAvg reliabilityScore sportSkillLevels';
 
 function removePlayerPayment(match, playerId) {
   if (!match.playerPayments || match.playerPayments.length === 0) return;
@@ -810,8 +811,18 @@ function matchesRoutesFactory(io) {
       }
     }
     // Check if minimum players requirement is met - reserve the slot when minPlayers is reached
+    const statusBeforeJoin = match.status;
     applyFullStatus(match);
     await match.save();
+
+    // In-app notification feed: organizer learns about the new player; everyone when the match fills up
+    if (!already) {
+      void notifyUsers(match, 'player_joined', [match.createdBy], { excludeUserId: req.user.id });
+      if (statusBeforeJoin !== 'full' && match.status === 'full') {
+        void notifyUsers(match, 'match_full', match.players);
+      }
+    }
+
     const populated = await findPopulatedMatch(match._id);
 
     // Check if populated match has valid location
@@ -859,6 +870,7 @@ function matchesRoutesFactory(io) {
       }
 
       await match.save();
+      void notifyUsers(match, 'player_left', [match.createdBy], { excludeUserId: req.user.id });
       const populated = await findPopulatedMatch(match._id);
 
       // Check if populated match has valid location
@@ -922,6 +934,7 @@ function matchesRoutesFactory(io) {
       }
 
       await match.save();
+      void notifyUsers(match, 'player_left', [match.createdBy], { excludeUserId: req.user.id });
       const populated = await findPopulatedMatch(match._id);
 
       // Check if populated match has valid location

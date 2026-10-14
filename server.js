@@ -18,6 +18,7 @@ const handle = nextApp.getRequestHandler();
 const { attachApi } = require('./src/server/createApp');
 const { connectDb } = require('./src/server/db');
 const { processExpiredMatches } = require('./src/server/utils/matchStatus');
+const { processMatchReminders, pruneOldNotifications } = require('./src/server/utils/inAppNotifications');
 const { getPublicUrl } = require('./src/server/publicUrl');
 
 const allowedOrigins = [getPublicUrl()];
@@ -33,6 +34,11 @@ async function checkCancelledMatches(io) {
   } catch (error) {
     console.error('❌ Greška pri proveri isteklih mečeva:', error);
   }
+
+  // In-app feed: reminders for matches starting within 2h + cleanup of old entries
+  const { created } = await processMatchReminders();
+  if (created > 0) console.log(`🔔 Poslato ${created} podsetnika`);
+  await pruneOldNotifications();
 }
 
 async function start() {

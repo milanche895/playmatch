@@ -1,0 +1,68 @@
+'use client';
+
+import type { ReactNode } from 'react';
+import { AppBar, Badge, Box, IconButton, Toolbar } from '@mui/material';
+import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined';
+import { Link as RouterLink } from '@/lib/router';
+
+/** Mobile top bar: blue "Plejko" wordmark on the left, notification bell (or a custom `action`) on the right. */
+export default function MobileHeader({ showBellDot = false, action }: { showBellDot?: boolean; action?: ReactNode }) {
+  return (
+    <AppBar
+      position="sticky"
+      elevation={0}
+      sx={{
+        bgcolor: 'background.default',
+        color: 'text.primary',
+        borderBottom: 'none',
+        boxShadow: 'none',
+      }}
+    >
+      <Toolbar disableGutters sx={{ minHeight: 56, px: '16px', justifyContent: 'space-between' }}>
+        <Box
+          component={RouterLink}
+          to="/"
+          aria-label="Plejko — početna"
+          sx={{
+            textDecoration: 'none',
+            color: 'primary.main',
+            fontSize: 30,
+            fontWeight: 800,
+            letterSpacing: '-0.02em',
+            lineHeight: 1,
+          }}
+        >
+          Plejko
+        </Box>
+        {action ?? (
+        <IconButton
+          component={RouterLink}
+          to="/notification-settings"
+          aria-label="Obaveštenja"
+          sx={{ color: 'primary.main', mr: '-8px' }}
+        >
+          <Badge
+            variant="dot"
+            invisible={!showBellDot}
+            sx={{
+              '& .MuiBadge-badge': {
+                bgcolor: '#EF4444',
+                width: 9,
+                height: 9,
+                minWidth: 9,
+                borderRadius: '50%',
+                top: 3,
+                right: 3,
+                border: '1.5px solid #F4F7FC',
+                boxSizing: 'content-box',
+              },
+            }}
+          >
+            <NotificationsNoneOutlinedIcon sx={{ fontSize: 28 }} />
+          </Badge>
+        </IconButton>
+        )}
+      </Toolbar>
+    </AppBar>
+  );
+}

@@ -1,4 +1,39 @@
+import type { CSSProperties } from 'react';
 import { createTheme, PaletteMode, alpha } from '@mui/material/styles';
+
+// Design-system additions (Screen 16): secondary / destructive buttons and Inter type scale
+declare module '@mui/material/Button' {
+  interface ButtonPropsVariantOverrides {
+    /** Secondary button: soft blue-gray background, dark text. */
+    soft: true;
+    /** Destructive button: solid red background, white text. */
+    destructive: true;
+  }
+}
+
+declare module '@mui/material/styles' {
+  interface TypographyVariants {
+    heading1: CSSProperties;
+    heading2: CSSProperties;
+    bodyText: CSSProperties;
+    label: CSSProperties;
+  }
+  interface TypographyVariantsOptions {
+    heading1?: CSSProperties;
+    heading2?: CSSProperties;
+    bodyText?: CSSProperties;
+    label?: CSSProperties;
+  }
+}
+
+declare module '@mui/material/Typography' {
+  interface TypographyPropsVariantOverrides {
+    heading1: true;
+    heading2: true;
+    bodyText: true;
+    label: true;
+  }
+}
 
 /** Plejko brand tokens — cyan → magenta, dark navy base */
 export const brand = {
@@ -16,6 +51,15 @@ export const brand = {
   gradientHorizontal: 'linear-gradient(90deg, #00D4FF 0%, #8A2BE2 50%, #D400FF 100%)',
   glowCyan: '0 0 24px rgba(0, 212, 255, 0.35)',
   glowMagenta: '0 0 24px rgba(212, 0, 255, 0.3)',
+};
+
+/** Light-mode UI tokens taken from the reference screenshots. */
+export const lightUi = {
+  primary: '#0877F9',
+  background: '#F4F7FC',
+  border: '#E3E9F3',
+  textPrimary: '#0B1B3F',
+  textSecondary: '#6B7A99',
 };
 
 const designTokens = {
@@ -55,12 +99,19 @@ export const createAppTheme = (mode: PaletteMode) => {
   return createTheme({
     palette: {
       mode,
-      primary: {
-        main: brand.cyan,
-        light: '#5CE1FF',
-        dark: brand.blue,
-        contrastText: '#ffffff',
-      },
+      primary: isDark
+        ? {
+            main: brand.cyan,
+            light: '#5CE1FF',
+            dark: brand.blue,
+            contrastText: '#ffffff',
+          }
+        : {
+            main: lightUi.primary,
+            light: '#4D9DFB',
+            dark: '#0560C7',
+            contrastText: '#ffffff',
+          },
       secondary: {
         main: brand.magenta,
         light: '#E866FF',
@@ -92,19 +143,19 @@ export const createAppTheme = (mode: PaletteMode) => {
         contrastText: '#003344',
       },
       background: {
-        default: isDark ? brand.navy : designTokens.colors.gray[50],
+        default: isDark ? brand.navy : lightUi.background,
         paper: isDark ? brand.navyCard : '#ffffff',
       },
       text: {
-        primary: isDark ? '#F8FAFC' : designTokens.colors.gray[900],
-        secondary: isDark ? designTokens.colors.gray[400] : designTokens.colors.gray[600],
+        primary: isDark ? '#F8FAFC' : lightUi.textPrimary,
+        secondary: isDark ? designTokens.colors.gray[400] : lightUi.textSecondary,
         disabled: isDark ? designTokens.colors.gray[600] : designTokens.colors.gray[400],
       },
-      divider: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+      divider: isDark ? 'rgba(255,255,255,0.08)' : lightUi.border,
     },
     typography: {
       fontFamily:
-        '"Nunito", "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        '"Inter", "Nunito", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       h1: {
         fontWeight: 800,
         fontSize: '2.5rem',
@@ -172,6 +223,11 @@ export const createAppTheme = (mode: PaletteMode) => {
         lineHeight: 1.5,
         letterSpacing: '0.01em',
       },
+      // Design-system type scale (size/line-height): H1 32/40 Bold, H2 24/32 Semibold, Body 16/24 Regular, Label 14/20 Medium
+      heading1: { fontWeight: 700, fontSize: '2rem', lineHeight: '40px' },
+      heading2: { fontWeight: 600, fontSize: '1.5rem', lineHeight: '32px' },
+      bodyText: { fontWeight: 400, fontSize: '1rem', lineHeight: '24px' },
+      label: { fontWeight: 500, fontSize: '0.875rem', lineHeight: '20px' },
       overline: {
         fontWeight: 700,
         fontSize: '0.7rem',
@@ -194,6 +250,14 @@ export const createAppTheme = (mode: PaletteMode) => {
             MozOsxFontSmoothing: 'grayscale',
             overflowX: 'hidden',
           },
+          // Soft map look (home map view)
+          '.plejko-map-tiles': { filter: 'saturate(0.6) brightness(1.05) contrast(0.96)' },
+          '.leaflet-top.leaflet-right .leaflet-control-attribution': {
+            margin: '8px',
+            padding: '2px 8px',
+            borderRadius: 8,
+            fontSize: 10,
+          },
           // Leaflet popups must fit narrow phone screens
           '.leaflet-popup-content-wrapper': {
             maxWidth: 'min(360px, 85vw) !important',
@@ -204,38 +268,70 @@ export const createAppTheme = (mode: PaletteMode) => {
           },
         },
       },
+      MuiTypography: {
+        defaultProps: {
+          variantMapping: { heading1: 'h1', heading2: 'h2', bodyText: 'p', label: 'span' },
+        },
+      },
       MuiButton: {
         defaultProps: {
           disableElevation: true,
         },
+        variants: [
+          {
+            props: { variant: 'soft' },
+            style: {
+              color: isDark ? '#F8FAFC' : lightUi.textPrimary,
+              backgroundColor: isDark ? alpha('#fff', 0.08) : '#E9EEF6',
+              '&:hover': { backgroundColor: isDark ? alpha('#fff', 0.14) : '#DFE6F1' },
+            },
+          },
+          {
+            props: { variant: 'destructive' },
+            style: {
+              color: '#fff',
+              backgroundColor: '#F0524F',
+              '&:hover': { backgroundColor: '#E0413E' },
+            },
+          },
+        ],
         styleOverrides: {
           root: {
-            borderRadius: designTokens.borderRadius.full,
+            borderRadius: isDark ? designTokens.borderRadius.full : 12,
             padding: '10px 22px',
-            fontWeight: 700,
+            fontWeight: isDark ? 700 : 600,
             transition: 'all 0.2s ease-in-out',
           },
-          contained: {
-            boxShadow: isDark
-              ? '0 4px 16px rgba(0, 212, 255, 0.2)'
-              : '0 2px 8px rgba(43, 108, 255, 0.2)',
-            '&:hover': {
-              boxShadow: isDark
-                ? '0 8px 24px rgba(212, 0, 255, 0.3)'
-                : '0 6px 20px rgba(212, 0, 255, 0.25)',
-              transform: 'translateY(-1px)',
-            },
-            '&:active': {
-              transform: 'translateY(0)',
-            },
-          },
-          containedPrimary: {
-            background: brand.gradient,
-            color: '#fff',
-            '&:hover': {
-              background: brand.gradientHorizontal,
-            },
-          },
+          contained: isDark
+            ? {
+                boxShadow: '0 4px 16px rgba(0, 212, 255, 0.2)',
+                '&:hover': {
+                  boxShadow: '0 8px 24px rgba(212, 0, 255, 0.3)',
+                  transform: 'translateY(-1px)',
+                },
+                '&:active': {
+                  transform: 'translateY(0)',
+                },
+              }
+            : {
+                boxShadow: 'none',
+                '&:hover': { boxShadow: 'none' },
+              },
+          containedPrimary: isDark
+            ? {
+                background: brand.gradient,
+                color: '#fff',
+                '&:hover': {
+                  background: brand.gradientHorizontal,
+                },
+              }
+            : {
+                backgroundColor: lightUi.primary,
+                color: '#fff',
+                '&:hover': {
+                  backgroundColor: '#0560C7',
+                },
+              },
           outlined: {
             borderWidth: '1.5px',
             '&:hover': {
@@ -258,21 +354,21 @@ export const createAppTheme = (mode: PaletteMode) => {
             borderRadius: designTokens.borderRadius.lg,
             boxShadow: isDark
               ? '0 1px 3px rgba(0,0,0,0.4)'
-              : '0 1px 3px rgba(0,0,0,0.08)',
+              : 'none',
             border: isDark
               ? `1px solid ${alpha('#fff', 0.08)}`
-              : `1px solid ${designTokens.colors.gray[200]}`,
+              : `1px solid ${lightUi.border}`,
             backgroundImage: isDark
               ? `linear-gradient(180deg, ${alpha(brand.cyan, 0.04)} 0%, transparent 40%)`
               : 'none',
             transition: 'all 0.2s ease-in-out',
-            '&:hover': {
-              boxShadow: isDark
-                ? `0 8px 28px rgba(0,0,0,0.45), ${brand.glowCyan}`
-                : '0 8px 25px rgba(0,0,0,0.1)',
-              transform: 'translateY(-2px)',
-              borderColor: isDark ? alpha(brand.cyan, 0.25) : undefined,
-            },
+            '&:hover': isDark
+              ? {
+                  boxShadow: `0 8px 28px rgba(0,0,0,0.45), ${brand.glowCyan}`,
+                  transform: 'translateY(-2px)',
+                  borderColor: alpha(brand.cyan, 0.25),
+                }
+              : {},
           },
         },
       },
@@ -503,19 +599,28 @@ export const createAppTheme = (mode: PaletteMode) => {
       },
       MuiFab: {
         styleOverrides: {
-          primary: {
-            background: brand.gradient,
-            color: '#fff',
-            '&:hover': {
-              background: brand.gradientHorizontal,
-            },
-          },
+          primary: isDark
+            ? {
+                background: brand.gradient,
+                color: '#fff',
+                '&:hover': {
+                  background: brand.gradientHorizontal,
+                },
+              }
+            : {
+                backgroundColor: lightUi.primary,
+                color: '#fff',
+                boxShadow: '0 8px 20px rgba(8, 119, 249, 0.30)',
+                '&:hover': {
+                  backgroundColor: '#0560C7',
+                },
+              },
         },
       },
       MuiCircularProgress: {
         styleOverrides: {
           colorPrimary: {
-            color: brand.cyan,
+            color: isDark ? brand.cyan : lightUi.primary,
           },
         },
       },

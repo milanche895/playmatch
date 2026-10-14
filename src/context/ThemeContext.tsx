@@ -12,7 +12,7 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setModeState] = useState<PaletteMode>('dark');
+  const [mode, setModeState] = useState<PaletteMode>('light');
 
   useEffect(() => {
     const savedMode = localStorage.getItem('theme-mode') as PaletteMode | null;
@@ -21,20 +21,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Listen for system preference changes
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e: MediaQueryListEvent) => {
-      // Only update if user hasn't manually set preference
-      const savedMode = localStorage.getItem('theme-mode');
-      if (!savedMode) {
-        setModeState(e.matches ? 'dark' : 'light');
-      }
-    };
-
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
+  // Light is the default design (reference screenshots); dark only when the user picks it explicitly.
 
   const setMode = (newMode: PaletteMode) => {
     localStorage.setItem('theme-mode', newMode);

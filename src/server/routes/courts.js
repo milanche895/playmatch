@@ -7,6 +7,7 @@ const { rewardReliabilityForCompletedMatch } = require('../utils/reliability');
 const { awardMatchCompletionXp } = require('../utils/gamification');
 const { sanitizeGameIds } = require('../constants/games');
 const { getCourtCompleteBlock } = require('../utils/matchLifecycle');
+const { notifyUsers } = require('../utils/inAppNotifications');
 
 const router = express.Router();
 const PLAYER_PUBLIC_FIELDS = 'name ratingAvg reliabilityScore sportSkillLevels';
@@ -59,6 +60,7 @@ router.post('/matches/:id/approve', auth(true), requireCourt, async (req, res) =
     match.courtApprovedBy = req.user.id;
     match.courtApprovedAt = new Date();
     await match.save();
+    void notifyUsers(match, 'court_approved', [match.createdBy]);
     
     const populated = await Match.findById(match._id)
       .populate('fieldId')
@@ -92,6 +94,7 @@ router.post('/matches/:id/reject', auth(true), requireCourt, async (req, res) =>
     match.courtApprovedAt = new Date();
     match.status = 'otkazano';
     await match.save();
+    void notifyUsers(match, 'court_rejected', [match.createdBy]);
     
     const populated = await Match.findById(match._id)
       .populate('fieldId')

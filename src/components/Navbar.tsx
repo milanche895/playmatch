@@ -33,12 +33,15 @@ import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import NotificationsIcon from "@mui/icons-material/Notifications";
+import PersonAddAltOutlinedIcon from "@mui/icons-material/PersonAddAltOutlined";
 import { Link as RouterLink, useNavigate, useLocation } from '@/lib/router';
 import { useAuth } from "../context/AuthContext";
 import { useThemeMode } from "../context/ThemeContext";
 import InstallButton from "./InstallButton";
 import PlejkoLogo from "./PlejkoLogo";
 import NotificationSetupAlert from "./NotificationSetupAlert";
+import MobileHeader from "./MobileHeader";
+import BottomNav, { BOTTOM_NAV_VISIBLE_PATHS } from "./BottomNav";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -268,6 +271,60 @@ export default function Navbar() {
     </Box>
   );
 
+  const showBottomNav =
+    isMobile && user?.role === "player" && BOTTOM_NAV_VISIBLE_PATHS.includes(location.pathname);
+
+  // Mobile home (player): screenshot-style header (wordmark + bell) + bottom navigation
+  if (showBottomNav && location.pathname === "/") {
+    return (
+      <>
+        <MobileHeader showBellDot={user?.notificationEnabled === false} />
+        <BottomNav />
+      </>
+    );
+  }
+
+  // Mobile "Moji igrači" (sub-page of Profil): wordmark + invite-a-friend action, bottom navigation
+  if (showBottomNav && location.pathname === "/moji-igraci") {
+    return (
+      <>
+        <MobileHeader
+          action={
+            <IconButton
+              aria-label="Pozovi drugara"
+              onClick={() => navigate("/profil?sheet=invite")}
+              sx={{ color: "text.primary", mr: "-8px" }}
+            >
+              <PersonAddAltOutlinedIcon sx={{ fontSize: 28 }} />
+            </IconButton>
+          }
+        />
+        <BottomNav />
+      </>
+    );
+  }
+
+  // Mobile "Moji mečevi" / "Obaveštenja" / "Profil": the page has its own header, only the bottom navigation is shown
+  if (
+    showBottomNav &&
+    (location.pathname === "/moji-mecevi" ||
+      location.pathname === "/notification-settings" ||
+      location.pathname === "/profil")
+  ) {
+    return <BottomNav />;
+  }
+
+  // Mobile create-match wizard, match details and another player's profile are full-screen flows with their own top bar
+  if (
+    isMobile &&
+    (location.pathname === "/create" ||
+      location.pathname.startsWith("/matches/") ||
+      location.pathname.startsWith("/profil/") ||
+      location.pathname === "/notification-settings/postavke")
+  ) {
+    return null;
+  }
+
   return (
     <>
       <AppBar 
@@ -427,6 +484,7 @@ export default function Navbar() {
       >
         {drawer}
       </Drawer>
+      {showBottomNav && <BottomNav />}
     </>
   );
 }

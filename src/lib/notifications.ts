@@ -79,6 +79,13 @@ function toUserFacingPushError(error: unknown): Error {
     return error;
   }
 
+  // "Registration failed - storage error": Chrome's own push database is broken for this site
+  if (error instanceof Error && /storage error/i.test(error.message)) {
+    return new Error(
+      'Chrome ne može da sačuva push registraciju za ovaj sajt. Obrišite podatke sajta (Chrome → Podešavanja sajta → Plejko → Obriši podatke), zatim potpuno zatvorite i ponovo otvorite Chrome i pokušajte opet.'
+    );
+  }
+
   return new Error(
     'Telefon nije uspeo da se prijavi na push servis. Zatvorite Chrome, otvorite Plejko ponovo i pokušajte još jednom. Ako ste na iPhone-u, koristite ikonu sa početnog ekrana.'
   );
@@ -151,6 +158,48 @@ async function subscribeWithRetry(
     } catch (secondError) {
       console.error('[PushDebug] subscribe retry failed', secondError);
       throw firstError;
+    }
+  }
+}
+
+/**
+ * Last-resort recovery for "push service error" / "storage error": drop every service worker
+ * registration of this origin (together with its push subscription), register a fresh one and retry.
+ */
+async function subscribeWithRecovery(
+  registration: ServiceWorkerRegistration,
+  vapidPublicKey: string
+): Promise<PushSubscription> {
+  try {
+    return await subscribeWithRetry(registration, vapidPublicKey);
+  } catch (error) {
+    if (!isPushServiceError(error)) throw error;
+
+    console.warn('[PushDebug] resetting service worker registrations after push failure');
+    const all = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(
+      all.map(async (reg) => {
+        try {
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) await sub.unsubscribe();
+        } catch {
+          // ignore – the registration is being removed anyway
+        }
+        try {
+          await reg.unregister();
+        } catch {
+          // ignore
+        }
+      })
+    );
+    await delay(600);
+
+    try {
+      const fresh = await getServiceWorkerRegistration();
+      return await subscribeWithRetry(fresh, vapidPublicKey);
+    } catch (recoveryError) {
+      console.error('[PushDebug] recovery failed', recoveryError);
+      throw error;
     }
   }
 }
@@ -275,7 +324,7 @@ export async function subscribeToPushNotifications(): Promise<string | null> {
     let subscription = await registration.pushManager.getSubscription();
 
     if (!subscription) {
-      subscription = await subscribeWithRetry(registration, vapidPublicKey);
+      subscription = await subscribeWithRecovery(registration, vapidPublicKey);
     }
 
     await api.post('/api/players/push-subscription', {

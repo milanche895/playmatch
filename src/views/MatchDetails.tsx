@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef, type ReactNode } from 'react';
 import { useParams, useNavigate, useLocation } from '@/lib/router';
 import {
   Stack,
@@ -30,6 +30,9 @@ import {
   ListItemAvatar,
   ListItemButton,
   ListItemText,
+  Menu,
+  ButtonBase,
+  alpha,
 } from '@mui/material';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -50,6 +53,15 @@ import HourglassTopIcon from '@mui/icons-material/HourglassTop';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import CampaignIcon from '@mui/icons-material/Campaign';
+import IosShareIcon from '@mui/icons-material/IosShare';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import CalendarTodayOutlinedIcon from '@mui/icons-material/CalendarTodayOutlined';
+import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
+import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline';
+import AccessTimeOutlinedIcon from '@mui/icons-material/AccessTimeOutlined';
+import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
+import SportIcon from '../components/SportIcon';
+import StatusPill from '../components/ui/StatusPill';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import api from '../lib/api';
@@ -57,7 +69,8 @@ import { parseIntegerInput, selectNumberField } from '../lib/numberInput';
 import { Match, MatchRatingStatus, NearbyPlayer } from '../types';
 import { socket } from '../lib/socket';
 import { useAuth } from '../context/AuthContext';
-import { getTrustBadge } from '../lib/reliability';
+import { getTrustBadge, getCancelPenaltyPoints } from '../lib/reliability';
+import CancelAttendanceSheet from '../components/CancelAttendanceSheet';
 import MatchQuickChat from '../components/MatchQuickChat';
 import { getGameTypeName } from '../constants/games';
 import { getCreditsDisplay } from '../lib/gamification';
@@ -101,7 +114,6 @@ export default function MatchDetails() {
   const [match, setMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [cancelComment, setCancelComment] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
   const [pendingRatingUsers, setPendingRatingUsers] = useState<MatchRatingStatus['pendingUsers']>([]);
@@ -129,6 +141,8 @@ export default function MatchDetails() {
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoHighlight, setPromoHighlight] = useState(false);
   const promoteSectionRef = useRef<HTMLDivElement | null>(null);
+  const [showAllPlayers, setShowAllPlayers] = useState(false);
+  const [moreAnchor, setMoreAnchor] = useState<HTMLElement | null>(null);
 
   const shouldAutoOpenCompleteDialog = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -275,20 +289,18 @@ export default function MatchDetails() {
 
   function handleOpenCancelDialog() {
     setCancelDialogOpen(true);
-    setCancelComment('');
   }
 
   function handleCloseCancelDialog() {
     setCancelDialogOpen(false);
-    setCancelComment('');
   }
 
-  async function handleCancelAttendance() {
+  async function handleCancelAttendance(comment: string) {
     if (!id) return;
     try {
       setCancelling(true);
       const res = await api.post(`/api/matches/${id}/cancel-attendance`, {
-        comment: cancelComment.trim()
+        comment: comment.trim()
       });
       setMatch(res.data);
       handleCloseCancelDialog();
@@ -615,214 +627,365 @@ export default function MatchDetails() {
   const statusConfig = getStatusConfig();
   const isDeadlinePassed = new Date() > new Date(match.registrationDeadline);
 
-  return (
-    <Box sx={{ maxWidth: 800, mx: 'auto' }}>
-      {/* Back Button */}
-      <Button
-        startIcon={<ArrowBackIcon />}
-        onClick={() => navigate(-1)}
-        sx={{ mb: 2, color: 'text.secondary' }}
-      >
-        Nazad
-      </Button>
+  const locationName = isInformal
+    ? informalLocation?.name || 'Privatni teren'
+    : fieldId?.name || 'Teren';
+  const matchStart = new Date(match.dateTime);
+  const matchEnd = new Date(matchStart.getTime() + 60 * 60 * 1000);
+  const deadlineDate = new Date(match.registrationDeadline);
+  const myLoc = user?.lastKnownLocation;
+  const distanceKm =
+    myLoc && Number.isFinite(myLoc.lat) && Number.isFinite(myLoc.lng)
+      ? distanceBetween(myLoc.lat, myLoc.lng, center[0], center[1])
+      : null;
+  const targetPlayers = match.maxPlayers || match.minPlayers || match.playersNeeded || 0;
+  const spotsLeft = Math.max(0, targetPlayers - match.players.length);
+  const hour = matchStart.getHours();
+  const partOfDay = hour < 12 ? 'Jutarnji' : hour < 17 ? 'Popodnevni' : 'Večernji';
+  const matchTitle = `${partOfDay} termin`;
+  const visiblePlayers = showAllPlayers ? match.players : match.players.slice(0, 4);
+  const organizerPlayer = match.players.find((p) => p._id === match.createdBy._id);
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${center[0]},${center[1]}`;
 
-      {/* Header Card */}
-      <Card
-        elevation={0}
-        sx={{
-          mb: 3,
-          borderRadius: 4,
-          border: '1px solid',
-          borderColor: 'divider',
-          overflow: 'hidden',
-        }}
+  const hasExtraSections =
+    Boolean(user && match.players.some((p) => p._id === user._id)) ||
+    Boolean(user && match.createdBy._id === user._id) ||
+    Boolean(user && match.pricePerPlayer != null && match.players.some((p) => p._id === user._id)) ||
+    (match.waitlist?.length ?? 0) > 0 ||
+    Boolean(match.playerCancellations && match.playerCancellations.length > 0);
+
+  const actionButtonSx = { height: 52, fontSize: 17, fontWeight: 700, borderRadius: '14px' } as const;
+
+  const primaryAction = (() => {
+    if (match.status === 'failed') {
+      return (
+        <Paper
+          elevation={0}
+          sx={{ p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'error.light', bgcolor: 'error.light', textAlign: 'center' }}
+        >
+          <ErrorIcon sx={{ color: 'error.main', fontSize: 40, mb: 1 }} />
+          <Typography variant="h6" color="error.main" fontWeight={600}>
+            Meč nije uspeo
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Nije bilo dovoljno igrača do roka za prijavu.
+          </Typography>
+        </Paper>
+      );
+    }
+    if (isDeadlinePassed) {
+      return (
+        <Paper
+          elevation={0}
+          sx={{ p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'warning.light', bgcolor: 'warning.light', textAlign: 'center' }}
+        >
+          <AccessTimeIcon sx={{ color: 'warning.main', fontSize: 40, mb: 1 }} />
+          <Typography variant="h6" color="warning.main" fontWeight={600}>
+            Rok za prijavu je istekao
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Ne možete se pridružiti ovom meču.
+          </Typography>
+        </Paper>
+      );
+    }
+    if (canLeave) {
+      return (
+        <Button
+          variant="outlined"
+          color="error"
+          onClick={handleOpenCancelDialog}
+          fullWidth
+          startIcon={<CancelIcon />}
+          sx={{ ...actionButtonSx, borderWidth: 2, '&:hover': { borderWidth: 2 } }}
+        >
+          Otkaži dolazak
+        </Button>
+      );
+    }
+    if (canJoin) {
+      return (
+        <Button variant="contained" onClick={join} fullWidth sx={actionButtonSx}>
+          Prijavi se
+        </Button>
+      );
+    }
+    if (isOnWaitlist) {
+      return (
+        <Stack spacing={1.5}>
+          <Alert severity="info" icon={<HourglassTopIcon />} sx={{ borderRadius: '12px' }}>
+            Na listi čekanja — pozicija #{waitlistPosition}
+            {(match.waitlist?.length ?? 0) > 1 ? ` od ${match.waitlist!.length}` : ''}.
+            Kada se mesto oslobodi, automatski ćete biti prijavljeni.
+          </Alert>
+          <Button
+            variant="outlined"
+            color="warning"
+            onClick={leaveWaitlist}
+            fullWidth
+            sx={{ ...actionButtonSx, borderWidth: 2, '&:hover': { borderWidth: 2 } }}
+          >
+            Napusti listu čekanja
+          </Button>
+        </Stack>
+      );
+    }
+    if (canJoinWaitlist) {
+      return (
+        <Button
+          variant="contained"
+          color="warning"
+          onClick={joinWaitlist}
+          fullWidth
+          startIcon={<HourglassTopIcon />}
+          sx={actionButtonSx}
+        >
+          Stani u red
+        </Button>
+      );
+    }
+    return null;
+  })();
+
+  return (
+    <Box sx={{ maxWidth: 640, mx: 'auto', px: { xs: '10px', sm: 0 } }}>
+      {/* Top bar: back / share / more */}
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: '8px', mx: '-8px' }}>
+        <IconButton aria-label="Nazad" onClick={() => navigate(-1)} sx={{ color: 'text.primary' }}>
+          <ArrowBackIcon />
+        </IconButton>
+        <Stack direction="row">
+          <IconButton aria-label="Podeli meč" onClick={handleShare} sx={{ color: 'text.primary' }}>
+            <IosShareIcon />
+          </IconButton>
+          <IconButton
+            aria-label="Više opcija"
+            aria-haspopup="menu"
+            onClick={(e) => setMoreAnchor(e.currentTarget)}
+            sx={{ color: 'text.primary' }}
+          >
+            <MoreVertIcon />
+          </IconButton>
+        </Stack>
+      </Stack>
+      <Menu
+        anchorEl={moreAnchor}
+        open={Boolean(moreAnchor)}
+        onClose={() => setMoreAnchor(null)}
+        slotProps={{ paper: { sx: { borderRadius: '14px', minWidth: 200 } } }}
       >
-        <Box
-          sx={{
-            p: 3,
-            background: 'linear-gradient(135deg, primary.main 0%, primary.dark 100%)',
-            color: 'primary.contrastText',
-            position: 'relative',
-            overflow: 'hidden',
+        <MenuItem
+          onClick={async () => {
+            setMoreAnchor(null);
+            try {
+              await navigator.clipboard.writeText(`${window.location.origin}/matches/${match._id}`);
+              alert('Link je kopiran.');
+            } catch {
+              alert('Kopiranje nije uspelo. Probajte ponovo.');
+            }
           }}
         >
-          <Box
-            sx={{
-              position: 'absolute',
-              top: -20,
-              right: -20,
-              width: 120,
-              height: 120,
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.1)',
-            }}
-          />
-          <Stack spacing={1}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Chip
-                icon={statusConfig.icon}
-                label={statusConfig.label}
-                size="small"
-                color={statusConfig.color}
-                sx={{
-                  bgcolor: 'rgba(255,255,255,0.9)',
-                  fontWeight: 600,
-                }}
-              />
-            </Stack>
-            <Typography variant="h4" fontWeight={700}>
-              {getGameTypeName(match.sport)}
-            </Typography>
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ minWidth: 0 }}>
-              <LocationOnIcon sx={{ fontSize: 20, flexShrink: 0 }} />
-              <Typography variant="h6" fontWeight={500} sx={{ minWidth: 0, wordBreak: 'break-word', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-                {isInformal ? (informalLocation?.name || 'Privatni teren') : fieldId?.name}
-              </Typography>
-              {isInformal && (
-                <Chip
-                  label="Privatni teren"
-                  size="small"
-                  sx={{ bgcolor: 'rgba(249,115,22,0.9)', color: 'white', fontWeight: 600 }}
-                />
-              )}
-            </Stack>
-          </Stack>
+          Kopiraj link
+        </MenuItem>
+        <MenuItem
+          component="a"
+          href={mapsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => setMoreAnchor(null)}
+        >
+          Otvori u mapama
+        </MenuItem>
+      </Menu>
+
+      {/* Hero */}
+      <Box
+        sx={(t) => ({
+          position: 'relative',
+          height: { xs: 168, sm: 220 },
+          borderRadius: '20px',
+          overflow: 'hidden',
+          bgcolor: alpha(t.palette.primary.main, 0.08),
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        })}
+      >
+        <SportIcon sport={match.sport} size={88} />
+        <Box
+          sx={{
+            position: 'absolute',
+            left: 12,
+            bottom: 12,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            px: '12px',
+            py: '6px',
+            borderRadius: 999,
+            bgcolor: '#fff',
+            color: 'primary.main',
+            fontSize: 14,
+            fontWeight: 700,
+            boxShadow: '0 2px 8px rgba(11, 27, 63, 0.12)',
+          }}
+        >
+          <SportIcon sport={match.sport} size={18} />
+          {getGameTypeName(match.sport)}
         </Box>
+        {match.status !== 'open' && (
+          <Chip
+            icon={statusConfig.icon}
+            label={statusConfig.label}
+            size="small"
+            color={statusConfig.color}
+            sx={{ position: 'absolute', top: 12, right: 12, bgcolor: 'rgba(255,255,255,0.92)', fontWeight: 700 }}
+          />
+        )}
+      </Box>
 
-        <CardContent sx={{ p: 3 }}>
-          <Stack spacing={3}>
-            {/* Info Grid */}
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
-                gap: 3,
-              }}
+      {/* Title + key facts */}
+      <Typography
+        component="h1"
+        sx={{ mt: '18px', fontSize: { xs: 26, sm: 30 }, fontWeight: 800, lineHeight: 1.2, letterSpacing: '-0.02em' }}
+      >
+        {matchTitle}
+      </Typography>
+      {match.description?.trim() && (
+        <Typography sx={{ mt: '6px', fontSize: 15, color: 'text.secondary', whiteSpace: 'pre-wrap' }}>
+          {match.description.trim()}
+        </Typography>
+      )}
+
+      <Stack spacing="14px" sx={{ mt: '18px' }}>
+        <InfoRow icon={<CalendarTodayOutlinedIcon />}>
+          {relativeDayLabel(matchStart)} · {formatClock(matchStart)} – {formatClock(matchEnd)}
+        </InfoRow>
+        <InfoRow icon={<PlaceOutlinedIcon />}>
+          {locationName}
+          {distanceKm != null ? ` · ${formatKm(distanceKm)}` : ''}
+          {isInformal ? ' · privatni teren' : ''}
+        </InfoRow>
+        <InfoRow icon={<PeopleOutlineIcon />}>
+          {formatSpotsLabel(spotsLeft)} ({match.players.length}/{targetPlayers})
+        </InfoRow>
+        <InfoRow icon={<AccessTimeOutlinedIcon />} danger={isDeadlinePassed}>
+          {isDeadlinePassed
+            ? 'Rok za prijavu je istekao'
+            : `Rok za prijavu: ${relativeDayLabel(deadlineDate, true)} do ${formatClock(deadlineDate)}`}
+        </InfoRow>
+        {match.pricePerPlayer != null && (
+          <InfoRow icon={<PaymentsOutlinedIcon />}>Cena po igraču: {formatRsd(match.pricePerPlayer)}</InfoRow>
+        )}
+        <InfoRow
+          icon={
+            <Avatar
+              src={organizerPlayer?.avatarUrl}
+              sx={{ width: 24, height: 24, fontSize: 12, bgcolor: 'primary.main' }}
             >
-              <Stack spacing={1}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <CalendarTodayIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
-                  <Typography variant="body2" color="text.secondary">
-                    Datum meča
-                  </Typography>
-                </Stack>
-                <Typography variant="body1" fontWeight={600}>
-                  {formatDateTime(match.dateTime)}
-                </Typography>
-              </Stack>
+              {match.createdBy.name.charAt(0).toUpperCase()}
+            </Avatar>
+          }
+        >
+          Organizator: {shortName(match.createdBy.name)}
+        </InfoRow>
+      </Stack>
 
-              <Stack spacing={1}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <AccessTimeIcon sx={{ color: isDeadlinePassed ? 'error.main' : 'text.secondary', fontSize: 18 }} />
-                  <Typography variant="body2" color={isDeadlinePassed ? 'error.main' : 'text.secondary'}>
-                    Rok za prijavu
-                  </Typography>
-                </Stack>
-                <Typography variant="body1" fontWeight={600} color={isDeadlinePassed ? 'error.main' : 'text.primary'}>
-                  {formatDateTime(match.registrationDeadline)}
-                  {isDeadlinePassed && ' (ISTEKAO)'}
-                </Typography>
-              </Stack>
+      {/* Primary action */}
+      <Stack spacing="12px" sx={{ mt: '22px' }}>
+        {primaryAction}
+        {match.status === 'completed' && user && match.players.some((p) => p._id === user._id) && (
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={openRatingDialog}
+            fullWidth
+            startIcon={<StarIcon />}
+            disabled={loadingRatingStatus}
+            sx={actionButtonSx}
+          >
+            {loadingRatingStatus ? 'Učitavanje...' : 'Oceni saigrače'}
+          </Button>
+        )}
+        {canCompleteMatch && (
+          <Button
+            variant="contained"
+            color="success"
+            onClick={() => { setNoShowIds(new Set()); setCompleteDialogOpen(true); }}
+            fullWidth
+            startIcon={<CheckCircleIcon />}
+            sx={actionButtonSx}
+          >
+            Potvrdite odigrani termin
+          </Button>
+        )}
+      </Stack>
 
-              <Stack spacing={1}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <PeopleIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
-                  <Typography variant="body2" color="text.secondary">
-                    Igrači
-                  </Typography>
-                </Stack>
-                <Typography variant="body1" fontWeight={600}>
-                  {formatPlayersCount(match)}
-                </Typography>
-              </Stack>
-
-              <Stack spacing={1}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <PersonIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
-                  <Typography variant="body2" color="text.secondary">
-                    Organizator
-                  </Typography>
-                </Stack>
-                <Typography variant="body1" fontWeight={600}>
-                  {match.createdBy.name}
-                </Typography>
-              </Stack>
-
-              {match.pricePerPlayer != null && (
-                <Stack spacing={1}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <PaymentsIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
-                    <Typography variant="body2" color="text.secondary">
-                      Cena po igraču
-                    </Typography>
-                  </Stack>
-                  <Typography variant="body1" fontWeight={600}>
-                    {formatRsd(match.pricePerPlayer)}
-                  </Typography>
-                </Stack>
-              )}
-            </Box>
-
-            <Divider />
-
-            {/* Players Section */}
-            <Box>
-              <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
-                Prijavljeni igrači ({match.players.length})
-              </Typography>
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 1.5,
-                }}
-              >
-                {match.players.map((p) => {
-                  const badge = getTrustBadge(p.reliabilityScore);
-                  const paid = match.pricePerPlayer != null && isPlayerPaid(match, p._id);
-                  return (
-                  <Chip
-                    key={p._id}
-                    avatar={
-                      <Avatar sx={{ bgcolor: 'primary.main' }}>
-                        {p.name.charAt(0).toUpperCase()}
-                      </Avatar>
-                    }
-                    label={
-                      <Stack direction="row" spacing={0.75} alignItems="center">
-                        <span>{p.name}</span>
-                        <Box
-                          component="span"
-                          sx={{ fontSize: '0.75rem', lineHeight: 1 }}
-                          title={`${badge.label} (${p.reliabilityScore ?? 100}%)`}
-                        >
-                          {badge.emoji}
+      {/* Who plays */}
+      <Box sx={{ mt: '30px' }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: '14px' }}>
+          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>
+            Ko igra · {match.players.length}/{targetPlayers}
+          </Typography>
+          {match.players.length > 4 && (
+            <ButtonBase
+              onClick={() => setShowAllPlayers((v) => !v)}
+              sx={{ fontSize: 14, fontWeight: 600, color: 'primary.main', borderRadius: '6px' }}
+            >
+              {showAllPlayers ? 'Prikaži manje' : 'Prikaži sve'}
+            </ButtonBase>
+          )}
+        </Stack>
+        {match.players.length === 0 ? (
+          <Typography sx={{ fontSize: 15, color: 'text.secondary' }}>Još nema prijavljenih igrača.</Typography>
+        ) : (
+          <Stack spacing="14px">
+            {visiblePlayers.map((p) => {
+              const badge = getTrustBadge(p.reliabilityScore);
+              const paid = match.pricePerPlayer != null && isPlayerPaid(match, p._id);
+              const isOrganizer = p._id === match.createdBy._id;
+              return (
+                <Stack key={p._id} direction="row" alignItems="center" spacing="14px">
+                  <Avatar src={p.avatarUrl} alt={p.name} sx={{ width: 46, height: 46, bgcolor: 'primary.main', fontWeight: 700 }}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </Avatar>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography noWrap sx={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>
+                      {shortName(p.name)}
+                      {isOrganizer && (
+                        <Box component="span" sx={{ fontWeight: 400, color: 'text.secondary' }}>
+                          {' '}(organizator)
                         </Box>
-                        {match.pricePerPlayer != null && (
-                          <Typography
-                            component="span"
-                            variant="caption"
-                            sx={{ fontWeight: 700, color: paid ? 'success.main' : 'text.secondary' }}
-                          >
-                            · {paid ? 'plaćeno' : 'duguje'}
-                          </Typography>
-                        )}
-                      </Stack>
-                    }
-                    sx={{
-                      borderRadius: 2,
-                      '& .MuiChip-avatar': {
-                        width: 28,
-                        height: 28,
-                        fontSize: '0.875rem',
-                      },
-                    }}
-                  />
-                  );
-                })}
-              </Box>
-            </Box>
+                      )}
+                    </Typography>
+                    {match.pricePerPlayer != null && (
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: paid ? 'success.main' : 'text.secondary' }}>
+                        {paid ? 'plaćeno' : 'duguje'}
+                      </Typography>
+                    )}
+                  </Box>
+                  <StatusPill tone={badge.level} title={`${badge.label} (${p.reliabilityScore ?? 100}%)`} />
+                </Stack>
+              );
+            })}
+          </Stack>
+        )}
+      </Box>
 
+      {/* Chat, cost split, waitlist, cancellations */}
+      {hasExtraSections && (
+        <Paper
+          elevation={0}
+          sx={{
+            mt: '28px',
+            p: 2,
+            borderRadius: '16px',
+            border: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+          }}
+        >
+          <Stack spacing={3} sx={{ '& > .MuiDivider-root:first-child': { display: 'none' } }}>
             {/* Instant chat — samo prijavljeni igrači */}
             {user && match.players.some((p) => p._id === user._id) && (
               <>
@@ -831,6 +994,8 @@ export default function MatchDetails() {
                   matchId={match._id}
                   currentUserId={user._id}
                   canSend={match.status === 'open' || match.status === 'full'}
+                  players={match.players}
+                  sport={match.sport}
                 />
               </>
             )}
@@ -1055,14 +1220,15 @@ export default function MatchDetails() {
               </>
             )}
           </Stack>
-        </CardContent>
-      </Card>
+        </Paper>
+      )}
 
+      <Box sx={{ mt: '28px' }}>
       {/* Map Section */}
       <Paper
         elevation={0}
         sx={{
-          borderRadius: 4,
+          borderRadius: '16px',
           overflow: 'hidden',
           border: '1px solid',
           borderColor: 'divider',
@@ -1098,7 +1264,6 @@ export default function MatchDetails() {
           </MapContainer>
         </Box>
       </Paper>
-
       {/* Match promotion — organizer only */}
       {canPromoteMatch && (
         <Paper
@@ -1160,232 +1325,19 @@ export default function MatchDetails() {
           </Stack>
         </Paper>
       )}
+      </Box>
+      <Box sx={{ height: 24 }} />
 
-      {/* Action Buttons */}
-      <Stack spacing={2}>
-        <Button
-          variant="outlined"
-          onClick={handleShare}
-          startIcon={<ShareIcon />}
-          fullWidth
-          sx={{ borderRadius: 3, fontWeight: 600 }}
-        >
-          Podeli meč
-        </Button>
-        {match.status === 'completed' && user && match.players.some((p) => p._id === user._id) && (
-          <Button
-            variant="contained"
-            color="warning"
-            onClick={openRatingDialog}
-            fullWidth
-            startIcon={<StarIcon />}
-            disabled={loadingRatingStatus}
-            sx={{ borderRadius: 3, fontWeight: 700 }}
-          >
-            {loadingRatingStatus ? 'Učitavanje...' : 'Oceni saigrače'}
-          </Button>
-        )}
-      {canCompleteMatch && (
-        <Button
-          variant="contained"
-          color="success"
-          onClick={() => { setNoShowIds(new Set()); setCompleteDialogOpen(true); }}
-          fullWidth
-          size="large"
-          startIcon={<CheckCircleIcon />}
-          sx={{ py: 1.5, fontSize: '1rem', fontWeight: 600, borderRadius: 3 }}
-        >
-          Potvrdite odigrani termin
-        </Button>
-      )}
-      {match.status === 'failed' ? (
-        <Paper
-          elevation={0}
-          sx={{
-            p: 3,
-            borderRadius: 3,
-            border: '1px solid',
-            borderColor: 'error.light',
-            bgcolor: 'error.light',
-            textAlign: 'center',
-          }}
-        >
-          <ErrorIcon sx={{ color: 'error.main', fontSize: 40, mb: 1 }} />
-          <Typography variant="h6" color="error.main" fontWeight={600}>
-            Meč nije uspeo
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Nije bilo dovoljno igrača do roka za prijavu.
-          </Typography>
-        </Paper>
-      ) : isDeadlinePassed ? (
-        <Paper
-          elevation={0}
-          sx={{
-            p: 3,
-            borderRadius: 3,
-            border: '1px solid',
-            borderColor: 'warning.light',
-            bgcolor: 'warning.light',
-            textAlign: 'center',
-          }}
-        >
-          <AccessTimeIcon sx={{ color: 'warning.main', fontSize: 40, mb: 1 }} />
-          <Typography variant="h6" color="warning.main" fontWeight={600}>
-            Rok za prijavu je istekao
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Ne možete se pridružiti ovom meču.
-          </Typography>
-        </Paper>
-      ) : canLeave ? (
-        <Button
-          variant="outlined"
-          color="error"
-          onClick={handleOpenCancelDialog}
-          fullWidth
-          size="large"
-          startIcon={<CancelIcon />}
-          sx={{
-            py: 1.5,
-            fontSize: '1rem',
-            fontWeight: 600,
-            borderRadius: 3,
-            borderWidth: 2,
-          }}
-        >
-          Otkaži dolazak
-        </Button>
-      ) : canJoin ? (
-        <Button
-          variant="contained"
-          onClick={join}
-          fullWidth
-          size="large"
-          sx={{
-            py: 1.5,
-            fontSize: '1rem',
-            fontWeight: 600,
-            borderRadius: 3,
-          }}
-        >
-          Pridruži se meču
-        </Button>
-      ) : isOnWaitlist ? (
-        <Stack spacing={1.5}>
-          <Alert severity="info" icon={<HourglassTopIcon />}>
-            Na listi čekanja — pozicija #{waitlistPosition}
-            {(match.waitlist?.length ?? 0) > 1 ? ` od ${match.waitlist!.length}` : ''}.
-            Kada se mesto oslobodi, automatski ćete biti prijavljeni.
-          </Alert>
-          <Button
-            variant="outlined"
-            color="warning"
-            onClick={leaveWaitlist}
-            fullWidth
-            size="large"
-            sx={{
-              py: 1.5,
-              fontSize: '1rem',
-              fontWeight: 600,
-              borderRadius: 3,
-              borderWidth: 2,
-            }}
-          >
-            Napusti listu čekanja
-          </Button>
-        </Stack>
-      ) : canJoinWaitlist ? (
-        <Button
-          variant="contained"
-          color="warning"
-          onClick={joinWaitlist}
-          fullWidth
-          size="large"
-          startIcon={<HourglassTopIcon />}
-          sx={{
-            py: 1.5,
-            fontSize: '1rem',
-            fontWeight: 600,
-            borderRadius: 3,
-          }}
-        >
-          Stani u red
-        </Button>
-      ) : null}
-      </Stack>
-
-      {/* Cancel Attendance Dialog */}
-      <Dialog
+      {/* Cancel attendance bottom sheet */}
+      <CancelAttendanceSheet
         open={cancelDialogOpen}
         onClose={handleCloseCancelDialog}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 4,
-            p: 1,
-          },
-        }}
-      >
-        <DialogTitle sx={{ pb: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <CancelIcon color="error" />
-            <Typography variant="h6" fontWeight={700}>
-              Otkaži dolazak
-            </Typography>
-          </Stack>
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              Da li ste sigurni da želite da otkažete dolazak na ovaj meč? Ako želite, možete dodati razlog:
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              label="Razlog otkazivanja (opciono)"
-              value={cancelComment}
-              onChange={(e) => setCancelComment(e.target.value)}
-              placeholder="Npr. Ne mogu da dođem zbog obaveza..."
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  borderRadius: 3,
-                },
-              }}
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions
-          sx={{
-            px: 3,
-            pb: 3,
-            flexDirection: { xs: 'column-reverse', sm: 'row' },
-            alignItems: 'stretch',
-            gap: 1,
-            '& > :not(:first-of-type)': { ml: { xs: 0, sm: 1 } },
-          }}
-        >
-          <Button
-            onClick={handleCloseCancelDialog}
-            disabled={cancelling}
-            variant="outlined"
-            sx={{ borderRadius: 3, px: 3, width: { xs: '100%', sm: 'auto' } }}
-          >
-            Odustani
-          </Button>
-          <Button
-            onClick={handleCancelAttendance}
-            variant="contained"
-            color="error"
-            disabled={cancelling}
-            sx={{ borderRadius: 3, px: 3, width: { xs: '100%', sm: 'auto' } }}
-          >
-            {cancelling ? 'Otkazivanje...' : 'Otkaži dolazak'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onConfirm={handleCancelAttendance}
+        loading={cancelling}
+        penaltyPoints={
+          match ? getCancelPenaltyPoints((new Date(match.dateTime).getTime() - Date.now()) / (1000 * 60 * 60)) : 0
+        }
+      />
 
       {/* Complete informal match dialog */}
       <Dialog
@@ -1766,5 +1718,90 @@ export default function MatchDetails() {
         </DialogActions>
       </Dialog>
     </Box>
+  );
+}
+
+const WEEKDAYS_SHORT = ['ned', 'pon', 'uto', 'sre', 'čet', 'pet', 'sub'];
+const MONTHS_SHORT = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'];
+
+function formatClock(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** "Danas" / "Sutra" / "Juče" / "pet, 16. okt" (lowercase variant for use mid-sentence). */
+function relativeDayLabel(d: Date, lower = false): string {
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diff = Math.round((startDay - startToday) / 86400000);
+  let label: string;
+  if (diff === 0) label = 'Danas';
+  else if (diff === 1) label = 'Sutra';
+  else if (diff === -1) label = 'Juče';
+  else {
+    const weekday = WEEKDAYS_SHORT[d.getDay()];
+    const rest = `${d.getDate()}. ${MONTHS_SHORT[d.getMonth()]}`;
+    label = lower ? `${weekday}, ${rest}` : `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${rest}`;
+  }
+  return lower ? label.charAt(0).toLowerCase() + label.slice(1) : label;
+}
+
+function formatSpotsLabel(remaining: number): string {
+  if (remaining === 0) return 'Popunjeno';
+  const lastTwo = remaining % 100;
+  const last = remaining % 10;
+  if (last === 1 && lastTwo !== 11) return `${remaining} mesto`;
+  return `${remaining} mesta`;
+}
+
+function shortName(full: string): string {
+  const parts = full.trim().split(/\s+/);
+  if (parts.length < 2) return parts[0] || '';
+  return `${parts[0]} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
+}
+
+function distanceBetween(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatKm(km: number): string {
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1).replace('.', ',')} km`;
+}
+
+function InfoRow({
+  icon,
+  danger,
+  children,
+}: {
+  icon: ReactNode;
+  danger?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Stack direction="row" alignItems="center" spacing="14px">
+      <Box
+        sx={{
+          width: 24,
+          height: 24,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: danger ? 'error.main' : 'text.secondary',
+          '& svg': { fontSize: 22 },
+        }}
+      >
+        {icon}
+      </Box>
+      <Typography sx={{ fontSize: 16, fontWeight: 500, lineHeight: 1.4, color: danger ? 'error.main' : 'text.primary' }}>
+        {children}
+      </Typography>
+    </Stack>
   );
 }

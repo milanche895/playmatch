@@ -1,380 +1,240 @@
 'use client';
 
-import { useState, useEffect, type SyntheticEvent } from 'react';
+import { useState, useEffect, type ElementType } from 'react';
 import {
+  Badge,
   Box,
-  Card,
-  CardContent,
-  Typography,
   Button,
+  ButtonBase,
+  Typography,
   Stack,
   Alert,
   CircularProgress,
-  Divider,
-  Chip,
-  Paper,
-  Slider,
+  IconButton,
 } from '@mui/material';
 import {
   Notifications as NotificationsIcon,
-  NotificationsActive as NotificationsActiveIcon,
-  NotificationsOff as NotificationsOffIcon,
-  Settings as SettingsIcon,
-  ArrowBack as ArrowBackIcon,
+  SettingsOutlined as SettingsOutlinedIcon,
+  PersonAddAlt1 as PersonAddIcon,
+  PersonRemove as PersonRemoveIcon,
+  Groups as GroupsIcon,
+  Schedule as ScheduleIcon,
+  EventNote as EventNoteIcon,
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { useNavigate } from '@/lib/router';
 import api from '../lib/api';
-import { useAuth } from '../context/AuthContext';
-import {
-  subscribeToPushNotifications,
-  unsubscribeFromPushNotifications,
-  getNotificationStatus,
-  requestNotificationPermission
-} from '../lib/notifications';
+import { AppNotification, AppNotificationType } from '../types';
+import { getGameTypeName } from '../constants/games';
+import { getNotificationStatus } from '../lib/notifications';
+
+type FeedItem = AppNotification & { unread: boolean };
+
+const TYPE_CONFIG: Record<AppNotificationType, { title: string; Icon: ElementType; color: string; bg: string }> = {
+  player_joined: { title: 'Novi igrač se prijavio', Icon: PersonAddIcon, color: '#0877F9', bg: '#E3EEFF' },
+  match_full: { title: 'Meč je popunjen', Icon: GroupsIcon, color: '#F97316', bg: '#FFEDE0' },
+  time_changed: { title: 'Promena termina', Icon: ScheduleIcon, color: '#16A34A', bg: '#E3F6EA' },
+  player_left: { title: 'Neko se odjavio', Icon: PersonRemoveIcon, color: '#E5484D', bg: '#FDE6E6' },
+  reminder: { title: 'Podsetnik', Icon: EventNoteIcon, color: '#6B7A99', bg: '#EAEFF7' },
+  court_approved: { title: 'Teren je potvrdio termin', Icon: CheckCircleIcon, color: '#16A34A', bg: '#E3F6EA' },
+  court_rejected: { title: 'Teren je odbio termin', Icon: CancelIcon, color: '#E5484D', bg: '#FDE6E6' },
+};
+
+/** Serbian plural: 1 → one, 2–4 → few, rest → many (11–14 always many). */
+function plural(n: number, one: string, few: string, many: string): string {
+  const lastTwo = n % 100;
+  const last = n % 10;
+  if (last === 1 && lastTwo !== 11) return one;
+  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return few;
+  return many;
+}
+
+function formatAgo(iso: string): string {
+  const diffMin = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  if (diffMin < 1) return 'upravo sada';
+  if (diffMin < 60) return `pre ${diffMin} min`;
+  const hours = Math.floor(diffMin / 60);
+  if (hours < 24) return `pre ${hours} ${plural(hours, 'sat', 'sata', 'sati')}`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `pre ${days} ${plural(days, 'dan', 'dana', 'dana')}`;
+  return new Date(iso).toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit' });
+}
+
+function reminderText(matchDateTime?: string): string {
+  if (!matchDateTime) return 'Tvoj meč uskoro počinje.';
+  const diffMin = Math.round((new Date(matchDateTime).getTime() - Date.now()) / 60000);
+  if (diffMin <= 0) return 'Tvoj meč je počeo.';
+  if (diffMin < 60) return `Tvoj meč počinje za ${diffMin} min.`;
+  const hours = Math.round(diffMin / 60);
+  return `Tvoj meč počinje za ${hours} ${plural(hours, 'sat', 'sata', 'sati')}.`;
+}
+
+function subtitleFor(n: AppNotification): string {
+  if (n.type === 'reminder') return reminderText(n.matchDateTime);
+  const sport = n.sport ? getGameTypeName(n.sport) : 'Meč';
+  return n.locationName ? `${sport} · ${n.locationName}` : sport;
+}
 
 export default function NotificationSettings() {
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [subscribing, setSubscribing] = useState(false);
-  const [savingRadius, setSavingRadius] = useState(false);
-  const [radius, setRadius] = useState(10);
-  const [status, setStatus] = useState<{
-    subscribed: boolean;
-    enabled: boolean;
-    permission: NotificationPermission;
-    endpoint?: string;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  useEffect(() => {
-    setRadius(user?.notificationRadius || 10);
-  }, [user?.notificationRadius]);
+  const [feed, setFeed] = useState<FeedItem[] | null>(null);
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [subscribed, setSubscribed] = useState<boolean | null>(null);
 
   useEffect(() => {
     loadStatus();
+    loadFeed();
   }, []);
+
+  async function loadFeed() {
+    try {
+      const res = await api.get<{ items: AppNotification[]; unreadCount: number }>('/api/notifications');
+      const items = Array.isArray(res.data?.items) ? res.data.items : [];
+      setFeed(items.map((n) => ({ ...n, unread: !n.readAt })));
+      if (res.data?.unreadCount > 0) {
+        // Entries stay highlighted for this visit; server-side they are now read
+        api.post('/api/notifications/read-all').catch(() => undefined);
+      }
+    } catch (err: any) {
+      setFeedError(err.response?.data?.message || 'Greška pri učitavanju obaveštenja');
+      setFeed([]);
+    }
+  }
 
   async function loadStatus() {
     try {
-      setLoading(true);
       const notificationStatus = await getNotificationStatus();
-      setStatus(notificationStatus);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Greška pri učitavanju statusa');
+      setSubscribed(notificationStatus.subscribed);
+    } catch (err) {
+      console.error('Error loading notification status:', err);
     } finally {
-      setLoading(false);
+      setStatusLoading(false);
     }
   }
 
-  async function handleEnableNotifications() {
-    try {
-      setSubscribing(true);
-      setError(null);
-      setSuccess(null);
-
-      const permission = await requestNotificationPermission();
-      
-      if (permission !== 'granted') {
-        if (permission === 'denied') {
-          setError('Dozvola za obaveštenja je odbijena. Molimo omogućite je u postavkama pretraživača.');
-        } else {
-          setError('Dozvola za obaveštenja nije data.');
-        }
-        return;
-      }
-
-      await subscribeToPushNotifications();
-      setSuccess('Obaveštenja su uspešno omogućena!');
-      await loadStatus();
-    } catch (err: any) {
-      console.error('Error enabling notifications:', err);
-      setError(err.message || 'Greška pri omogućavanju obaveštenja');
-    } finally {
-      setSubscribing(false);
-    }
-  }
-
-  async function handleDisableNotifications() {
-    try {
-      setSubscribing(true);
-      setError(null);
-      setSuccess(null);
-
-      await unsubscribeFromPushNotifications();
-      setSuccess('Obaveštenja su onemogućena.');
-      await loadStatus();
-    } catch (err: any) {
-      console.error('Error disabling notifications:', err);
-      setError(err.message || 'Greška pri onemogućavanju obaveštenja');
-    } finally {
-      setSubscribing(false);
-    }
-  }
-
-  async function handleRadiusChange(_event: Event, value: number | number[]) {
-    setRadius(Array.isArray(value) ? value[0] : value);
-  }
-
-  async function handleRadiusCommit(_event: Event | SyntheticEvent, value: number | number[]) {
-    const next = Array.isArray(value) ? value[0] : value;
-    setRadius(next);
-    try {
-      setSavingRadius(true);
-      setError(null);
-      await api.put('/api/players/profile', { notificationRadius: next });
-      await refreshUser();
-      setSuccess(`Radijus obaveštenja je sačuvan: ${next} km`);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Greška pri čuvanju radijusa');
-    } finally {
-      setSavingRadius(false);
-    }
-  }
-
-  async function handleTestNotification() {
-    try {
-      setError(null);
-      setSuccess(null);
-
-      const res = await api.post('/api/players/test-push');
-      setSuccess('Test notifikacija je poslata! Proverite vaše obaveštenja.');
-    } catch (err: any) {
-      console.error('Error sending test notification:', err);
-      setError(err.response?.data?.message || 'Greška pri slanju test notifikacije');
-    }
-  }
-
-  function getPermissionLabel(permission: NotificationPermission) {
-    switch (permission) {
-      case 'granted': return 'Dozvoljeno';
-      case 'denied': return 'Odbijeno';
-      case 'default': return 'Nije postavljeno';
-      default: return 'Nepoznato';
-    }
-  }
-
-  function getPermissionColor(permission: NotificationPermission): 'success' | 'error' | 'default' {
-    switch (permission) {
-      case 'granted': return 'success';
-      case 'denied': return 'error';
-      default: return 'default';
-    }
-  }
-
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (!status) {
-    return <Alert severity="error" sx={{ borderRadius: 2 }}>Greška pri učitavanju postavki obaveštenja</Alert>;
-  }
-
-  const isSubscribed = status?.subscribed ?? false;
-
-  const cardSx = {
-    borderRadius: 4,
-    border: '1px solid',
-    borderColor: 'divider',
-    px: { xs: 3, sm: 4 },
-    py: { xs: 2.5, sm: 4 },
-  };
-  const cardContentSx = { p: '0 !important' };
+  const openPreferences = () => navigate('/notification-settings/postavke');
+  // Red dot on the gear: push notifications are not set up on this device yet
+  const needsSetup = !statusLoading && subscribed === false;
 
   return (
-    <Box sx={{ maxWidth: 600, mr: 'auto', ml: 0 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, px: { xs: 0.5, sm: 0 } }}>
-        <Button
-          startIcon={<ArrowBackIcon />}
-          onClick={() => navigate(-1)}
-          sx={{ mb: 2, color: 'text.secondary' }}
+    <Box sx={{ maxWidth: 720, mx: 'auto', px: { xs: '10px', md: 0 } }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: '16px' }}>
+        <Typography component="h1" sx={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', color: '#0B1B3F' }}>
+          Obaveštenja
+        </Typography>
+        <IconButton
+          aria-label="Postavke obaveštenja"
+          onClick={openPreferences}
+          edge="end"
+          sx={{ color: '#6B7A99' }}
         >
-          Nazad
-        </Button>
-        <Typography variant="h4" fontWeight={700}>
-          Postavke Obaveštenja
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Upravljajte obaveštenjima o mečevima
-        </Typography>
-      </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-
-      {success && (
-        <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setSuccess(null)}>
-          {success}
-        </Alert>
-      )}
-
-      {/* Status Card */}
-      <Card elevation={0} sx={{ ...cardSx, mb: 3 }}>
-        <CardContent sx={cardContentSx}>
-          <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
-            <SettingsIcon sx={{ mr: 1, verticalAlign: 'middle', color: 'primary.main' }} />
-            Trenutno Stanje
-          </Typography>
-          
-          <Stack spacing={3}>
-            <Paper elevation={0} sx={{ px: 3, py: 2.5, borderRadius: 3, bgcolor: 'action.hover' }}>
-              <Stack
-                direction={{ xs: 'column', sm: 'row' }}
-                justifyContent="space-between"
-                alignItems={{ xs: 'flex-start', sm: 'center' }}
-                spacing={1.5}
-              >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="body1" fontWeight={600}>Status obaveštenja</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {isSubscribed ? 'Obaveštenja su uključena na ovom uređaju' : 'Obaveštenja još nisu uključena'}
-                  </Typography>
-                </Box>
-                <Chip
-                  label={isSubscribed ? 'Aktivno' : 'Neaktivno'}
-                  color={isSubscribed ? 'success' : 'default'}
-                  icon={isSubscribed ? <NotificationsActiveIcon /> : <NotificationsOffIcon />}
-                  sx={{ fontWeight: 600 }}
-                />
-              </Stack>
-            </Paper>
-
-            <Paper elevation={0} sx={{ px: 3, py: 2.5, borderRadius: 3, bgcolor: 'action.hover' }}>
-              <Stack
-                direction={{ xs: 'column', sm: 'row' }}
-                justifyContent="space-between"
-                alignItems={{ xs: 'flex-start', sm: 'center' }}
-                spacing={1.5}
-              >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="body1" fontWeight={600}>Dozvola pretraživača</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {getPermissionLabel(status?.permission || 'default')}
-                  </Typography>
-                </Box>
-                <Chip
-                  label={getPermissionLabel(status?.permission || 'default')}
-                  color={getPermissionColor(status?.permission || 'default')}
-                  sx={{ fontWeight: 600 }}
-                />
-              </Stack>
-            </Paper>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Card elevation={0} sx={{ ...cardSx, mb: 3 }}>
-        <CardContent sx={cardContentSx}>
-          <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>
-            Radijus obaveštenja
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Dobijaćete obaveštenja o novim mečevima u krugu od {radius} km od vaše lokacije.
-            {savingRadius ? ' Čuvanje...' : ''}
-          </Typography>
-          <Slider
-            value={radius}
-            onChange={handleRadiusChange}
-            onChangeCommitted={handleRadiusCommit}
-            min={1}
-            max={50}
-            step={1}
-            marks={[
-              { value: 1, label: '1' },
-              { value: 25, label: '25 km' },
-              { value: 50, label: '50' }
-            ]}
-            valueLabelDisplay="auto"
-            valueLabelFormat={(value) => `${value} km`}
-            disabled={savingRadius}
+          <Badge
+            variant="dot"
+            invisible={!needsSetup}
             sx={{
-              mx: { xs: 1, sm: 0 },
-              width: { xs: 'calc(100% - 16px)', sm: '100%' },
-              '& .MuiSlider-markLabel': {
-                fontSize: { xs: '0.7rem', sm: '0.75rem' },
+              '& .MuiBadge-badge': {
+                bgcolor: '#EF4444',
+                width: 9,
+                height: 9,
+                minWidth: 9,
+                borderRadius: '50%',
+                border: '1.5px solid #F4F7FC',
+                boxSizing: 'content-box',
               },
             }}
-          />
-        </CardContent>
-      </Card>
+          >
+            <SettingsOutlinedIcon sx={{ fontSize: 26 }} />
+          </Badge>
+        </IconButton>
+      </Stack>
 
-      {/* Actions Card */}
-      <Card elevation={0} sx={cardSx}>
-        <CardContent sx={cardContentSx}>
-          <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
-            Akcije
+      {feedError && (
+        <Alert severity="error" sx={{ mb: 2, borderRadius: '12px' }} onClose={() => setFeedError(null)}>
+          {feedError}
+        </Alert>
+      )}
+
+      {feed === null ? (
+        <Box display="flex" justifyContent="center" py={6}>
+          <CircularProgress />
+        </Box>
+      ) : feed.length === 0 ? (
+        <Box sx={{ textAlign: 'center', py: 6, px: 2 }}>
+          <NotificationsIcon sx={{ fontSize: 40, color: '#C3D0E6', mb: 1 }} />
+          <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#0B1B3F' }}>Još nema obaveštenja</Typography>
+          <Typography sx={{ fontSize: 14, color: '#6B7A99', mt: 0.5 }}>
+            Ovde ćeš videti prijave igrača, popunjene mečeve i podsetnike.
           </Typography>
-          
-          <Stack spacing={2}>
-            {!isSubscribed ? (
-              <Button
-                variant="contained"
-                startIcon={<NotificationsIcon />}
-                onClick={handleEnableNotifications}
-                disabled={subscribing || status?.permission === 'denied'}
-                fullWidth
-                size="large"
-                sx={{ py: 1.5, borderRadius: 3 }}
+          {needsSetup && (
+            <Button sx={{ mt: 1.5, fontWeight: 700, borderRadius: '12px' }} onClick={openPreferences}>
+              Uključi obaveštenja
+            </Button>
+          )}
+        </Box>
+      ) : (
+        <Stack spacing="10px">
+          {feed.map((n) => {
+            const cfg = TYPE_CONFIG[n.type] ?? TYPE_CONFIG.reminder;
+            const Icon = cfg.Icon;
+            return (
+              <ButtonBase
+                key={n._id}
+                onClick={() => navigate(`/matches/${n.matchId}`)}
+                sx={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-start',
+                  textAlign: 'left',
+                  gap: '14px',
+                  p: '14px',
+                  bgcolor: '#FFFFFF',
+                  border: '1px solid',
+                  borderColor: n.unread ? '#B9D4FB' : '#E3E9F3',
+                  borderRadius: '16px',
+                }}
               >
-                {subscribing ? 'Omogućavanje...' : 'Omogući Obaveštenja'}
-              </Button>
-            ) : (
-              <>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  startIcon={<NotificationsOffIcon />}
-                  onClick={handleDisableNotifications}
-                  disabled={subscribing}
-                  fullWidth
-                  size="large"
-                  sx={{ py: 1.5, borderRadius: 3 }}
+                <Box
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: '14px',
+                    bgcolor: cfg.bg,
+                    color: cfg.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
                 >
-                  {subscribing ? 'Onemogućavanje...' : 'Onemogući Obaveštenja'}
-                </Button>
-
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  startIcon={<NotificationsActiveIcon />}
-                  onClick={handleTestNotification}
-                  fullWidth
-                  size="large"
-                  sx={{ py: 1.5, borderRadius: 3 }}
-                >
-                  Pošalji Test Notifikaciju
-                </Button>
-              </>
-            )}
-
-            {status?.permission === 'denied' && (
-              <Alert severity="warning" sx={{ mt: 2, borderRadius: 2 }}>
-                Dozvola za obaveštenja je odbijena. Omogućite je u postavkama pretraživača za ovaj sajt.
-              </Alert>
-            )}
-            {status?.permission === 'default' && !isSubscribed && (
-              <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
-                Kliknite „Omogući obaveštenja“ — pretraživač će tražiti dozvolu za prikaz obaveštenja.
-              </Alert>
-            )}
-          </Stack>
-
-          <Divider sx={{ my: 3 }} />
-
-          <Typography variant="body2" color="text.secondary">
-            Obaveštenja će vas obavestiti o novim mečevima u blizini vaše lokacije.
-          </Typography>
-        </CardContent>
-      </Card>
+                  <Icon sx={{ fontSize: 26 }} />
+                </Box>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Stack direction="row" alignItems="center" spacing="8px">
+                    <Typography noWrap sx={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, color: '#0B1B3F' }}>
+                      {cfg.title}
+                    </Typography>
+                    {n.unread && (
+                      <Box
+                        aria-label="Nepročitano"
+                        sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: 'primary.main', flexShrink: 0 }}
+                      />
+                    )}
+                  </Stack>
+                  <Typography noWrap sx={{ fontSize: 14, lineHeight: 1.4, color: '#4A5878' }}>
+                    {subtitleFor(n)}
+                  </Typography>
+                  <Typography sx={{ fontSize: 13, lineHeight: 1.4, color: '#8A94A6' }}>
+                    {formatAgo(n.createdAt)}
+                  </Typography>
+                </Box>
+              </ButtonBase>
+            );
+          })}
+        </Stack>
+      )}
     </Box>
   );
 }

@@ -4,6 +4,7 @@ import { Component, ReactNode, Suspense, useEffect } from 'react';
 import {
   ThemeProvider as MuiThemeProvider,
   CssBaseline,
+  useMediaQuery,
   Container,
   CircularProgress,
   Box,
@@ -19,6 +20,8 @@ import { trackPlayerLocation } from '../lib/location';
 import PostRegisterNotificationDialog from '../components/PostRegisterNotificationDialog';
 import OnboardingTour from '../components/OnboardingTour';
 import { initPushNotifications } from '../lib/notifications';
+import { BOTTOM_NAV_HEIGHT, BOTTOM_NAV_VISIBLE_PATHS } from '../components/BottomNav';
+import { useLocation } from '../lib/router';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -47,6 +50,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const { mode } = useThemeMode();
   const theme = createAppTheme(mode);
+  const { pathname } = useLocation();
+  const isMobile = useMediaQuery('(max-width:899.95px)');
+  const hasBottomNav =
+    isMobile && user?.role === 'player' && BOTTOM_NAV_VISIBLE_PATHS.includes(pathname);
 
   useEffect(() => {
     if (user?.role === 'player') {
@@ -86,6 +93,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
             flex: 1,
             py: { xs: 2, sm: 3 },
             px: { xs: 1.5, sm: 2, md: 3 },
+            // "&&" keeps the bottom-nav clearance above the responsive py/px shorthand rules
+            ...(hasBottomNav && {
+              '&&': { pb: `calc(${BOTTOM_NAV_HEIGHT + 16}px + env(safe-area-inset-bottom))` },
+            }),
             bgcolor: 'background.default',
           }}
         >

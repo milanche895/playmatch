@@ -9,6 +9,7 @@ const fieldRoutes = require('./routes/fields');
 const matchRoutesFactory = require('./routes/matches');
 const courtRoutes = require('./routes/courts');
 const playerRoutes = require('./routes/players');
+const notificationRoutes = require('./routes/notifications');
 const { connectDb, hasMongoUri } = require('./db');
 const { processExpiredMatches } = require('./utils/matchStatus');
 const { getRequiredSecret } = require('./utils/secrets');
@@ -87,6 +88,7 @@ function attachApi(app, io = createNoopIo()) {
   app.use('/api/matches', matchRoutesFactory(io));
   app.use('/api/courts', courtRoutes);
   app.use('/api/players', playerRoutes);
+  app.use('/api/notifications', notificationRoutes);
 
   return app;
 }

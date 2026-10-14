@@ -48,11 +48,13 @@ function hasPromptFlag(): boolean {
 }
 
 function isIosDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
   return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
 function isStandalonePwa(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
     ('standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone))
@@ -119,7 +121,11 @@ export default function PostRegisterNotificationDialog() {
     }
   }
 
-  const iosNeedsHomeScreen = isIosDevice() && !isStandalonePwa();
+  // Browser-only checks: compute after mount so SSR/hydration don't touch `navigator`/`window`.
+  const [iosNeedsHomeScreen, setIosNeedsHomeScreen] = useState(false);
+  useEffect(() => {
+    setIosNeedsHomeScreen(isIosDevice() && !isStandalonePwa());
+  }, []);
 
   return (
     <Dialog

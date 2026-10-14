@@ -41,14 +41,14 @@ const PLAYER_STEPS: TourStep[] = [
   },
   {
     id: 'sport-filter',
-    title: 'Moje igre / Svi mečevi',
-    body: '„Moje igre“ prikazuje samo sportove koje si izabrao pri registraciji, da ne gubiš vreme na mečeve koji te ne zanimaju. „Svi mečevi“ pokazuje sve sportove u blizini — koristi to kad želiš da probaš nešto novo ili da vidiš šta se igra u gradu.',
+    title: 'Filteri',
+    body: 'Dodirni „Filteri“ da izabereš šta vidiš: „Moje igre“ (mečevi koje si okupio ili na koje si se prijavio), „Sve igre“ ili „Moji sportovi“ (sportovi iz profila), i koliko daleko tražiš mečeve.',
     target: '[data-tour="tour-sport-filter"]',
   },
   {
     id: 'view-mode',
     title: 'Lista i mapa',
-    body: 'Lista je brži pregled: vreme, teren, koliko igrača fali i dugme za prijavu. Mapa prikazuje terene (plavo), zvanične mečeve (cijan) i privatne/informalne mečeve (narandžasto). Klik na marker otvara detalje i opciju da se pridružiš ili da kreiraš meč na tom terenu.',
+    body: 'Lista je brži pregled: vreme, teren, koliko igrača fali i dugme za prijavu. Mapa prikazuje mečeve kao pinove u boji sporta (veći pin je izabran) i terene kao manje sive pinove. Klik na pin otvara karticu meča sa dugmetom za prijavu i detaljima.',
     target: '[data-tour="tour-view-mode"]',
   },
   {
@@ -60,7 +60,7 @@ const PLAYER_STEPS: TourStep[] = [
   {
     id: 'fab',
     title: 'Brzo kreiranje meča',
-    body: 'Ovaj plus uvek ostaje na ekranu. Koristi ga kad želiš da okupiš ekipu: biraš sport, teren ili privatnu lokaciju, vreme, i koliko igrača treba. Formalni meč ide preko registrovanog terena (često treba odobrenje vlasnika). Informalni meč je brži — privatni teren, park ili sala — bez rezervacije terena.',
+    body: 'Ovaj plus uvek ostaje na ekranu (na telefonu je na sredini donjeg menija). Koristi ga kad želiš da okupiš ekipu: biraš sport, teren ili privatnu lokaciju, vreme, i koliko igrača treba. Formalni meč ide preko registrovanog terena (često treba odobrenje vlasnika). Informalni meč je brži — privatni teren, park ili sala — bez rezervacije terena.',
     target: '[data-tour="tour-fab-create"]',
   },
   {

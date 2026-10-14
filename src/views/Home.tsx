@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Link, useNavigate } from '@/lib/router';
 import {
-  Paper,
+  ButtonBase,
   Typography,
   Stack,
   Button,
@@ -18,12 +18,10 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
-  ToggleButton,
-  ToggleButtonGroup,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Circle, AttributionControl } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import api from '../lib/api';
@@ -34,38 +32,21 @@ import {
   subscribeToPushNotifications,
   unsubscribeFromPushNotifications,
 } from '../lib/notifications';
-import LocationOnIcon from '@mui/icons-material/LocationOn';
-import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
-import PeopleIcon from '@mui/icons-material/People';
 import AddIcon from '@mui/icons-material/Add';
+import TuneIcon from '@mui/icons-material/Tune';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
-import MapIcon from '@mui/icons-material/Map';
-import ViewListIcon from '@mui/icons-material/ViewList';
-import BrandHero from '../components/BrandHero';
-import { brand } from '../theme';
+import SegmentedControl from '../components/ui/SegmentedControl';
+import FilterSheet, { type HomeScope } from '../components/FilterSheet';
+import SportIcon from '../components/SportIcon';
+import PlayerAvatarStack from '../components/PlayerAvatarStack';
+import { BOTTOM_NAV_HEIGHT } from '../components/BottomNav';
+import { createSportPin, createFieldPin } from '../components/mapPins';
 import {
   getGameTypeName,
   matchBelongsToPreferredGames,
 } from '../constants/games';
 import { formatPlayersCount } from '../lib/matchPlayers';
-
-// Custom icons using HTML div icons for better customization
-function createCustomIcon(color: string) {
-  return L.divIcon({
-    className: 'custom-marker',
-    html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-  });
-}
-
-const matchIcon = createCustomIcon(brand.cyan);
-const fieldIcon = createCustomIcon(brand.blue);
-const informalMatchIcon = createCustomIcon(brand.orange);
 
 // Function to calculate distance between two coordinates (in km)
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -80,12 +61,43 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * c;
 }
 
-// Component to center map on user location
-function MapCenter({ position }: { position: [number, number] }) {
+// Center the map on the user and zoom so the whole search radius is visible.
+// `bottomInset` reserves room for UI overlaying the map (floating match card, bottom nav).
+function MapCenter({
+  position,
+  radiusKm,
+  bottomInset,
+  trigger,
+}: {
+  position: [number, number];
+  radiusKm: number;
+  bottomInset: number;
+  trigger: number | null;
+}) {
+  const map = useMap();
+  const [lat, lng] = position;
+  useEffect(() => {
+    map.invalidateSize();
+    const size = map.getSize();
+    // Never reserve more than ~45% of the map height
+    const bottom = Math.min(bottomInset, Math.round(size.y * 0.45));
+    // Zoom so the radius fits the map WIDTH (height is partly covered by the floating card)
+    const bounds = L.latLng(lat, lng).toBounds(radiusKm * 2000);
+    const wide = L.latLngBounds([lat, bounds.getWest()], [lat, bounds.getEast()]);
+    const zoom = Math.min(15, Math.max(9, map.getBoundsZoom(wide, false, L.point(24, 0))));
+    // Put the user in the middle of the part of the map that stays visible above the overlay
+    const center = map.unproject(map.project([lat, lng], zoom).add([0, bottom / 2]), zoom);
+    map.setView(center, zoom, { animate: false });
+  }, [map, lat, lng, radiusKm, bottomInset, trigger]);
+  return null;
+}
+
+// Keep Leaflet in sync when the map container is resized (e.g. mobile full-height map)
+function MapResizer({ trigger }: { trigger: number | null }) {
   const map = useMap();
   useEffect(() => {
-    map.setView(position, 13);
-  }, [map, position]);
+    map.invalidateSize();
+  }, [map, trigger]);
   return null;
 }
 
@@ -107,12 +119,12 @@ function formatRelativeMatchTime(dateTimeString: string): string {
   const startOfMatchDay = new Date(matchDate.getFullYear(), matchDate.getMonth(), matchDate.getDate());
   const dayDiff = Math.round((startOfMatchDay.getTime() - startOfToday.getTime()) / (24 * 60 * 60 * 1000));
 
-  if (dayDiff === 0) return `Danas u ${timeStr}`;
-  if (dayDiff === 1) return `Sutra u ${timeStr}`;
-  if (dayDiff === -1) return `Juče u ${timeStr}`;
+  if (dayDiff === 0) return `Danas · ${timeStr}`;
+  if (dayDiff === 1) return `Sutra · ${timeStr}`;
+  if (dayDiff === -1) return `Juče · ${timeStr}`;
 
   const dateStr = matchDate.toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit' });
-  return `${dateStr} u ${timeStr}`;
+  return `${dateStr} · ${timeStr}`;
 }
 
 function getMatchLocationName(match: Match): string {
@@ -131,17 +143,46 @@ function getMatchCoords(match: Match): { lat: number; lng: number } | null {
   return null;
 }
 
-function getSpotsNeededLabel(match: Match): string {
+function getSpotsLeft(match: Match): number {
   const current = match.players.length;
   const min = match.minPlayers ?? match.playersNeeded ?? 0;
-  const max = match.maxPlayers;
-  const target = max || min;
-  const remaining = Math.max(0, target - current);
-
-  if (remaining === 0) return 'Meč je popunjen';
-  if (remaining === 1) return 'Fali još 1 igrač!';
-  return `Fali još ${remaining} igrača!`;
+  const target = match.maxPlayers || min;
+  return Math.max(0, target - current);
 }
+
+function formatSpotsLabel(remaining: number): string {
+  if (remaining === 0) return 'Popunjeno';
+  const lastTwo = remaining % 100;
+  const last = remaining % 10;
+  if (last === 1 && lastTwo !== 11) return `${remaining} mesto`;
+  return `${remaining} mesta`;
+}
+
+function formatPlayerNames(names: string[]): string {
+  const formatted = names.map((n, i) => (i === 0 ? n : n.charAt(0).toLowerCase() + n.slice(1)));
+  if (formatted.length <= 1) return formatted.join('');
+  return `${formatted.slice(0, -1).join(', ')} i ${formatted[formatted.length - 1]}`;
+}
+
+// Shared button geometry for the card action (primary = solid blue, secondary = light blue)
+const cardActionSx = {
+  flexShrink: 0,
+  minWidth: 108,
+  height: 42,
+  px: '18px',
+  borderRadius: '11px',
+  fontSize: 15,
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+} as const;
+
+const cardActionSecondarySx = {
+  ...cardActionSx,
+  color: 'primary.main',
+  bgcolor: '#EEF5FF',
+  border: '1px solid #B9D4FB',
+  '&:hover': { bgcolor: '#E2EEFF', borderColor: '#9CC4FA', boxShadow: 'none' },
+} as const;
 
 function translateMatchStatus(status: string, courtApproval?: string): string {
   if (courtApproval === 'pending') return 'Na čekanju';
@@ -155,8 +196,11 @@ function translateMatchStatus(status: string, courtApproval?: string): string {
   }
 }
 
+type MapGroup = { key: string; lat: number; lng: number; matches: Match[] };
+
 const VIEW_MODE_KEY = 'playmatch_home_view';
 const SPORT_FILTER_KEY = 'playmatch_home_sport_filter';
+const RADIUS_KEY = 'playmatch_home_radius';
 
 // Match Card Component — optimized for list "first screen action"
 function MatchCard({
@@ -169,6 +213,7 @@ function MatchCard({
   userLocation,
   joiningId,
   highlightTour,
+  elevated,
 }: {
   match: Match;
   user: any;
@@ -179,16 +224,14 @@ function MatchCard({
   userLocation: [number, number] | null;
   joiningId?: string | null;
   highlightTour?: boolean;
+  /** Floating variant (map bottom card): adds a soft shadow. */
+  elevated?: boolean;
 }) {
   const navigate = useNavigate();
   const isFull = match.players.length >= (match.maxPlayers || 100);
   const isJoining = joiningId === match._id;
-
-  const getStatusColor = () => {
-    if (match.status === 'full') return 'warning';
-    if (match.courtApproval === 'pending') return 'default';
-    return 'success';
-  };
+  const spotsLeft = getSpotsLeft(match);
+  const detailsPath = `/matches/${match._id}`;
 
   const coords = getMatchCoords(match);
   const locationName = getMatchLocationName(match);
@@ -198,128 +241,160 @@ function MatchCard({
       : null;
   const locationLine =
     distanceKm != null
-      ? `${locationName} · ${distanceKm.toFixed(1)} km`
+      ? `${locationName} · ${distanceKm.toFixed(1).replace('.', ',')} km`
       : locationName;
 
+  // Secondary state badge (top-right) — only for states the list needs to surface
+  const stateBadge = isUserInMatch
+    ? { label: 'Pridružen', color: '#0F9D58', bg: '#E6F6EC' }
+    : isOnWaitlist
+      ? { label: 'Na listi čekanja', color: '#B45309', bg: '#FEF3E2' }
+      : match.courtApproval === 'pending'
+        ? { label: 'Na čekanju', color: '#6B7A99', bg: '#EEF2F8' }
+        : null;
+
+  const stop = (e: MouseEvent<HTMLElement>) => e.stopPropagation();
+
+  let action: JSX.Element;
+  if (isUserInMatch || user?.role === 'court') {
+    action = (
+      <Button
+        variant="outlined"
+        onClick={(e) => { stop(e); navigate(detailsPath); }}
+        sx={cardActionSecondarySx}
+      >
+        Detalji
+      </Button>
+    );
+  } else if (isOnWaitlist) {
+    action = (
+      <Button
+        variant="outlined"
+        onClick={(e) => { stop(e); navigate(detailsPath); }}
+        sx={cardActionSecondarySx}
+      >
+        Na listi
+      </Button>
+    );
+  } else if (isFull) {
+    action = (
+      <Button
+        variant="contained"
+        disabled={isJoining}
+        onClick={(e) => { stop(e); onJoinWaitlist(match._id); }}
+        sx={cardActionSx}
+      >
+        {isJoining ? 'Prijavljivanje...' : 'Stani u red'}
+      </Button>
+    );
+  } else {
+    action = (
+      <Button
+        variant="contained"
+        disabled={isJoining}
+        onClick={(e) => { stop(e); onJoin(match._id); }}
+        sx={cardActionSx}
+      >
+        {isJoining ? 'Prijavljivanje...' : 'Prijavi se'}
+      </Button>
+    );
+  }
+
   return (
-    <Card
-      elevation={0}
+    <Box
+      component="article"
+      role="link"
+      tabIndex={0}
+      aria-label={`${getGameTypeName(match.sport)} — ${locationName}`}
       data-tour={highlightTour ? 'tour-match-card' : undefined}
+      onClick={() => navigate(detailsPath)}
+      onKeyDown={(e: KeyboardEvent<HTMLElement>) => {
+        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          navigate(detailsPath);
+        }
+      }}
       sx={{
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 3,
-        overflow: 'hidden',
-        transition: 'all 0.2s ease',
-        '&:hover': {
-          boxShadow: '0 8px 25px rgba(0,0,0,0.1)',
-          transform: 'translateY(-2px)',
-        },
+        bgcolor: '#FFFFFF',
+        border: '1px solid #E3E9F3',
+        borderRadius: '16px',
+        p: '16px',
+        cursor: 'pointer',
+        outline: 'none',
+        boxShadow: elevated ? '0 8px 24px rgba(11, 27, 63, 0.16)' : 'none',
+        '&:focus-visible': { borderColor: 'primary.main' },
       }}
     >
-      <CardContent sx={{ p: 2.5 }}>
-        <Stack spacing={1.75}>
-          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }} flexWrap="wrap" useFlexGap>
-                <SportsSoccerIcon sx={{ color: 'primary.main', fontSize: 18 }} />
-                <Typography variant="body2" fontWeight={700} color="primary.main">
-                  {getGameTypeName(match.sport)}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">·</Typography>
-                <Typography variant="body2" fontWeight={600}>
-                  {formatRelativeMatchTime(match.dateTime)}
-                </Typography>
-              </Stack>
-              <Stack direction="row" spacing={0.75} alignItems="center">
-                <LocationOnIcon sx={{ color: 'text.secondary', fontSize: 18, flexShrink: 0 }} />
-                <Typography variant="subtitle1" fontWeight={700} noWrap>
-                  {locationLine}
-                </Typography>
-              </Stack>
-            </Box>
-            <Chip
-              label={translateMatchStatus(match.status, match.courtApproval)}
-              size="small"
-              color={getStatusColor() as any}
-              sx={{ fontWeight: 600, flexShrink: 0 }}
-            />
-          </Stack>
-
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-            <Chip
-              icon={<PeopleIcon sx={{ fontSize: 16 }} />}
-              label={getSpotsNeededLabel(match)}
-              size="small"
-              color={isFull ? 'default' : 'warning'}
-              sx={{ fontWeight: 700 }}
-            />
-            <Typography variant="caption" color="text.secondary">
-              {formatPlayersCount(match)}
-            </Typography>
-            {isUserInMatch && (
-              <Chip
-                icon={<CheckCircleIcon sx={{ fontSize: 14 }} />}
-                label="Pridružen"
-                size="small"
-                color="success"
-                sx={{ fontWeight: 600 }}
-              />
-            )}
-            {isOnWaitlist && (
-              <Chip label="Na listi čekanja" size="small" color="warning" sx={{ fontWeight: 600 }} />
-            )}
-          </Stack>
-
-          <Stack direction="row" spacing={1}>
-            {!isUserInMatch && user?.role !== 'court' && (
-              isOnWaitlist ? (
-                <Button
-                  variant="outlined"
-                  color="warning"
-                  fullWidth
-                  onClick={() => navigate(`/matches/${match._id}`)}
-                  sx={{ borderRadius: 2, fontWeight: 700 }}
-                >
-                  Na listi čekanja
-                </Button>
-              ) : isFull ? (
-                <Button
-                  variant="contained"
-                  color="warning"
-                  fullWidth
-                  disabled={isJoining}
-                  onClick={() => onJoinWaitlist(match._id)}
-                  sx={{ borderRadius: 2, fontWeight: 700 }}
-                >
-                  {isJoining ? 'Prijavljivanje...' : 'Stani u red'}
-                </Button>
-              ) : (
-                <Button
-                  variant="contained"
-                  fullWidth
-                  disabled={isJoining}
-                  onClick={() => onJoin(match._id)}
-                  sx={{ borderRadius: 2, fontWeight: 700 }}
-                >
-                  {isJoining ? 'Prijavljivanje...' : 'Prijavi se'}
-                </Button>
-              )
-            )}
-            <Button
-              variant="outlined"
-              size="medium"
-              endIcon={<ArrowForwardIcon />}
-              onClick={() => navigate(`/matches/${match._id}`)}
-              sx={{ borderRadius: 2, fontWeight: 600, flexShrink: 0, minWidth: isUserInMatch || user?.role === 'court' ? '100%' : undefined }}
-              fullWidth={isUserInMatch || user?.role === 'court'}
+      <Stack direction="row" spacing="12px" alignItems="flex-start">
+        <Box sx={{ pt: '2px' }}>
+          <SportIcon sport={match.sport} size={46} />
+        </Box>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
+            <Typography
+              component="h3"
+              noWrap
+              sx={{ fontSize: 18, fontWeight: 700, lineHeight: 1.25, color: '#0B1B3F', minWidth: 0 }}
             >
-              Detalji
-            </Button>
+              {getGameTypeName(match.sport)}
+            </Typography>
+            {stateBadge && (
+              <Box
+                sx={{
+                  flexShrink: 0,
+                  px: '8px',
+                  height: 22,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  borderRadius: '7px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: stateBadge.color,
+                  bgcolor: stateBadge.bg,
+                }}
+              >
+                {stateBadge.label}
+              </Box>
+            )}
           </Stack>
+          <Typography sx={{ fontSize: 15, fontWeight: 600, lineHeight: 1.4, color: '#0B1B3F', mt: '1px' }}>
+            {formatRelativeMatchTime(match.dateTime)}
+          </Typography>
+          <Typography noWrap sx={{ fontSize: 14, fontWeight: 400, lineHeight: 1.4, color: '#6B7A99' }}>
+            {locationLine}
+          </Typography>
+        </Box>
+      </Stack>
+
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        spacing="8px"
+        sx={{ mt: '12px' }}
+      >
+        <Stack direction="row" alignItems="center" spacing="8px" sx={{ minWidth: 0 }}>
+          <PlayerAvatarStack players={match.players} size={30} />
+          <Box
+            sx={{
+              flexShrink: 0,
+              px: '10px',
+              height: 28,
+              display: 'inline-flex',
+              alignItems: 'center',
+              borderRadius: '8px',
+              fontSize: 13,
+              fontWeight: 600,
+              color: spotsLeft > 0 ? '#E5484D' : '#6B7A99',
+              bgcolor: spotsLeft > 0 ? '#FDECEC' : '#EEF2F8',
+            }}
+          >
+            {formatSpotsLabel(spotsLeft)}
+          </Box>
         </Stack>
-      </CardContent>
-    </Card>
+        {action}
+      </Stack>
+    </Box>
   );
 }
 
@@ -340,22 +415,28 @@ export default function Home() {
   const [notificationPreferenceError, setNotificationPreferenceError] = useState<string | null>(null);
   const [notificationPreferenceSuccess, setNotificationPreferenceSuccess] = useState<string | null>(null);
   const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'map'>(() => {
     const saved = localStorage.getItem(VIEW_MODE_KEY);
     if (saved === 'map' || saved === 'list') return saved;
     return 'list';
   });
-  const [sportFilter, setSportFilter] = useState<'preferred' | 'all'>(() => {
+  const [sportFilter, setSportFilter] = useState<HomeScope>(() => {
     const saved = localStorage.getItem(SPORT_FILTER_KEY);
-    if (saved === 'preferred' || saved === 'all') return saved;
-    return 'preferred';
+    if (saved === 'mine' || saved === 'preferred' || saved === 'all') return saved;
+    return 'all';
   });
+  const [radiusOverride, setRadiusOverride] = useState<number | null>(() => {
+    const saved = Number(localStorage.getItem(RADIUS_KEY));
+    return saved >= 1 && saved <= 50 ? Math.round(saved) : null;
+  });
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const preferredSports = user?.preferredSports || [];
   const hasPreferences = preferredSports.length > 0;
 
   // Use user's notification radius if available (convert km to meters for map), default 10km
-  const effectiveRadius = user?.notificationRadius || 10;
+  const effectiveRadius = radiusOverride ?? (user?.notificationRadius || 10);
 
   const defaultCenter: [number, number] = [44.7866, 20.4489]; // Belgrade as default
   const mapCenter = userLocation || defaultCenter;
@@ -376,6 +457,17 @@ export default function Home() {
   }, [user?.notificationEnabled]);
 
   useEffect(() => {
+    // Last saved position lets the map open in the right place immediately,
+    // and is the fallback when the browser can't provide a fresh fix.
+    const cached = user?.lastKnownLocation;
+    const cachedLocation: [number, number] | null =
+      cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)
+        ? [cached.lat, cached.lng]
+        : null;
+    if (cachedLocation) {
+      setUserLocation((prev) => prev || cachedLocation);
+    }
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -394,7 +486,8 @@ export default function Home() {
           }
         },
         (error) => {
-          console.error('Geolocation error:', error);
+          // Expected condition (denied/unavailable/timeout) - warn, don't trigger the dev error overlay
+          console.warn(`Geolocation error (code ${error.code}): ${error.message}`);
           let errorMessage = 'Nije moguće dobiti vašu lokaciju. Prikazuju se svi mečevi.';
           if (error.code === error.PERMISSION_DENIED) {
             errorMessage = 'Dozvola za lokaciju je odbijena. Molimo omogućite pristup lokaciji u postavkama vašeg pretraživača.';
@@ -403,7 +496,7 @@ export default function Home() {
           } else if (error.code === error.TIMEOUT) {
             errorMessage = 'Zahtev za lokaciju je istekao.';
           }
-          setLocationError(errorMessage);
+          if (!cachedLocation) setLocationError(errorMessage);
         },
         {
           enableHighAccuracy: false,
@@ -466,7 +559,7 @@ export default function Home() {
       );
       setMatches(validMatches);
     }
-  }, [userLocation, allMatches]);
+  }, [userLocation, allMatches, effectiveRadius]);
 
   async function handleJoinMatch(matchId: string) {
     if (!user) {
@@ -620,121 +713,170 @@ export default function Home() {
   }
 
   const displayedMatches = useMemo(() => {
-    if (!hasPreferences || sportFilter === 'all' || !user || user.role !== 'player') {
-      return matches;
+    if (!user || user.role !== 'player' || sportFilter === 'all') return matches;
+    if (sportFilter === 'mine') {
+      return matches.filter((m) => {
+        const creatorId = typeof m.createdBy === 'object' ? m.createdBy?._id : m.createdBy;
+        return creatorId === user._id || m.players.some((p) => p._id === user._id);
+      });
     }
+    if (!hasPreferences) return matches;
     return matches.filter((m) => matchBelongsToPreferredGames(m.sport, preferredSports));
   }, [matches, hasPreferences, sportFilter, preferredSports, user]);
 
-  const todaysMatches = displayedMatches.filter(m => isToday(m.dateTime));
   const upcomingMatches = [...displayedMatches]
     .filter((m) => new Date(m.dateTime).getTime() > Date.now() - 60 * 60 * 1000)
     .sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
 
-  const handleViewModeChange = (_: MouseEvent<HTMLElement>, next: 'list' | 'map' | null) => {
-    if (!next) return;
+  const handleViewModeChange = (next: 'list' | 'map') => {
     setViewMode(next);
     localStorage.setItem(VIEW_MODE_KEY, next);
   };
 
-  const handleSportFilterChange = (_: MouseEvent<HTMLElement>, next: 'preferred' | 'all' | null) => {
-    if (!next) return;
-    setSportFilter(next);
-    localStorage.setItem(SPORT_FILTER_KEY, next);
+  const handleFilterApply = (scope: HomeScope, radiusKm: number) => {
+    setSportFilter(scope);
+    localStorage.setItem(SPORT_FILTER_KEY, scope);
+    setRadiusOverride(radiusKm);
+    localStorage.setItem(RADIUS_KEY, String(radiusKm));
   };
 
-  return (
-    <Box sx={{ position: 'relative', pb: user?.role === 'player' ? { xs: 10, sm: 8 } : 0 }}>
-      <BrandHero />
+  const isPlayer = user?.role === 'player';
+  const hasBottomNav = isMobile && isPlayer;
+  const mobileMap = isMobile && viewMode === 'map';
 
+  // Map: one pin per location (field or private spot); tapping a pin shows its match card(s)
+  const mapGroups: MapGroup[] = [];
+  {
+    const byKey = new Map<string, MapGroup>();
+    upcomingMatches.forEach((m) => {
+      const c = getMatchCoords(m);
+      if (!c) return;
+      const key = m.isInformal ? `i-${m._id}` : `f-${m.fieldId?._id}`;
+      const existing = byKey.get(key);
+      if (existing) existing.matches.push(m);
+      else byKey.set(key, { key, lat: c.lat, lng: c.lng, matches: [m] });
+    });
+    byKey.forEach((g) => mapGroups.push(g));
+  }
+  const selectedGroup = mapGroups.find((g) => g.key === selectedGroupKey) ?? mapGroups[0] ?? null;
+
+  // Mobile map fills the screen below the filters (down to the bottom edge, under the nav)
+  const mapBoxRef = useRef<HTMLDivElement | null>(null);
+  const [mapHeight, setMapHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!mobileMap) return;
+    const update = () => {
+      const el = mapBoxRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const next = Math.max(360, Math.round(window.innerHeight - top));
+      setMapHeight((prev) => (prev === next ? prev : next));
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  });
+
+  const subtitle = (() => {
+    if (isPlayer && sportFilter === 'mine') {
+      return userLocation ? `Moje igre · do ${effectiveRadius} km` : 'Moje igre';
+    }
+    if (isPlayer && hasPreferences && sportFilter === 'preferred') {
+      const names = formatPlayerNames(preferredSports.map(getGameTypeName));
+      return userLocation ? `${names} · do ${effectiveRadius} km` : names;
+    }
+    if (isPlayer) {
+      return userLocation ? `Sve igre · do ${effectiveRadius} km` : 'Sve igre';
+    }
+    if (user) {
+      return `Pronađite mečeve u vašoj blizini${userLocation ? ` (unutar ${effectiveRadius} km)` : ''}`;
+    }
+    return 'Pregledajte dostupne mečeve i terene. Prijavite se da biste se pridružili meču.';
+  })();
+
+  return (
+    <Box
+      sx={{
+        position: 'relative',
+        px: { xs: '10px', md: 0 },
+        pb: isPlayer ? (isMobile ? (mobileMap ? 0 : '64px') : 8) : 0,
+      }}
+    >
       {/* Header Section */}
-      <Box sx={{ mb: 3 }}>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          justifyContent="space-between"
-          alignItems={{ xs: 'stretch', sm: 'flex-start' }}
-          spacing={2}
-        >
-          <Box data-tour="tour-home-heading">
-            <Typography variant="h4" fontWeight={700} sx={{ mb: 1 }}>
-              Mečevi u blizini
+      <Box sx={{ mb: '16px', pt: '4px' }}>
+        <Box data-tour="tour-home-heading" sx={{ mb: '16px' }}>
+          <Typography
+            component="h1"
+            sx={{
+              fontSize: { xs: 24, md: 28 },
+              fontWeight: 800,
+              lineHeight: 1.2,
+              letterSpacing: '-0.02em',
+              color: 'text.primary',
+              mb: '4px',
+            }}
+          >
+            Mečevi u blizini
+          </Typography>
+          <ButtonBase
+            onClick={() => setFilterOpen(true)}
+            data-tour="tour-sport-filter"
+            aria-label={`Filteri: ${subtitle}`}
+            aria-haspopup="dialog"
+            disableRipple
+            sx={{
+              display: 'flex',
+              width: '100%',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '4px 10px',
+              textAlign: 'left',
+              borderRadius: '6px',
+            }}
+          >
+            <Typography sx={{ fontSize: 14, fontWeight: 400, lineHeight: 1.45, color: 'text.secondary' }}>
+              {subtitle}
             </Typography>
-            <Typography variant="body1" color="text.secondary">
-              {user
-                ? `Pronađite mečeve u vašoj blizini${userLocation ? ` (unutar ${effectiveRadius} km)` : ''}`
-                : 'Pregledajte dostupne mečeve i terene. Prijavite se da biste se pridružili meču.'}
-            </Typography>
-            {user?.role === 'player' && hasPreferences && sportFilter === 'preferred' && (
-              <Typography variant="caption" color="primary.main" sx={{ display: 'block', mt: 0.75, fontWeight: 600 }}>
-                Prikaz: {preferredSports.map(getGameTypeName).join(' · ')}
-              </Typography>
-            )}
-          </Box>
-          <Stack spacing={1.5} alignItems={{ xs: 'stretch', sm: 'flex-end' }}>
-            {user?.role === 'player' && hasPreferences && (
-              <ToggleButtonGroup
-                value={sportFilter}
-                exclusive
-                onChange={handleSportFilterChange}
-                size="small"
-                data-tour="tour-sport-filter"
-                sx={{
-                  bgcolor: 'background.paper',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 2,
-                  '& .MuiToggleButton-root': {
-                    px: 2,
-                    py: 1,
-                    textTransform: 'none',
-                    fontWeight: 700,
-                    border: 0,
-                    borderRadius: 2,
-                  },
-                }}
-              >
-                <ToggleButton value="preferred" aria-label="Moje igre">
-                  Moje igre
-                </ToggleButton>
-                <ToggleButton value="all" aria-label="Svi mečevi">
-                  Svi mečevi
-                </ToggleButton>
-              </ToggleButtonGroup>
-            )}
-            <ToggleButtonGroup
-              value={viewMode}
-              exclusive
-              onChange={handleViewModeChange}
-              size="small"
-              data-tour="tour-view-mode"
+            <Box
+              component="span"
               sx={{
-                alignSelf: { xs: 'stretch', sm: 'flex-end' },
-                bgcolor: 'background.paper',
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 2,
-                '& .MuiToggleButton-root': {
-                  px: 2,
-                  py: 1,
-                  textTransform: 'none',
-                  fontWeight: 700,
-                  border: 0,
-                  borderRadius: 2,
-                },
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: 14,
+                fontWeight: 600,
+                lineHeight: 1.45,
+                color: 'primary.main',
               }}
             >
-              <ToggleButton value="list" aria-label="Prikaz liste">
-                <ViewListIcon sx={{ mr: 1, fontSize: 20 }} />
-                Lista
-              </ToggleButton>
-              <ToggleButton value="map" aria-label="Prikaz mape">
-                <MapIcon sx={{ mr: 1, fontSize: 20 }} />
-                Mapa
-              </ToggleButton>
-            </ToggleButtonGroup>
-          </Stack>
+              <TuneIcon sx={{ fontSize: 18 }} />
+              Filteri
+            </Box>
+          </ButtonBase>
+        </Box>
+
+        <Stack spacing="12px" sx={{ maxWidth: { md: 420 } }}>
+          <SegmentedControl
+            data-tour="tour-view-mode"
+            value={viewMode}
+            onChange={handleViewModeChange}
+            options={[
+              { value: 'list', label: 'Lista', ariaLabel: 'Prikaz liste' },
+              { value: 'map', label: 'Mapa', ariaLabel: 'Prikaz mape' },
+            ]}
+          />
         </Stack>
       </Box>
+
+      <FilterSheet
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        scope={sportFilter}
+        radiusKm={Math.min(50, Math.max(1, effectiveRadius))}
+        showScope={isPlayer}
+        showPreferred={isPlayer && hasPreferences}
+        onApply={handleFilterApply}
+      />
 
       {/* Alerts */}
       {locationError && user && (
@@ -812,34 +954,30 @@ export default function Home() {
       {/* No matches alert */}
       {!loading && displayedMatches.length === 0 && (
         <Alert severity="info" sx={{ mb: 3, borderRadius: 3 }}>
-          {user && userLocation
-            ? sportFilter === 'preferred' && hasPreferences
-              ? `Nema mečeva za ${preferredSports.map(getGameTypeName).join(', ')} u blizini. Prebaci se na „Svi mečevi“ ili kreiraj novi.`
-              : `Nema aktivnih mečeva unutar ${effectiveRadius} km. Proširite pretragu ili kreirajte novi meč!`
-            : sportFilter === 'preferred' && hasPreferences
-              ? `Nema mečeva za ${preferredSports.map(getGameTypeName).join(', ')}. Prebaci se na „Svi mečevi“ ili kreiraj novi.`
-              : 'Nema aktivnih mečeva u ovom trenutku.'}
+          {sportFilter === 'mine' && isPlayer
+            ? 'Nema mečeva koje si okupio ili na koje si se prijavio. Prebaci se na „Sve“ ili kreiraj novi.'
+            : user && userLocation
+              ? sportFilter === 'preferred' && hasPreferences
+                ? `Nema mečeva za ${preferredSports.map(getGameTypeName).join(', ')} u blizini. Prebaci se na „Sve“ ili kreiraj novi.`
+                : `Nema aktivnih mečeva unutar ${effectiveRadius} km. Proširite pretragu ili kreirajte novi meč!`
+              : sportFilter === 'preferred' && hasPreferences
+                ? `Nema mečeva za ${preferredSports.map(getGameTypeName).join(', ')}. Prebaci se na „Sve“ ili kreiraj novi.`
+                : 'Nema aktivnih mečeva u ovom trenutku.'}
         </Alert>
       )}
 
-      {/* List View — first-screen action */}
+      {/* List View */}
       {!loading && viewMode === 'list' && upcomingMatches.length > 0 && (
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
-            {todaysMatches.length > 0
-              ? `Danas (${todaysMatches.length}) · ukupno ${upcomingMatches.length}`
-              : `Predstojeći mečevi (${upcomingMatches.length})`}
-          </Typography>
           <Box
             sx={{
               display: 'grid',
               gridTemplateColumns: {
                 xs: '1fr',
-                sm: 'repeat(2, 1fr)',
                 md: 'repeat(2, 1fr)',
                 lg: 'repeat(3, 1fr)',
               },
-              gap: 2,
+              gap: '14px',
             }}
           >
             {upcomingMatches.map((match, index) => (
@@ -862,35 +1000,64 @@ export default function Home() {
 
       {/* Map Section */}
       {!loading && viewMode === 'map' && (
-      <Paper
-        elevation={0}
-        sx={{
-          borderRadius: 4,
-          overflow: 'hidden',
-          border: '1px solid',
-          borderColor: 'divider',
-          mb: 4,
-        }}
+      <Box
+        ref={mapBoxRef}
+        sx={
+          isMobile
+            ? {
+                position: 'relative',
+                isolation: 'isolate',
+                overflow: 'hidden',
+                mx: { xs: '-16px', sm: '-26px' },
+                height: mapHeight ? `${mapHeight}px` : '60vh',
+                mb: hasBottomNav
+                  ? `calc(-1 * (${BOTTOM_NAV_HEIGHT + 16}px + env(safe-area-inset-bottom)))`
+                  : 0,
+              }
+            : {
+                position: 'relative',
+                isolation: 'isolate',
+                overflow: 'hidden',
+                borderRadius: '16px',
+                border: '1px solid',
+                borderColor: 'divider',
+                mb: 4,
+              }
+        }
       >
-        <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <MyLocationIcon sx={{ color: 'primary.main' }} />
-            <Typography variant="subtitle1" fontWeight={600}>
-              Mapa terena
-            </Typography>
-          </Stack>
-        </Box>
-        <Box sx={{ height: { xs: isMobile ? '55vh' : '50vh', md: '60vh' } }}>
+        {!isMobile && (
+          <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <MyLocationIcon sx={{ color: 'primary.main' }} />
+              <Typography variant="subtitle1" fontWeight={600}>
+                Mapa terena
+              </Typography>
+            </Stack>
+          </Box>
+        )}
+        <Box sx={{ height: isMobile ? '100%' : '60vh' }}>
           <MapContainer
             center={mapCenter}
             zoom={userLocation ? 13 : 12}
+            zoomControl={!isMobile}
+            attributionControl={false}
             style={{ height: '100%', width: '100%' }}
           >
-            {userLocation && <MapCenter position={mapCenter} />}
+            <MapResizer trigger={mapHeight} />
+            {userLocation && (
+              <MapCenter
+                position={userLocation}
+                radiusKm={effectiveRadius}
+                bottomInset={isMobile ? BOTTOM_NAV_HEIGHT + 190 : 0}
+                trigger={mapHeight}
+              />
+            )}
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              className="plejko-map-tiles"
             />
+            <AttributionControl position="topright" prefix={false} />
 
             {/* User location radius circle - only show when user is logged in and has location */}
             {user && userLocation && (
@@ -898,10 +1065,10 @@ export default function Home() {
                 center={userLocation}
                 radius={effectiveRadius * 1000} // Convert km to meters
                 pathOptions={{
-                  color: '#22c55e',
-                  fillColor: '#22c55e',
-                  fillOpacity: 0.1,
-                  weight: 2,
+                  color: '#0877F9',
+                  fillColor: '#0877F9',
+                  fillOpacity: 0.06,
+                  weight: 1.5,
                   dashArray: '5, 10',
                 }}
               />
@@ -944,7 +1111,7 @@ export default function Home() {
                   <Marker
                     key={`field-${field._id}`}
                     position={[field.lat, field.lng]}
-                    icon={fieldIcon}
+                    icon={createFieldPin()}
                   >
                     <Popup>
                       <Stack spacing={1.5} sx={{ minWidth: 0, width: '100%', maxWidth: 'min(360px, 78vw)' }}>
@@ -1074,204 +1241,72 @@ export default function Home() {
                 );
               })}
 
-            {/* Match markers */}
-            {(() => {
-              const matchesByField = new Map<string, Match[]>();
-              displayedMatches
-                .filter((match) =>
-                  match.fieldId &&
-                  match.fieldId.lat &&
-                  match.fieldId.lng &&
-                  isToday(match.dateTime)
-                )
-                .forEach((match) => {
-                  const fieldId = match.fieldId!._id;
-                  if (!matchesByField.has(fieldId)) {
-                    matchesByField.set(fieldId, []);
-                  }
-                  matchesByField.get(fieldId)!.push(match);
-                });
-
-              return Array.from(matchesByField.entries()).map(([fieldId, fieldMatches]) => {
-                const firstMatch = fieldMatches[0];
-                const field = firstMatch.fieldId!;
-
-                return (
-                  <Marker
-                    key={`field-matches-${fieldId}`}
-                    position={[field.lat, field.lng]}
-                    icon={matchIcon}
-                  >
-                    <Popup>
-                      <Stack spacing={2} sx={{ minWidth: 0, width: '100%', maxWidth: 'min(360px, 78vw)', maxHeight: 400, overflowY: 'auto' }}>
-                        <Typography variant="subtitle1" fontWeight={700}>
-                          {field.name || 'Nepoznat Teren'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {fieldMatches.length} meč{fieldMatches.length !== 1 ? 'eva' : ''} na ovom terenu
-                        </Typography>
-
-                        <Stack spacing={1.5}>
-                          {fieldMatches.map((match) => (
-                            <Box
-                              key={match._id}
-                              sx={{
-                                p: 2,
-                                border: '1px solid',
-                                borderColor: 'divider',
-                                borderRadius: 2,
-                              }}
-                            >
-                              <Stack spacing={1}>
-                                <Typography variant="body2" fontWeight={600}>
-                                  {getGameTypeName(match.sport)} meč
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  {new Date(match.dateTime).toLocaleString('sr-RS', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
-                                </Typography>
-                                <Stack direction="row" spacing={1}>
-                                  <Chip
-                                    label={formatPlayersCount(match)}
-                                    size="small"
-                                    color={match.status === 'full' ? 'warning' : 'primary'}
-                                  />
-                                </Stack>
-                                <Stack direction="row" spacing={1}>
-                                  <Button
-                                    variant="outlined"
-                                    size="small"
-                                    component={Link}
-                                    to={`/matches/${match._id}`}
-                                    fullWidth
-                                  >
-                                    Detalji
-                                  </Button>
-                                  {!isUserInMatch(match) && user?.role !== 'court' && (
-                                    !user ? (
-                                      <Button
-                                        variant="contained"
-                                        size="small"
-                                        component={Link}
-                                        to="/login"
-                                        fullWidth
-                                      >
-                                        Prijavi se
-                                      </Button>
-                                    ) : isUserOnWaitlist(match) ? (
-                                      <Button
-                                        variant="outlined"
-                                        color="warning"
-                                        size="small"
-                                        component={Link}
-                                        to={`/matches/${match._id}`}
-                                        fullWidth
-                                      >
-                                        Na listi
-                                      </Button>
-                                    ) : match.players.length >= (match.maxPlayers || 100) ? (
-                                      <Button
-                                        variant="contained"
-                                        color="warning"
-                                        size="small"
-                                        onClick={() => handleJoinWaitlist(match._id)}
-                                        fullWidth
-                                      >
-                                        Stani u red
-                                      </Button>
-                                    ) : (
-                                      <Button
-                                        variant="contained"
-                                        size="small"
-                                        onClick={() => handleJoinMatch(match._id)}
-                                        fullWidth
-                                      >
-                                        Pridruži se
-                                      </Button>
-                                    )
-                                  )}
-                                </Stack>
-                              </Stack>
-                            </Box>
-                          ))}
-                        </Stack>
-                      </Stack>
-                    </Popup>
-                  </Marker>
-                );
-              });
-            })()}
-            {/* Informal match markers — show all upcoming, not just today */}
-            {displayedMatches
-              .filter((match) =>
-                match.isInformal &&
-                match.informalLocation?.lat &&
-                match.informalLocation?.lng &&
-                new Date(match.dateTime) > new Date()
-              )
-              .map((match) => (
+            {/* Match pins — one per location, colored by sport; selected pin is larger */}
+            {mapGroups.map((group) => {
+              const isSelected = selectedGroup?.key === group.key;
+              return (
                 <Marker
-                  key={`informal-${match._id}`}
-                  position={[match.informalLocation!.lat, match.informalLocation!.lng]}
-                  icon={informalMatchIcon}
-                >
-                  <Popup>
-                    <Stack spacing={1.5} sx={{ minWidth: 0, width: '100%', maxWidth: 'min(320px, 78vw)' }}>
-                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                        <Typography variant="subtitle1" fontWeight={700} sx={{ minWidth: 0, wordBreak: 'break-word' }}>
-                          {match.informalLocation!.name || 'Privatni teren'}
-                        </Typography>
-                        <Chip label="Privatni" size="small" sx={{ bgcolor: '#f97316', color: 'white', fontWeight: 600 }} />
-                      </Stack>
-                      <Typography variant="body2" color="text.secondary">
-                        {getGameTypeName(match.sport)} meč
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {new Date(match.dateTime).toLocaleString('sr-RS', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                      </Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Chip label={formatPlayersCount(match)} size="small" color={match.status === 'full' ? 'warning' : 'primary'} />
-                      </Stack>
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                        <Button variant="outlined" size="small" component={Link} to={`/matches/${match._id}`} fullWidth>
-                          Detalji
-                        </Button>
-                        {!isUserInMatch(match) && user?.role !== 'court' && (
-                          !user ? (
-                            <Button variant="contained" size="small" component={Link} to="/login" fullWidth>
-                              Prijavi se
-                            </Button>
-                          ) : isUserOnWaitlist(match) ? (
-                            <Button variant="outlined" color="warning" size="small" component={Link} to={`/matches/${match._id}`} fullWidth>
-                              Na listi
-                            </Button>
-                          ) : match.players.length >= (match.maxPlayers || 100) ? (
-                            <Button variant="contained" color="warning" size="small" onClick={() => handleJoinWaitlist(match._id)} fullWidth>
-                              Stani u red
-                            </Button>
-                          ) : (
-                            <Button variant="contained" size="small" onClick={() => handleJoinMatch(match._id)} fullWidth>
-                              Pridruži se
-                            </Button>
-                          )
-                        )}
-                      </Stack>
-                    </Stack>
-                  </Popup>
-                </Marker>
-              ))
-            }
+                  key={`group-${group.key}`}
+                  position={[group.lat, group.lng]}
+                  icon={createSportPin(group.matches[0].sport, isSelected)}
+                  zIndexOffset={isSelected ? 1000 : 500}
+                  eventHandlers={{ click: () => setSelectedGroupKey(group.key) }}
+                />
+              );
+            })}
           </MapContainer>
         </Box>
-      </Paper>
+
+        {/* Selected location — floating match card(s) above the bottom navigation */}
+        {selectedGroup && (
+          <Box
+            sx={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              zIndex: 1000,
+              bottom: hasBottomNav
+                ? `calc(${BOTTOM_NAV_HEIGHT + 12}px + env(safe-area-inset-bottom))`
+                : '12px',
+              px: '16px',
+              display: 'flex',
+              gap: '12px',
+              overflowX: 'auto',
+              scrollSnapType: 'x mandatory',
+              pointerEvents: 'none',
+              scrollbarWidth: 'none',
+              '&::-webkit-scrollbar': { display: 'none' },
+            }}
+          >
+            {selectedGroup.matches.map((match) => (
+              <Box
+                key={match._id}
+                sx={{
+                  flex: isMobile ? '0 0 100%' : '0 0 440px',
+                  scrollSnapAlign: 'center',
+                  pointerEvents: 'auto',
+                }}
+              >
+                <MatchCard
+                  match={match}
+                  user={user}
+                  isUserInMatch={isUserInMatch(match)}
+                  isOnWaitlist={isUserOnWaitlist(match)}
+                  onJoin={handleJoinMatch}
+                  onJoinWaitlist={handleJoinWaitlist}
+                  userLocation={userLocation}
+                  joiningId={joiningId}
+                  elevated
+                />
+              </Box>
+            ))}
+          </Box>
+        )}
+      </Box>
       )}
 
-      {/* Floating Action Button for creating matches */}
-      {user && user.role === 'player' && (
+      {/* Create match CTA — on mobile it lives in the bottom navigation; round FAB on desktop */}
+      {user && user.role === 'player' && !isMobile && (
         <Fab
           color="primary"
           aria-label="Kreiraj meč"
@@ -1279,9 +1314,8 @@ export default function Home() {
           data-tour="tour-fab-create"
           sx={{
             position: 'fixed',
-            bottom: { xs: 16, sm: 24 },
-            right: { xs: 16, sm: 24 },
-            boxShadow: '0 4px 20px rgba(34, 197, 94, 0.4)',
+            bottom: 24,
+            right: 24,
             zIndex: 1200,
           }}
         >

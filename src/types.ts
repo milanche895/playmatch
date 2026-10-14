@@ -101,6 +101,27 @@ export type InformalLocation = {
   lng: number;
 };
 
+export type AppNotificationType =
+  | 'player_joined'
+  | 'match_full'
+  | 'time_changed'
+  | 'player_left'
+  | 'reminder'
+  | 'court_approved'
+  | 'court_rejected';
+
+/** In-app notification feed entry (GET /api/notifications). */
+export type AppNotification = {
+  _id: string;
+  type: AppNotificationType;
+  matchId: string;
+  sport?: string;
+  locationName?: string;
+  matchDateTime?: string;
+  createdAt: string;
+  readAt?: string;
+};
+
 export type MatchQuickMessage = {
   _id: string;
   text: string;
@@ -121,7 +142,7 @@ export type Match = {
   minPlayers: number;
   maxPlayers?: number;
   playersNeeded: number; // Keep for backward compatibility
-  players: Pick<User, '_id' | 'name' | 'reliabilityScore' | 'ratingAvg'>[];
+  players: Pick<User, '_id' | 'name' | 'avatarUrl' | 'reliabilityScore' | 'ratingAvg'>[];
   waitlist?: Pick<User, '_id' | 'name' | 'reliabilityScore' | 'ratingAvg'>[];
   createdBy: Pick<User, '_id' | 'name' | 'reliabilityScore' | 'ratingAvg'>;
   status: 'open' | 'full' | 'completed' | 'failed' | 'otkazano';
@@ -133,6 +154,8 @@ export type Match = {
   noShows?: string[];
   pricePerPlayer?: number; // RSD
   playerPayments?: PlayerPayment[];
+  /** Post-match ratings (only present on full match documents, e.g. "my matches"). */
+  ratings?: { raterId: string | { _id: string }; ratedUserId?: string | { _id: string } }[];
 };
 
 export type PendingRatingUser = Pick<User, '_id' | 'name' | 'ratingAvg' | 'reliabilityScore'>;

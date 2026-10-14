@@ -16,13 +16,15 @@ import {
   Box,
   Paper,
   LinearProgress,
-  Card,
-  CardContent,
-  Chip,
-  Divider,
   CircularProgress,
+  ButtonBase,
+  Collapse,
+  IconButton,
+  Menu,
+  alpha,
   useMediaQuery,
   useTheme,
+  type Theme,
 } from "@mui/material";
 import {
   MapContainer,
@@ -40,13 +42,19 @@ import { useAuth } from "../context/AuthContext";
 import { isEmailVerified } from "../lib/emailVerified";
 import EmailVerificationNeeded from "../components/EmailVerificationNeeded";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
-import ParkIcon from "@mui/icons-material/Park";
+import AccountBalanceOutlinedIcon from "@mui/icons-material/AccountBalanceOutlined";
+import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import RemoveIcon from "@mui/icons-material/Remove";
+import SportIcon from "../components/SportIcon";
+import CheckIcon from "@mui/icons-material/Check";
+import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import MyLocationIcon from "@mui/icons-material/MyLocation";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import {
   CATEGORY_META,
   GAME_TYPES,
@@ -171,8 +179,15 @@ export default function CreateMatch() {
   const lastPresetSport = lastPreset
     ? resolveToCanonicalGameId(lastPreset.sport) || lastPreset.sport
     : null;
-  const canCloneLastMatch =
-    Boolean(lastPreset && lastPresetSport && sport && lastPresetSport === sport);
+
+  // ── Step 3 UI state ──
+  const [timeAnchor, setTimeAnchor] = useState<HTMLElement | null>(null);
+  const [priceOpen, setPriceOpen] = useState(false);
+  const [minOpen, setMinOpen] = useState(false);
+  const [deadlineOpen, setDeadlineOpen] = useState(false);
+
+  // ── Success screen (shown after the match is published) ──
+  const [createdMatch, setCreatedMatch] = useState<{ id: string; pending: boolean } | null>(null);
 
   // ── Add Field dialog ──
   const [openAddField, setOpenAddField] = useState(false);
@@ -207,12 +222,11 @@ export default function CreateMatch() {
   }, [fields, userLocation, sport, preferredSports]);
 
   const steps = ["Igra", "Mesto", "Termin i igrači"];
+  const stepTitles = ["Šta igramo?", "Gde igrate?", "Kada i koliko vas treba?"];
   const stepSubtitles = [
-    "Izaberi igru za ovaj meč — samo ono što imaš na profilu",
-    isInformal
-      ? "Označi gde igrate, bez rezervacije terena"
-      : `Samo mesta koja nude ${sport ? getGameTypeName(sport) : "tvoju igru"}`,
-    "Odaberi termin i broj igrača",
+    "Izaberi sport za svoj meč.",
+    "Izaberi lokaciju za meč.",
+    "Izaberi termin i broj igrača.",
   ];
 
   function applyGameTypeDefaults(gameId: string) {
@@ -702,7 +716,7 @@ export default function CreateMatch() {
 
       const res = await api.post<Match>("/api/matches", payload);
       saveLastPreset();
-      navigate(`/matches/${res.data._id}`);
+      setCreatedMatch({ id: res.data._id, pending: res.data.courtApproval === "pending" });
     } catch (err: any) {
       if (err.response?.status === 401) {
         setError("Niste autentifikovani. Molimo ulogujte se ponovo.");
@@ -770,6 +784,33 @@ export default function CreateMatch() {
     .filter(dateStr => { const d = new Date(dateStr); return d >= today && d <= fiveDaysLater; })
     .sort();
 
+  // Next 14 days that still have at least one bookable hour (informal matches)
+  const informalDates = useMemo(() => {
+    if (!isInformal) return [] as string[];
+    const out: string[] = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      const dateStr = formatLocalDateTime(d).split("T")[0];
+      if (getAvailableInformalHours(dateStr).length > 0) out.push(dateStr);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInformal, activeStep]);
+
+  // Informal: preselect the first available date + hour when entering the last step
+  useEffect(() => {
+    if (activeStep !== 2 || !isInformal || selectedDateTime) return;
+    const firstDate = informalDates[0];
+    if (!firstDate) return;
+    const firstHour = getAvailableInformalHours(firstDate)[0];
+    if (firstHour) {
+      setSelectedDate(firstDate);
+      setSelectedDateTime(`${firstDate}T${firstHour}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStep, isInformal, selectedDateTime, informalDates]);
+
   // ── Step content ──
   const renderStepContent = (step: number) => {
     switch (step) {
@@ -778,165 +819,128 @@ export default function CreateMatch() {
       case 1:
         return renderStepPlace();
       case 2:
-        return renderStep1Combined();
+        return renderStepWhen();
       default:
         return null;
     }
   };
 
   function renderStepGame() {
+    const showLastPreset =
+      Boolean(lastPreset) &&
+      !presetApplied &&
+      Boolean(lastPresetSport && preferredSports.includes(lastPresetSport));
+    const lastGame = lastPreset ? getGameType(lastPresetSport || lastPreset.sport) : null;
+
     return (
-      <Stack spacing={2}>
-        {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-        {preferredSports.map((id) => {
-          const game = getGameType(id);
-          const selected = sport === id;
-          return (
-            <Paper
-              key={id}
-              elevation={0}
-              onClick={() => {
-                handleSportChange(id);
-                setError(null);
-                setActiveStep(1);
-              }}
+      <Stack spacing="24px">
+        {error && <Alert severity="error" sx={{ borderRadius: '12px' }}>{error}</Alert>}
+        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+          {preferredSports.map((id, idx) => {
+            const game = getGameType(id);
+            const selected = sport === id;
+            const isLastOdd = preferredSports.length % 2 === 1 && idx === preferredSports.length - 1;
+            return (
+              <ButtonBase
+                key={id}
+                aria-pressed={selected}
+                onClick={() => {
+                  handleSportChange(id);
+                  setError(null);
+                }}
+                sx={(t) => ({
+                  gridColumn: isLastOdd ? "1 / -1" : undefined,
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  gap: "6px",
+                  minHeight: 142,
+                  p: selected ? "15px" : "16px",
+                  borderRadius: "16px",
+                  border: selected ? "2px solid" : "1px solid",
+                  borderColor: selected ? "primary.main" : "divider",
+                  bgcolor: selected ? alpha(t.palette.primary.main, 0.07) : "background.paper",
+                  textAlign: "center",
+                })}
+              >
+                <SportIcon sport={id} size={56} />
+                <Typography sx={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2, color: "text.primary" }}>
+                  {game?.name || getGameTypeName(id)}
+                </Typography>
+                {game && (
+                  <Box>
+                    <Typography sx={{ fontSize: 14, lineHeight: 1.35, color: "text.secondary" }}>
+                      {formatPlayersRange(game.defaultMinPlayers, game.defaultMaxPlayers)}
+                    </Typography>
+                    <Typography sx={{ fontSize: 14, lineHeight: 1.35, color: "text.secondary" }}>
+                      igrača
+                    </Typography>
+                  </Box>
+                )}
+              </ButtonBase>
+            );
+          })}
+        </Box>
+
+        {showLastPreset && lastPreset && (
+          <Box>
+            <Typography sx={{ fontSize: 17, fontWeight: 800, mb: "12px" }}>Isto kao prošli put?</Typography>
+            <ButtonBase
+              onClick={applyLastPreset}
               sx={{
-                p: 2.5,
-                borderRadius: 3,
-                border: "2px solid",
-                borderColor: selected ? "primary.main" : "divider",
-                bgcolor: selected ? "primary.main" : "background.paper",
-                color: selected ? "primary.contrastText" : "text.primary",
-                cursor: "pointer",
-                transition: "all 0.2s ease",
-                "&:hover": { borderColor: "primary.main", transform: "translateY(-2px)" },
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: "14px",
+                p: "14px 16px",
+                borderRadius: "16px",
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: "background.paper",
+                textAlign: "left",
               }}
             >
-              <Stack direction="row" spacing={2} alignItems="center">
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="subtitle1" fontWeight={700}>
-                    {game?.name || getGameTypeName(id)}
-                  </Typography>
-                  {game && (
-                    <Typography
-                      variant="body2"
-                      sx={{ color: selected ? "rgba(255,255,255,0.8)" : "text.secondary" }}
-                    >
-                      {CATEGORY_META[game.category].label}
-                    </Typography>
-                  )}
-                </Box>
-                {selected && <CheckCircleIcon sx={{ color: "white" }} />}
-              </Stack>
-            </Paper>
-          );
-        })}
-      </Stack>
-    );
-  }
-
-  function renderVenueTypeCards() {
-    return (
-      <Stack spacing={1.5}>
-        <ChoiceCard
-          icon={<LocationOnIcon />}
-          title="Postojeće mesto"
-          description="Rezerviši teren, lokal ili klub koji već postoji"
-          selected={!isInformal}
-          onClick={() => handleModeToggle(false)}
-        />
-        <ChoiceCard
-          icon={<ParkIcon />}
-          title="Sopstvena lokacija"
-          description="Park, dvorište… bez rezervacije i odobrenja"
-          selected={isInformal}
-          onClick={() => handleModeToggle(true)}
-        />
+              <SportIcon sport={lastPresetSport || lastPreset.sport} size={32} />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>
+                  {lastGame?.name || getGameTypeName(lastPreset.sport)}
+                </Typography>
+                <Typography noWrap sx={{ fontSize: 13.5, color: "text.secondary", lineHeight: 1.4 }}>
+                  {lastPreset.isInformal
+                    ? lastPreset.informalLocationName || "Privatni teren"
+                    : lastPreset.fieldName || "Teren"}
+                  {" · "}
+                  {lastPreset.maxPlayers !== "" ? lastPreset.maxPlayers : lastPreset.minPlayers} igrača
+                </Typography>
+              </Box>
+              <ChevronRightIcon sx={{ color: "text.secondary" }} />
+            </ButtonBase>
+          </Box>
+        )}
       </Stack>
     );
   }
 
   function renderStepPlace() {
     return (
-      <Stack spacing={3}>
-        {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-        {sport && (
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Chip label={getGameTypeName(sport)} color="primary" sx={{ fontWeight: 700 }} />
-            <Button size="small" onClick={() => { setActiveStep(0); setError(null); }}>
-              Promeni
-            </Button>
-          </Stack>
-        )}
-        {renderVenueTypeCards()}
+      <Stack spacing="24px">
+        {error && <Alert severity="error" sx={{ borderRadius: '12px' }}>{error}</Alert>}
+        <Stack spacing="12px">
+          <ChoiceCard
+            icon={<AccountBalanceOutlinedIcon />}
+            title="Na terenu / u lokalu"
+            description="Izaberi postojeći teren ili lokal sa terenom"
+            selected={!isInformal}
+            onClick={() => handleModeToggle(false)}
+          />
+          <ChoiceCard
+            icon={<PlaceOutlinedIcon />}
+            title="Negde drugde"
+            description="Park, škola, drugi teren…"
+            selected={isInformal}
+            onClick={() => handleModeToggle(true)}
+          />
+        </Stack>
         {isInformal ? renderInformalLocation() : renderFormalFields()}
-      </Stack>
-    );
-  }
-
-  function renderPlayersAndPriceFields() {
-    return (
-      <>
-        <Divider sx={{ my: 1 }} />
-        <Typography variant="subtitle2" fontWeight={600}>Broj igrača</Typography>
-        <TextField
-          type="text" label="Minimalni broj igrača" value={minPlayers}
-          inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }} required fullWidth
-          onFocus={selectNumberField}
-          onChange={(e) => {
-            const value = parseIntegerInput(e.target.value);
-            if (value === null) return;
-            if (value === "") { setMinPlayers(""); return; }
-            if (value >= 1) {
-              setMinPlayers(value);
-              if (typeof maxPlayers === "number" && maxPlayers < value) setMaxPlayers("");
-            }
-          }}
-          onBlur={() => {
-            if (minPlayers === "" || minPlayers < 1) setMinPlayers(1);
-          }}
-        />
-        <TextField
-          type="text" label="Maksimalni broj igrača (opciono)" value={maxPlayers}
-          inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }} fullWidth
-          onFocus={selectNumberField}
-          onChange={(e) => {
-            const value = parseIntegerInput(e.target.value);
-            if (value === null) return;
-            const min = typeof minPlayers === "number" ? minPlayers : 1;
-            if (value === "" || value >= min) setMaxPlayers(value);
-          }}
-          helperText={maxPlayers === "" ? "Ostavite prazno ako nema maksimuma" : `Maksimum: ${maxPlayers} igrača`}
-        />
-        <Typography variant="subtitle2" fontWeight={600}>Podela troškova (opciono)</Typography>
-        <TextField
-          type="text"
-          label="Cena po igraču (RSD)"
-          value={pricePerPlayer}
-          inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
-          fullWidth
-          onFocus={selectNumberField}
-          onChange={(e) => {
-            const value = parseIntegerInput(e.target.value);
-            if (value === null) return;
-            if (value === "" || value >= 0) setPricePerPlayer(value);
-          }}
-          helperText="Npr. 400 — prikazuje se u detaljima meča"
-          placeholder="npr. 400"
-        />
-      </>
-    );
-  }
-
-  function renderStep1Combined() {
-    return (
-      <Stack spacing={3}>
-        {isInformal ? renderStep1Informal() : renderStep1Formal()}
-        <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: "1px solid", borderColor: "divider" }}>
-          <Stack spacing={2}>
-            {renderPlayersAndPriceFields()}
-          </Stack>
-        </Paper>
       </Stack>
     );
   }
@@ -985,7 +989,7 @@ export default function CreateMatch() {
             elevation={0}
             sx={{
               height: { xs: 220, sm: 300 }, borderRadius: 3, overflow: "hidden",
-              border: "2px solid", borderColor: informalMarkerPosition ? "warning.main" : "divider",
+              border: "2px solid", borderColor: informalMarkerPosition ? "primary.main" : "divider",
             }}
           >
             <MapContainer
@@ -1016,437 +1020,593 @@ export default function CreateMatch() {
 
   function renderFormalFields() {
     return (
-      <Stack spacing={3}>
-        <Box>
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            justifyContent="space-between"
-            alignItems={{ xs: "stretch", sm: "center" }}
-            spacing={1.5}
-            sx={{ mb: 2 }}
-          >
+      <Box>
+        <Typography sx={{ fontSize: 17, fontWeight: 800, mb: "14px" }}>Popularni tereni u blizini</Typography>
+        {locationError && (
+          <Alert severity="warning" sx={{ mb: 2, borderRadius: '12px' }}>{locationError}</Alert>
+        )}
+        {matchingFields.length === 0 ? (
+          <Alert severity="info" sx={{ borderRadius: '12px' }}>
+            Nema mesta za {sport ? getGameTypeName(sport) : "tvoje igre"}. Dodaj mesto ili izaberi „Negde drugde“.
+          </Alert>
+        ) : (
+          <Stack spacing="14px" role="radiogroup" aria-label="Popularni tereni u blizini">
+            {matchingFields.map((field) => {
+              const checked = fieldId === field._id;
+              const distanceKm =
+                userLocation && field.lat != null && field.lng != null
+                  ? getDistance(userLocation[0], userLocation[1], field.lat, field.lng)
+                  : null;
+              const fieldSports = getFieldSports(field);
+              const rowSport = sport && fieldSports.some((s) => (resolveToCanonicalGameId(s) || s) === sport)
+                ? sport
+                : resolveToCanonicalGameId(fieldSports[0] || "") || fieldSports[0] || sport;
+              const subtitleParts = [
+                distanceKm != null ? formatDistanceKm(distanceKm) : null,
+                sport ? getGameTypeName(sport) : fieldSports.map((s) => getGameTypeName(s)).join(", "),
+                field.price && field.price > 0 ? `${field.price} EUR` : null,
+              ].filter(Boolean);
+              return (
+                <ButtonBase
+                  key={field._id}
+                  role="radio"
+                  aria-checked={checked}
+                  onClick={() => setFieldId(field._id)}
+                  sx={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "14px",
+                    textAlign: "left",
+                    borderRadius: "14px",
+                  }}
+                >
+                  <Box
+                    sx={(t) => ({
+                      width: 56,
+                      height: 56,
+                      flexShrink: 0,
+                      borderRadius: "12px",
+                      bgcolor: alpha(t.palette.primary.main, 0.08),
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    })}
+                  >
+                    <SportIcon sport={rowSport || "football"} size={30} />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>{field.name}</Typography>
+                    <Typography sx={{ fontSize: 14, color: "text.secondary", lineHeight: 1.4 }}>
+                      {subtitleParts.join(" · ")}
+                    </Typography>
+                  </Box>
+                  <RadioDot checked={checked} />
+                </ButtonBase>
+              );
+            })}
+          </Stack>
+        )}
+        <Button
+          startIcon={<AddIcon />}
+          onClick={handleOpenAddField}
+          sx={{ mt: "12px", ml: "-8px", fontWeight: 700 }}
+        >
+          Dodaj mesto
+        </Button>
+      </Box>
+    );
+  }
+
+  function getDeadlineCaption(): string | null {
+    if (!selectedDateTime) return null;
+    const matchDate = new Date(selectedDateTime);
+    if (Number.isNaN(matchDate.getTime())) return null;
+    if (isInformal) {
+      const d = new Date(matchDate.getTime() - informalRegistrationDeadlineHours * 60 * 60 * 1000);
+      return `${formatShortDateTime(d)} · ${informalRegistrationDeadlineHours} ${informalRegistrationDeadlineHours === 1 ? "sat" : "sati"} pre meča`;
+    }
+    if (!selectedField) return null;
+    const deadlineHours = selectedField.registrationDeadlineHours ?? 0;
+    let deadline = new Date(matchDate.getTime() - deadlineHours * 60 * 60 * 1000);
+    const minLead = new Date(matchDate.getTime() - 30 * 60 * 1000);
+    let note = deadlineHours === 0 ? "do početka meča" : `${deadlineHours} sati pre meča`;
+    if (deadline.getTime() < Date.now()) {
+      deadline = minLead;
+      note = "prilagođeno (meč je ranije od standardnog roka terena)";
+    }
+    return `${formatShortDateTime(deadline)} · ${note}`;
+  }
+
+  function renderStepWhen() {
+    const dates = isInformal ? informalDates : availableDates;
+    const selectedDay = selectedDateTime ? selectedDateTime.split("T")[0] : "";
+    const selectedTime = selectedDateTime ? selectedDateTime.split("T")[1] : "";
+    const timesForDate = (date: string): string[] =>
+      isInformal ? getAvailableInformalHours(date) : (slotsByDate[date] || []).map((s) => s.time);
+    const times = selectedDay ? timesForDate(selectedDay) : [];
+
+    const handleDayPick = (date: string) => {
+      const options = timesForDate(date);
+      const nextTime = options.includes(selectedTime) ? selectedTime : options[0];
+      if (!nextTime) return;
+      setSelectedDate(date);
+      setSelectedDateTime(`${date}T${nextTime}`);
+    };
+
+    const playersShown = maxPlayers === "" ? toNumberOr(minPlayers, 1) : maxPlayers;
+    const changePlayers = (delta: number) => {
+      const next = Math.min(99, Math.max(1, playersShown + delta));
+      setMaxPlayers(next);
+      if (typeof minPlayers === "number" && next < minPlayers) setMinPlayers(next);
+    };
+
+    const deadlineCaption = getDeadlineCaption();
+    const noSlots = !isInformal && !loadingSlots && dates.length === 0;
+
+    return (
+      <Stack spacing="24px">
+        {error && <Alert severity="error" sx={{ borderRadius: '12px' }}>{error}</Alert>}
+        {presetApplied && (
+          <Alert severity="success" sx={{ borderRadius: '12px' }} onClose={() => setPresetApplied(false)}>
+            Postavke prethodnog meča su primenjene — samo odaberi novi termin.
+          </Alert>
+        )}
+        {!isInformal && allowedFieldSports.length === 0 && (
+          <Alert severity="warning" sx={{ borderRadius: '12px' }}>
+            Teren ne podržava tvoje omiljene igre. Izaberi drugi teren ili ažuriraj profil.
+          </Alert>
+        )}
+
+        {loadingSlots ? (
+          <Alert severity="info" sx={{ borderRadius: '12px' }}>Učitavanje dostupnih termina...</Alert>
+        ) : noSlots ? (
+          <Alert severity="warning" sx={{ borderRadius: '12px' }}>
+            Nema dostupnih termina za ovaj teren u narednih 30 dana. Proverite radno vreme terena.
+          </Alert>
+        ) : (
+          <>
+            <Box sx={{ mx: "-10px" }}>
+            <Box
+              role="radiogroup"
+              aria-label="Datum"
+              sx={{
+                display: "flex",
+                gap: "8px",
+                overflowX: "auto",
+                px: "10px",
+                pb: "2px",
+                scrollbarWidth: "none",
+                "&::-webkit-scrollbar": { display: "none" },
+              }}
+            >
+              {dates.map((date) => {
+                const { top, bottom } = getDayChipLabels(date);
+                const selected = selectedDay === date;
+                return (
+                  <ButtonBase
+                    key={date}
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => handleDayPick(date)}
+                    sx={{
+                      flexShrink: 0,
+                      flexDirection: "column",
+                      minWidth: 72,
+                      height: 72,
+                      borderRadius: "14px",
+                      border: "1px solid",
+                      borderColor: selected ? "primary.main" : "divider",
+                      bgcolor: selected ? "primary.main" : "background.paper",
+                      color: selected ? "primary.contrastText" : "text.primary",
+                    }}
+                  >
+                    <Typography sx={{ fontSize: 16, fontWeight: 700, lineHeight: 1.3, color: "inherit" }}>{top}</Typography>
+                    <Typography sx={{ fontSize: 13, lineHeight: 1.3, color: "inherit", opacity: selected ? 0.9 : 0.7 }}>
+                      {bottom}
+                    </Typography>
+                  </ButtonBase>
+                );
+              })}
+            </Box>
+            </Box>
+
             <Box>
-              <Typography variant="subtitle2" fontWeight={600}>
-                Mesta za {sport ? getGameTypeName(sport) : "tvoje igre"}
-              </Typography>
-              {userLocation && matchingFields.length > 0 && (
-                <Typography variant="caption" color="text.secondary">
-                  Sortirano po udaljenosti od tvoje lokacije
+              <Typography sx={{ fontSize: 18, fontWeight: 800, mb: "12px" }}>Vreme</Typography>
+              <ButtonBase
+                onClick={(e) => setTimeAnchor(e.currentTarget)}
+                disabled={times.length === 0}
+                aria-haspopup="listbox"
+                sx={{
+                  width: "100%",
+                  justifyContent: "space-between",
+                  minHeight: 56,
+                  px: "16px",
+                  borderRadius: "14px",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "background.paper",
+                }}
+              >
+                <Stack direction="row" spacing="12px" alignItems="center">
+                  <AccessTimeIcon sx={{ color: "text.secondary" }} />
+                  <Typography sx={{ fontSize: 17, fontWeight: 600 }}>{selectedTime || "—"}</Typography>
+                </Stack>
+                <ChevronRightIcon sx={{ color: "text.secondary" }} />
+              </ButtonBase>
+              <Menu
+                anchorEl={timeAnchor}
+                open={Boolean(timeAnchor)}
+                onClose={() => setTimeAnchor(null)}
+                slotProps={{ paper: { sx: { maxHeight: 320, minWidth: timeAnchor?.clientWidth, borderRadius: "14px" } } }}
+              >
+                {times.map((time) => (
+                  <MenuItem
+                    key={time}
+                    selected={time === selectedTime}
+                    onClick={() => {
+                      if (selectedDay) setSelectedDateTime(`${selectedDay}T${time}`);
+                      setTimeAnchor(null);
+                    }}
+                  >
+                    {time}
+                  </MenuItem>
+                ))}
+              </Menu>
+              {deadlineCaption && (
+                <Typography sx={{ mt: "8px", fontSize: 13, color: "text.secondary" }}>
+                  Rok za prijavu: {deadlineCaption}
                 </Typography>
               )}
             </Box>
-            <Button
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={handleOpenAddField}
-              variant="outlined"
-              sx={{ borderRadius: 2, alignSelf: { xs: "stretch", sm: "auto" } }}
-            >
-              Dodaj mesto
-            </Button>
-          </Stack>
-          {locationError && (
-            <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>{locationError}</Alert>
-          )}
-          {matchingFields.length === 0 ? (
-            <Alert severity="info" sx={{ borderRadius: 2 }}>
-              Nema mesta za {sport ? getGameTypeName(sport) : "tvoje igre"}. Dodaj mesto ili izaberi sopstvenu lokaciju.
-            </Alert>
-          ) : (
-          <Paper elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 3, p: 1, maxHeight: 400, overflow: "auto" }}>
-            <Stack spacing={1}>
-              {matchingFields.map((field) => {
-                const distanceKm =
-                  userLocation && field.lat != null && field.lng != null
-                    ? getDistance(userLocation[0], userLocation[1], field.lat, field.lng)
-                    : null;
-                return (
-                <Card
-                  key={field._id}
-                  elevation={0}
-                  onClick={() => setFieldId(field._id)}
-                  sx={{
-                    cursor: "pointer",
-                    border: "2px solid",
-                    borderColor: fieldId === field._id ? "primary.main" : "transparent",
-                    bgcolor: fieldId === field._id ? "primary.main" : "background.paper",
-                    color: fieldId === field._id ? "primary.contrastText" : "text.primary",
-                    borderRadius: 2,
-                    transition: "all 0.2s ease",
-                    "&:hover": { borderColor: "primary.main" },
-                  }}
-                >
-                  <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-                    <Stack direction="row" spacing={2} alignItems="center">
-                      <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: fieldId === field._id ? "rgba(255,255,255,0.2)" : "action.hover", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <LocationOnIcon />
-                      </Box>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="subtitle1" fontWeight={600}>{field.name}</Typography>
-                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ gap: 0.5 }}>
-                          {getFieldSports(field).map((s) => (
-                            <Chip
-                              key={s}
-                              label={getGameTypeName(s)}
-                              size="small"
-                              sx={{
-                                bgcolor: fieldId === field._id ? "rgba(255,255,255,0.2)" : "action.hover",
-                                color: "inherit",
-                                fontWeight: sport === (resolveToCanonicalGameId(s) || s) ? 700 : 500,
-                              }}
-                            />
-                          ))}
-                          {distanceKm != null && (
-                            <Typography variant="body2" sx={{ opacity: 0.85, fontWeight: 600 }}>
-                              {distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`}
-                            </Typography>
-                          )}
-                          {field.price && field.price > 0 && (
-                            <Typography variant="body2" sx={{ opacity: 0.8 }}>{field.price} EUR</Typography>
-                          )}
-                        </Stack>
-                      </Box>
-                      {fieldId === field._id && <CheckCircleIcon sx={{ color: "white" }} />}
-                    </Stack>
-                  </CardContent>
-                </Card>
-              );
-              })}
-            </Stack>
-          </Paper>
-          )}
-        </Box>
-      </Stack>
-    );
-  }
+          </>
+        )}
 
-  function renderStep1Informal() {
-    const minAllowedDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
-    const minDate = formatLocalDateTime(minAllowedDate).split("T")[0];
-    const selectedInformalDate = selectedDateTime ? selectedDateTime.split("T")[0] : "";
-    const selectedInformalTime = selectedDateTime ? selectedDateTime.split("T")[1] : "";
-    const availableInformalHours = getAvailableInformalHours(selectedInformalDate);
-
-    const handleInformalDateChange = (date: string) => {
-      const availableHours = getAvailableInformalHours(date);
-      const nextTime = availableHours.includes(selectedInformalTime)
-        ? selectedInformalTime
-        : (availableHours[0] || "");
-      setSelectedDateTime(nextTime ? `${date}T${nextTime}` : "");
-    };
-
-    const handleInformalTimeChange = (time: string) => {
-      if (!selectedInformalDate) return;
-      setSelectedDateTime(`${selectedInformalDate}T${time}`);
-    };
-
-    return (
-      <Stack spacing={3}>
-        {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-        <Alert severity="info" sx={{ borderRadius: 2 }}>
-          Za privatne mečeve ti biraš kada se prijave zatvaraju (koliko sati pre meča).
-        </Alert>
-        <TextField
-          select
-          fullWidth
-          label="Rok za prijavu (sati pre meča)"
-          value={informalRegistrationDeadlineHours}
-          onChange={(e) => setInformalRegistrationDeadlineHours(Number(e.target.value))}
-        >
-          {[1, 2, 3, 4, 6, 8, 12, 24, 36, 48].map((h) => (
-            <MenuItem key={h} value={h}>{h} {h === 1 ? 'sat' : 'sati'} pre</MenuItem>
-          ))}
-        </TextField>
         <Box>
-          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1.5 }}>
-            Datum i vreme meča
-          </Typography>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-            <TextField
-              type="date"
-              label="Datum"
-              value={selectedInformalDate}
-              onChange={(e) => handleInformalDateChange(e.target.value)}
-              inputProps={{ min: minDate }}
-              InputLabelProps={{ shrink: true }}
-              required
-              fullWidth
-              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
-            />
-            <TextField
-              select
-              label="Vreme"
-              value={selectedInformalTime}
-              onChange={(e) => handleInformalTimeChange(e.target.value)}
-              required
-              fullWidth
-              disabled={!selectedInformalDate}
-              helperText={selectedInformalDate ? "Možete izabrati samo pun sat" : "Prvo odaberite datum"}
-              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+          <Typography sx={{ fontSize: 18, fontWeight: 800, mb: "12px" }}>Broj igrača</Typography>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <IconButton
+              aria-label="Manje igrača"
+              onClick={() => changePlayers(-1)}
+              disabled={playersShown <= 1}
+              sx={stepperButtonSx}
             >
-              {availableInformalHours.map((time) => (
-                <MenuItem key={time} value={time}>{time}</MenuItem>
-              ))}
-            </TextField>
+              <RemoveIcon />
+            </IconButton>
+            <Typography aria-live="polite" sx={{ fontSize: 28, fontWeight: 800 }}>{playersShown}</Typography>
+            <IconButton aria-label="Više igrača" onClick={() => changePlayers(1)} sx={stepperButtonSx}>
+              <AddIcon />
+            </IconButton>
           </Stack>
         </Box>
-        {selectedDateTime && (
-          <Alert severity="success" icon={<CheckCircleIcon />} sx={{ borderRadius: 2 }}>
-            <Typography variant="body2" fontWeight={600}>
-              Odabran termin: {new Date(selectedDateTime).toLocaleString("sr-RS", {
-                weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
-                hour: "2-digit", minute: "2-digit",
-              })}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Rok za prijavu: {(() => {
-                const d = new Date(selectedDateTime);
-                d.setHours(d.getHours() - informalRegistrationDeadlineHours);
-                return d.toLocaleString("sr-RS", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-              })()} ({informalRegistrationDeadlineHours} {informalRegistrationDeadlineHours === 1 ? 'sat' : 'sati'} pre meča)
-            </Typography>
-          </Alert>
-        )}
+
+        <Stack spacing="12px">
+          <ExpandRow
+            title="Podela troškova (opciono)"
+            value={pricePerPlayer !== "" ? `${pricePerPlayer} RSD` : undefined}
+            open={priceOpen}
+            onToggle={() => setPriceOpen((v) => !v)}
+          >
+            <TextField
+              type="text"
+              label="Cena po igraču (RSD)"
+              value={pricePerPlayer}
+              inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
+              fullWidth
+              onFocus={selectNumberField}
+              onChange={(e) => {
+                const value = parseIntegerInput(e.target.value);
+                if (value === null) return;
+                if (value === "" || value >= 0) setPricePerPlayer(value);
+              }}
+              helperText="Npr. 400 — prikazuje se u detaljima meča"
+              placeholder="npr. 400"
+            />
+          </ExpandRow>
+          <ExpandRow
+            title="Minimalan broj igrača"
+            value={String(toNumberOr(minPlayers, 1))}
+            open={minOpen}
+            onToggle={() => setMinOpen((v) => !v)}
+          >
+            <TextField
+              type="text"
+              label="Minimalni broj igrača"
+              value={minPlayers}
+              inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
+              required
+              fullWidth
+              onFocus={selectNumberField}
+              onChange={(e) => {
+                const value = parseIntegerInput(e.target.value);
+                if (value === null) return;
+                if (value === "") { setMinPlayers(""); return; }
+                if (value >= 1) {
+                  setMinPlayers(value);
+                  if (typeof maxPlayers === "number" && maxPlayers < value) setMaxPlayers(value);
+                }
+              }}
+              onBlur={() => {
+                if (minPlayers === "" || minPlayers < 1) setMinPlayers(1);
+              }}
+              helperText="Meč se potvrđuje kada se prijavi najmanje toliko igrača"
+            />
+          </ExpandRow>
+          {isInformal && (
+            <ExpandRow
+              title="Rok za prijavu"
+              value={`${informalRegistrationDeadlineHours} ${informalRegistrationDeadlineHours === 1 ? "sat" : "sati"} pre`}
+              open={deadlineOpen}
+              onToggle={() => setDeadlineOpen((v) => !v)}
+            >
+              <TextField
+                select
+                fullWidth
+                label="Rok za prijavu (sati pre meča)"
+                value={informalRegistrationDeadlineHours}
+                onChange={(e) => setInformalRegistrationDeadlineHours(Number(e.target.value))}
+                helperText="Za privatne mečeve ti biraš kada se prijave zatvaraju."
+              >
+                {[1, 2, 3, 4, 6, 8, 12, 24, 36, 48].map((h) => (
+                  <MenuItem key={h} value={h}>{h} {h === 1 ? "sat" : "sati"} pre</MenuItem>
+                ))}
+              </TextField>
+            </ExpandRow>
+          )}
+        </Stack>
       </Stack>
     );
   }
 
-  function renderStep1Formal() {
+  function renderSuccess(created: { id: string; pending: boolean }) {
+    const confetti = [
+      { top: "4%", left: "22%", color: "#F59E0B", size: 9, round: false, rot: 20 },
+      { top: "10%", left: "62%", color: "#0877F9", size: 8, round: true, rot: 0 },
+      { top: "2%", left: "80%", color: "#F97316", size: 9, round: false, rot: -25 },
+      { top: "26%", left: "92%", color: "#22A559", size: 8, round: false, rot: 35 },
+      { top: "38%", left: "2%", color: "#0877F9", size: 9, round: false, rot: -15 },
+      { top: "22%", left: "8%", color: "#F97316", size: 7, round: true, rot: 0 },
+      { top: "70%", left: "6%", color: "#F59E0B", size: 8, round: false, rot: 40 },
+      { top: "66%", left: "90%", color: "#7C3AED", size: 8, round: true, rot: 0 },
+      { top: "90%", left: "74%", color: "#0877F9", size: 7, round: false, rot: -30 },
+      { top: "88%", left: "26%", color: "#22A559", size: 8, round: false, rot: 15 },
+    ];
     return (
-      <Stack spacing={3}>
-        {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-        {selectedField && (
-          <Paper elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: "action.hover" }}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <LocationOnIcon color="primary" />
-              <Typography variant="subtitle1" fontWeight={600}>{selectedField.name}</Typography>
-            </Stack>
-          </Paper>
-        )}
-        {selectedField && (
-          <Box>
-            <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1.5 }}>
-              Igra / sport za meč
-            </Typography>
-            {allowedFieldSports.length === 0 ? (
-              <Alert severity="warning" sx={{ borderRadius: 2 }}>
-                Teren ne podržava tvoje omiljene igre. Izaberi drugi teren ili ažuriraj profil.
-              </Alert>
-            ) : (
-              <Paper elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 3, p: 2 }}>
-                <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
-                  {allowedFieldSports.map((s) => (
-                    <Chip
-                      key={s}
-                      label={getGameTypeName(s)}
-                      onClick={() => handleSportChange(s)}
-                      color={sport === s ? "primary" : "default"}
-                      variant={sport === s ? "filled" : "outlined"}
-                      sx={{ cursor: "pointer", fontWeight: 600 }}
-                    />
-                  ))}
-                </Stack>
-              </Paper>
-            )}
-          </Box>
-        )}
-        {loadingSlots ? (
-          <Alert severity="info" sx={{ borderRadius: 2 }}>Učitavanje dostupnih termina...</Alert>
-        ) : availableDates.length > 0 ? (
-          <Box>
-            <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>Odaberite datum i vreme</Typography>
-            <Paper elevation={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 3, maxHeight: 400, overflow: "auto" }}>
-              <Stack spacing={0} divider={<Divider />}>
-                {availableDates.map((date) => {
-                  const dateSlots = slotsByDate[date];
-                  const isSelectedDate = selectedDate === date;
-                  return (
-                    <Box key={date} sx={{ p: 2 }}>
-                      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1.5, color: isSelectedDate ? "primary.main" : "text.primary" }}>
-                        {new Date(date).toLocaleDateString("sr-RS", { weekday: "long", day: "numeric", month: "long" })}
-                      </Typography>
-                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-                        {dateSlots.map((slot) => (
-                          <Chip
-                            key={slot.datetime}
-                            label={slot.time}
-                            onClick={() => { setSelectedDate(date); setSelectedDateTime(slot.datetime); }}
-                            color={selectedDateTime === slot.datetime ? "primary" : "default"}
-                            variant={selectedDateTime === slot.datetime ? "filled" : "outlined"}
-                            sx={{ cursor: "pointer", fontWeight: 600 }}
-                          />
-                        ))}
-                      </Box>
-                    </Box>
-                  );
-                })}
-              </Stack>
-            </Paper>
-            {selectedDateTime && selectedField && (
-              <Alert severity="success" sx={{ mt: 2, borderRadius: 2 }} icon={<CheckCircleIcon />}>
-                <Typography variant="body2" fontWeight={600}>
-                  Odabran termin: {availableTimeSlots.find((s) => s.datetime === selectedDateTime)?.display}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Rok za prijavu: {(() => {
-                    const matchDate = new Date(selectedDateTime);
-                    const deadlineHours = selectedField.registrationDeadlineHours ?? 0;
-                    let deadline = new Date(matchDate.getTime() - deadlineHours * 60 * 60 * 1000);
-                    const now = new Date();
-                    const minLead = new Date(matchDate.getTime() - 30 * 60 * 1000);
-                    let note =
-                      deadlineHours === 0
-                        ? "do početka meča"
-                        : `${deadlineHours} sati pre meča`;
-                    if (deadline.getTime() < now.getTime()) {
-                      deadline = minLead;
-                      note = "prilagođeno (meč je ranije od standardnog roka terena)";
-                    }
-                    return `${deadline.toLocaleString("sr-RS", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${note}`;
-                  })()}
-                </Typography>
-              </Alert>
-            )}
-          </Box>
-        ) : (
-          <Alert severity="warning" sx={{ borderRadius: 2 }}>
-            Nema dostupnih termina za ovaj teren u narednih 30 dana. Proverite radno vreme terena.
-          </Alert>
-        )}
-      </Stack>
-    );
-  }
-
-  return (
-    <Box sx={{ maxWidth: 600, mx: "auto" }}>
-      <Box sx={{ mb: 3 }}>
-        <Button
-          startIcon={<ArrowBackIcon />}
-          onClick={() => (activeStep > 0 ? handleBack() : navigate(-1))}
-          sx={{ mb: 2, color: "text.secondary" }}
-        >
-          Nazad
-        </Button>
-        <Typography variant="h4" fontWeight={800} sx={{ mb: 1 }}>
-          Kreiraj meč
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          {preferredSports.length === 0
-            ? "Pronađi igrače i organizuj meč"
-            : stepSubtitles[activeStep]}
-        </Typography>
-      </Box>
-
-      {!verificationChecked ? (
-        <Box display="flex" justifyContent="center" py={6}>
-          <CircularProgress />
+      <Box
+        sx={{
+          maxWidth: 600,
+          mx: "auto",
+          px: { xs: "10px", sm: 0 },
+          minHeight: "calc(100vh - 32px)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+          <IconButton aria-label="Zatvori" onClick={() => navigate("/")} sx={{ color: "text.secondary" }}>
+            <CloseIcon />
+          </IconButton>
         </Box>
-      ) : !isEmailVerified(user) ? (
-        <EmailVerificationNeeded email={user?.email} />
-      ) : (
-      <>
-      {preferredSports.length === 0 && (
-        <Alert
-          severity="warning"
-          sx={{ mb: 3, borderRadius: 2 }}
-          action={
-            <Button color="inherit" size="small" onClick={() => navigate("/profil?edit=igre")}>
-              Profil
-            </Button>
-          }
-        >
-          Nemaš odabrane omiljene igre. Dodaj ih na profilu da bi mogao da kreiraš meč.
-        </Alert>
-      )}
-
-      {preferredSports.length > 0 && (
-      <>
-      {lastPreset && canCloneLastMatch && !presetApplied && (
-        <Paper
-          elevation={0}
+        <Box
           sx={{
-            p: 2,
-            mb: 3,
-            borderRadius: 3,
-            border: "1px solid",
-            borderColor: "primary.light",
-            bgcolor: "action.hover",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            pb: `calc(${BAR_HEIGHT * 2 + 24}px + env(safe-area-inset-bottom))`,
           }}
         >
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }} justifyContent="space-between">
-            <Stack spacing={0.5}>
-              <Typography variant="subtitle2" fontWeight={700}>
-                Kloniraj prošli meč
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {(getGameTypeName(lastPreset.sport))}
-                {" · "}
-                {lastPreset.isInformal
-                  ? (lastPreset.informalLocationName || "Privatni teren")
-                  : (lastPreset.fieldName || "Teren")}
-                {" · "}
-                {lastPreset.minPlayers}
-                {lastPreset.maxPlayers !== "" ? `–${lastPreset.maxPlayers}` : "+"} igrača
-              </Typography>
-            </Stack>
+          <Box aria-hidden sx={{ position: "relative", width: 210, height: 210, mb: "28px" }}>
+            {confetti.map((c, i) => (
+              <Box
+                key={i}
+                sx={{
+                  position: "absolute",
+                  top: c.top,
+                  left: c.left,
+                  width: c.size,
+                  height: c.size,
+                  borderRadius: c.round ? "50%" : "2px",
+                  bgcolor: c.color,
+                  transform: `rotate(${c.rot}deg)`,
+                }}
+              />
+            ))}
+            <Box
+              sx={{
+                position: "absolute",
+                inset: 25,
+                borderRadius: "50%",
+                bgcolor: "rgba(34, 165, 89, 0.14)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Box
+                sx={{
+                  width: 112,
+                  height: 112,
+                  borderRadius: "50%",
+                  bgcolor: "#22A559",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <CheckIcon sx={{ fontSize: 64, color: "#fff" }} />
+              </Box>
+            </Box>
+          </Box>
+          <Typography
+            component="h1"
+            sx={{ fontSize: { xs: 28, sm: 30 }, fontWeight: 800, lineHeight: 1.2, letterSpacing: "-0.02em", mb: "12px" }}
+          >
+            Meč je objavljen.
+          </Typography>
+          <Typography sx={{ fontSize: 16, lineHeight: 1.5, color: "text.secondary" }}>
+            <Box component="span" sx={{ display: "block", maxWidth: 270, mx: "auto" }}>
+              {created.pending
+                ? "Teren treba da potvrdi tvoj meč."
+                : "Tvoj meč je sada vidljiv drugim igračima u tvom kraju."}
+            </Box>
+            <Box component="span" sx={{ display: "block" }}>
+              {created.pending
+                ? "Obavestiće te kada bude odobren i kada se neko prijavi"
+                : "Obavestiće te kada se neko prijavi"}
+            </Box>
+          </Typography>
+        </Box>
+        <Box sx={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 1100, bgcolor: "background.default" }}>
+          <Stack
+            spacing="12px"
+            sx={{
+              maxWidth: 600,
+              mx: "auto",
+              px: { xs: "20px", sm: 0 },
+              pt: "12px",
+              pb: "calc(16px + env(safe-area-inset-bottom))",
+            }}
+          >
             <Button
               variant="contained"
-              startIcon={<ContentCopyIcon />}
-              onClick={applyLastPreset}
-              sx={{ borderRadius: 2, fontWeight: 700, flexShrink: 0 }}
+              fullWidth
+              onClick={() => navigate(`/matches/${created.id}`)}
+              sx={{ height: BAR_HEIGHT - 12, fontSize: 17, fontWeight: 700, borderRadius: "14px" }}
             >
-              Primeni postavke
+              Vidi meč
+            </Button>
+            <Button
+              fullWidth
+              onClick={() => navigate("/")}
+              sx={(t) => ({
+                height: BAR_HEIGHT - 12,
+                fontSize: 17,
+                fontWeight: 700,
+                borderRadius: "14px",
+                color: "text.primary",
+                bgcolor: alpha(t.palette.text.secondary, 0.1),
+                "&:hover": { bgcolor: alpha(t.palette.text.secondary, 0.16) },
+              })}
+            >
+              Nazad na početnu
             </Button>
           </Stack>
-        </Paper>
-      )}
-
-      {presetApplied && (
-        <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setPresetApplied(false)}>
-          Postavke prethodnog meča su primenjene — samo odaberi novi termin.
-        </Alert>
-      )}
-
-      {/* Progress */}
-      <Box sx={{ mb: 3 }}>
-        <LinearProgress
-          variant="determinate"
-          value={((activeStep + 1) / steps.length) * 100}
-          sx={{ height: 6, borderRadius: 3, mb: 1 }}
-        />
-        <Typography variant="caption" color="text.secondary">
-          Korak {activeStep + 1} / {steps.length} · {steps[activeStep]}
-        </Typography>
+        </Box>
       </Box>
+    );
+  }
 
-      {/* Step Content */}
-      <Box sx={{ mb: 4 }}>{renderStepContent(activeStep)}</Box>
+  if (createdMatch) return renderSuccess(createdMatch);
 
-      {/* Navigation */}
-      <Stack
-        direction={{ xs: "column-reverse", sm: "row" }}
-        spacing={2}
-        justifyContent="space-between"
-      >
-        <Button
-          variant="outlined"
-          onClick={handleBack}
-          disabled={activeStep === 0}
-          startIcon={<ArrowBackIcon />}
-          sx={{ px: 3, width: { xs: "100%", sm: "auto" } }}
-        >
-          Nazad
-        </Button>
-        <Button
-          variant="contained"
-          onClick={handleNext}
-          endIcon={activeStep === steps.length - 1 ? null : <ArrowForwardIcon />}
-          sx={{ px: 3, width: { xs: "100%", sm: "auto" } }}
-        >
-          {activeStep === steps.length - 1 ? "Kreiraj meč" : "Dalje"}
-        </Button>
-      </Stack>
-      </>
+  const wizardReady =
+    verificationChecked && isEmailVerified(user) && preferredSports.length > 0;
+
+  return (
+    <Box
+      sx={{
+        maxWidth: 600,
+        mx: "auto",
+        px: { xs: "10px", sm: 0 },
+        pb: wizardReady ? `calc(${BAR_HEIGHT + 24}px + env(safe-area-inset-bottom))` : 0,
+      }}
+    >
+      {wizardReady ? (
+        <>
+          <Stack direction="row" alignItems="center" spacing="10px" sx={{ mb: "20px" }}>
+            <IconButton
+              aria-label="Nazad"
+              size="small"
+              onClick={() => (activeStep > 0 ? handleBack() : navigate(-1))}
+              sx={{ color: "text.secondary", ml: "-6px" }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography sx={{ fontSize: 13, fontWeight: 600, color: "text.secondary", whiteSpace: "nowrap" }}>
+              {activeStep + 1} od {steps.length}
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={((activeStep + 1) / steps.length) * 100}
+              aria-label={`Korak ${activeStep + 1} od ${steps.length}`}
+              sx={(t) => ({
+                flex: 1,
+                height: 5,
+                borderRadius: 3,
+                bgcolor: alpha(t.palette.primary.main, 0.12),
+                "& .MuiLinearProgress-bar": { borderRadius: 3 },
+              })}
+            />
+          </Stack>
+          <Typography
+            component="h1"
+            sx={{ fontSize: { xs: 26, sm: 28 }, fontWeight: 800, lineHeight: 1.2, letterSpacing: "-0.02em", mb: "6px" }}
+          >
+            {stepTitles[activeStep]}
+          </Typography>
+          <Typography sx={{ fontSize: 15, color: "text.secondary", mb: "22px" }}>
+            {stepSubtitles[activeStep]}
+          </Typography>
+
+          {renderStepContent(activeStep)}
+
+          <Box
+            sx={{
+              position: "fixed",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 1100,
+              bgcolor: "background.default",
+            }}
+          >
+            <Box
+              sx={{
+                maxWidth: 600,
+                mx: "auto",
+                px: { xs: "20px", sm: 0 },
+                pt: "12px",
+                pb: "calc(16px + env(safe-area-inset-bottom))",
+              }}
+            >
+              <Button
+                variant="contained"
+                fullWidth
+                onClick={handleNext}
+                sx={{ height: BAR_HEIGHT - 12, fontSize: 17, fontWeight: 700, borderRadius: "14px" }}
+              >
+                {activeStep === steps.length - 1 ? "Objavi meč" : "Dalje"}
+              </Button>
+            </Box>
+          </Box>
+        </>
+      ) : (
+        <>
+          <Typography component="h1" sx={{ fontSize: 28, fontWeight: 800, mb: "16px" }}>
+            Kreiraj meč
+          </Typography>
+          {!verificationChecked ? (
+            <Box display="flex" justifyContent="center" py={6}>
+              <CircularProgress />
+            </Box>
+          ) : !isEmailVerified(user) ? (
+            <EmailVerificationNeeded email={user?.email} />
+          ) : (
+            <Alert
+              severity="warning"
+              sx={{ borderRadius: '12px' }}
+              action={
+                <Button color="inherit" size="small" onClick={() => navigate("/profil?edit=igre")}>
+                  Profil
+                </Button>
+              }
+            >
+              Nemaš odabrane omiljene igre. Dodaj ih na profilu da bi mogao da kreiraš meč.
+            </Alert>
+          )}
+        </>
       )}
 
       {/* Add Field Dialog */}
@@ -1509,8 +1669,109 @@ export default function CreateMatch() {
           <Button onClick={handleAddField} variant="contained" disabled={!newFieldLat || !newFieldLng || !newFieldName} sx={{ borderRadius: 3, px: 3, width: { xs: "100%", sm: "auto" } }}>Dodaj mesto</Button>
         </DialogActions>
       </Dialog>
-      </>
-      )}
+    </Box>
+  );
+}
+
+const BAR_HEIGHT = 76;
+
+const stepperButtonSx = {
+  width: 56,
+  height: 56,
+  borderRadius: "14px",
+  color: "primary.main",
+  bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.1),
+  "&:hover": { bgcolor: (t: Theme) => alpha(t.palette.primary.main, 0.16) },
+  "&.Mui-disabled": { opacity: 0.45 },
+} as const;
+
+const WEEKDAYS_SHORT = ["Ned", "Pon", "Uto", "Sre", "Čet", "Pet", "Sub"];
+const MONTHS_SHORT = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "avg", "sep", "okt", "nov", "dec"];
+
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function getDayChipLabels(dateStr: string): { top: string; bottom: string } {
+  const d = parseLocalDate(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
+  return {
+    top: diff === 0 ? "Danas" : diff === 1 ? "Sutra" : WEEKDAYS_SHORT[d.getDay()],
+    bottom: `${d.getDate()}. ${MONTHS_SHORT[d.getMonth()]}`,
+  };
+}
+
+function formatShortDateTime(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}. ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function formatPlayersRange(min: number, max: number): string {
+  return min === max ? String(min) : `${min}–${max}`;
+}
+
+function formatDistanceKm(km: number): string {
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1).replace(".", ",")} km`;
+}
+
+function RadioDot({ checked }: { checked: boolean }) {
+  return (
+    <Box
+      aria-hidden
+      sx={{
+        width: 24,
+        height: 24,
+        flexShrink: 0,
+        borderRadius: "50%",
+        border: "2px solid",
+        borderColor: checked ? "primary.main" : "divider",
+        bgcolor: checked ? "primary.main" : "transparent",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {checked && <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "#fff" }} />}
+    </Box>
+  );
+}
+
+function ExpandRow({
+  title,
+  value,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  value?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: "14px", bgcolor: "background.paper", overflow: "hidden" }}>
+      <ButtonBase
+        onClick={onToggle}
+        aria-expanded={open}
+        sx={{ width: "100%", justifyContent: "space-between", px: "16px", minHeight: 56, textAlign: "left" }}
+      >
+        <Typography sx={{ fontSize: 15, fontWeight: 600 }}>{title}</Typography>
+        <Stack direction="row" alignItems="center" spacing="6px">
+          {value && (
+            <Typography sx={{ fontSize: 14, fontWeight: 600, color: "primary.main" }}>{value}</Typography>
+          )}
+          <ExpandMoreIcon
+            sx={{ color: "text.secondary", transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}
+          />
+        </Stack>
+      </ButtonBase>
+      <Collapse in={open} unmountOnExit>
+        <Box sx={{ px: "16px", pb: "16px" }}>{children}</Box>
+      </Collapse>
     </Box>
   );
 }
@@ -1529,51 +1790,42 @@ function ChoiceCard({
   onClick: () => void;
 }) {
   return (
-    <Paper
+    <ButtonBase
       onClick={onClick}
-      elevation={0}
-      sx={{
-        p: 2.5,
-        borderRadius: 3,
-        border: "2px solid",
+      aria-pressed={selected}
+      sx={(t) => ({
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: "14px",
+        textAlign: "left",
+        p: selected ? "15px" : "16px",
+        borderRadius: "16px",
+        border: selected ? "2px solid" : "1px solid",
         borderColor: selected ? "primary.main" : "divider",
-        bgcolor: selected ? "primary.main" : "background.paper",
-        color: selected ? "primary.contrastText" : "text.primary",
-        cursor: "pointer",
-        transition: "all 0.2s ease",
-        "&:hover": {
-          borderColor: "primary.main",
-          transform: "translateY(-2px)",
-        },
-      }}
+        bgcolor: selected ? alpha(t.palette.primary.main, 0.07) : "background.paper",
+      })}
     >
-      <Stack direction="row" spacing={2} alignItems="center">
-        <Box
-          sx={{
-            width: 48,
-            height: 48,
-            borderRadius: 2,
-            bgcolor: selected ? "rgba(255,255,255,0.2)" : "action.hover",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {icon}
-        </Box>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="subtitle1" fontWeight={700}>
-            {title}
-          </Typography>
-          <Typography
-            variant="body2"
-            sx={{ color: selected ? "rgba(255,255,255,0.8)" : "text.secondary" }}
-          >
-            {description}
-          </Typography>
-        </Box>
-        {selected && <CheckCircleIcon sx={{ color: "white" }} />}
-      </Stack>
-    </Paper>
+      <Box
+        sx={(t) => ({
+          width: 48,
+          height: 48,
+          flexShrink: 0,
+          borderRadius: "12px",
+          bgcolor: selected ? alpha(t.palette.primary.main, 0.12) : alpha(t.palette.text.secondary, 0.1),
+          color: selected ? "primary.main" : "text.secondary",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        })}
+      >
+        {icon}
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography sx={{ fontSize: 17, fontWeight: 800, lineHeight: 1.3 }}>{title}</Typography>
+        <Typography sx={{ fontSize: 14, color: "text.secondary", lineHeight: 1.4 }}>{description}</Typography>
+      </Box>
+      {selected && <CheckCircleIcon sx={{ color: "primary.main", alignSelf: "flex-start" }} />}
+    </ButtonBase>
   );
 }

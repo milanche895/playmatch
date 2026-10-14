@@ -1,42 +1,90 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Button,
-  Stack,
-  Chip,
-  Divider,
-  CircularProgress,
-  Alert,
-  Paper,
-  Tabs,
-  Tab,
-  Avatar,
-} from '@mui/material';
-import {
-  SportsSoccer as SportsIcon,
-  EventAvailable as EventIcon,
-  CheckCircle as CheckCircleIcon,
-  Add as AddIcon,
-  People as PeopleIcon,
-  ArrowBack as ArrowBackIcon,
-} from '@mui/icons-material';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Box, Button, ButtonBase, CircularProgress, Stack, Typography, useMediaQuery, useTheme } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import { useNavigate, Link } from '@/lib/router';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { Match } from '../types';
-import { getTrustBadge } from '../lib/reliability';
 import { getGameTypeName } from '../constants/games';
-import { formatPlayersCount } from '../lib/matchPlayers';
+import SportIcon from '../components/SportIcon';
+import SegmentedControl from '../components/ui/SegmentedControl';
+
+type Role = 'created' | 'joined';
+type StatusTab = 'active' | 'completed' | 'cancelled';
+
+const STATUS_TABS: { value: StatusTab; label: string }[] = [
+  { value: 'active', label: 'Aktivni' },
+  { value: 'completed', label: 'Završeni' },
+  { value: 'cancelled', label: 'Otkazani' },
+];
+
+function matchStatusTab(match: Match): StatusTab {
+  if (match.status === 'completed') return 'completed';
+  if (match.status === 'otkazano' || match.status === 'failed') return 'cancelled';
+  return 'active';
+}
+
+function formatRelativeMatchTime(dateTime: string): string {
+  const matchDate = new Date(dateTime);
+  const timeStr = matchDate.toLocaleTimeString('sr-RS', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfMatchDay = new Date(matchDate.getFullYear(), matchDate.getMonth(), matchDate.getDate());
+  const dayDiff = Math.round((startOfMatchDay.getTime() - startOfToday.getTime()) / (24 * 60 * 60 * 1000));
+
+  if (dayDiff === 0) return `Danas · ${timeStr}`;
+  if (dayDiff === 1) return `Sutra · ${timeStr}`;
+  if (dayDiff === -1) return `Juče · ${timeStr}`;
+  return `${matchDate.toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit' })} · ${timeStr}`;
+}
+
+function getMatchLocationName(match: Match): string {
+  if (match.isInformal) return match.informalLocation?.name || 'Privatni teren';
+  if (typeof match.fieldId === 'object' && match.fieldId?.name) return match.fieldId.name;
+  return 'Nepoznat teren';
+}
+
+function formatPlayersProgress(match: Match): string {
+  const target = match.maxPlayers ?? match.minPlayers ?? match.playersNeeded;
+  return `${match.players.length}/${target}`;
+}
+
+function canShowConfirmMatchButton(match: Match): boolean {
+  const inProgress = match.status === 'open' || match.status === 'full';
+  return Boolean(match.isInformal && inProgress && new Date() > new Date(match.dateTime));
+}
+
+function idOf(ref: string | { _id: string } | undefined): string {
+  if (!ref) return '';
+  return typeof ref === 'string' ? ref : String(ref._id);
+}
+
+function Note({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+  return (
+    <Stack
+      direction="row"
+      alignItems="center"
+      spacing="10px"
+      sx={{ mt: '12px', px: '12px', py: '10px', borderRadius: '10px', bgcolor: '#FFF5DB', color: '#B4540A' }}
+    >
+      <Box sx={{ display: 'flex', flexShrink: 0, '& .MuiSvgIcon-root': { fontSize: 20 } }}>{icon}</Box>
+      <Typography sx={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>{children}</Typography>
+    </Stack>
+  );
+}
 
 export default function MojiMecevi() {
   const { user: currentUser } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<number>(0);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [role, setRole] = useState<Role>('created');
+  const [statusTab, setStatusTab] = useState<StatusTab>('active');
   const [createdMatches, setCreatedMatches] = useState<Match[]>([]);
   const [joinedMatches, setJoinedMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +98,7 @@ export default function MojiMecevi() {
       setLoading(true);
       const [createdRes, joinedRes] = await Promise.all([
         api.get('/api/players/my-matches/created'),
-        api.get('/api/players/my-matches/joined')
+        api.get('/api/players/my-matches/joined'),
       ]);
       setCreatedMatches(createdRes.data);
       setJoinedMatches(joinedRes.data);
@@ -61,53 +109,55 @@ export default function MojiMecevi() {
     }
   }
 
-  function formatDateTime(dateString: string): string {
-    return new Date(dateString).toLocaleString('sr-RS', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
+  const visibleMatches = useMemo(() => {
+    const source = role === 'created' ? createdMatches : joinedMatches;
+    const filtered = source.filter((m) => matchStatusTab(m) === statusTab);
+    // Upcoming first for active, most recent first for the rest
+    return [...filtered].sort((a, b) =>
+      statusTab === 'active'
+        ? new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime()
+        : new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime()
+    );
+  }, [role, statusTab, createdMatches, joinedMatches]);
 
-  function getMatchStatusColor(match: Match): 'default' | 'primary' | 'success' | 'warning' | 'error' {
-    if (match.status === 'full') return 'warning';
-    if (match.status === 'completed') return 'success';
-    if (match.status === 'open') return 'primary';
-    if (match.status === 'otkazano' || match.status === 'failed') return 'error';
-    return 'default';
-  }
-
-  function getMatchStatusLabel(match: Match): string {
-    if (match.courtApproval === 'pending') return 'Na čekanju';
-    if (match.status === 'full') return 'Pun';
-    if (match.status === 'completed') return 'Završen';
-    if (match.status === 'open') return 'Otvoren';
-    if (match.status === 'otkazano') return 'Otkazan';
-    if (match.status === 'failed') return 'Neuspešan';
-    return match.status;
-  }
-
-  function getMatchLocationName(match: Match): string {
-    if (match.isInformal) {
-      return match.informalLocation?.name || 'Privatni teren';
+  function getNote(match: Match): ReactNode | null {
+    const myId = currentUser?._id;
+    if (match.status === 'completed' && myId && match.players.length > 1) {
+      const alreadyRated = (match.ratings || []).some((r) => idOf(r.raterId) === myId);
+      if (!alreadyRated) {
+        return <Note icon={<StarBorderIcon />}>Treba da oceniš saigrače.</Note>;
+      }
     }
-    if (typeof match.fieldId === 'object' && match.fieldId?.name) {
-      return match.fieldId.name;
+    if (match.courtApproval === 'pending' && (match.status === 'open' || match.status === 'full')) {
+      return <Note icon={<HourglassEmptyIcon />}>Vlasnik još nije potvrdio termin.</Note>;
     }
-    return 'Nepoznat teren';
+    return null;
   }
 
-  function canShowConfirmMatchButton(match: Match): boolean {
-    const isMatchInProgressState = match.status === 'open' || match.status === 'full';
-    const matchStarted = new Date() > new Date(match.dateTime);
-    return Boolean(match.isInformal && isMatchInProgressState && matchStarted);
-  }
-
-  function canShowInvitePlayersButton(match: Match): boolean {
-    if (match.status !== 'open' && match.status !== 'full') return false;
-    return new Date() <= new Date(match.registrationDeadline);
+  function renderEmpty() {
+    const text =
+      statusTab === 'active'
+        ? role === 'created'
+          ? 'Još nisi okupio nijedan aktivan meč.'
+          : 'Nisi prijavljen ni na jedan aktivan meč.'
+        : statusTab === 'completed'
+          ? 'Još nema završenih mečeva.'
+          : 'Nema otkazanih mečeva.';
+    const showLink = statusTab === 'active';
+    return (
+      <Box sx={{ textAlign: 'center', py: 6, px: 2 }}>
+        <Typography sx={{ fontSize: 15, color: '#6B7A99' }}>{text}</Typography>
+        {showLink && (
+          <Button
+            component={Link}
+            to={role === 'created' ? '/create' : '/'}
+            sx={{ mt: 1, fontWeight: 700, borderRadius: '12px' }}
+          >
+            {role === 'created' ? 'Napravi prvi meč' : 'Pronađi mečeve u blizini'}
+          </Button>
+        )}
+      </Box>
+    );
   }
 
   if (loading) {
@@ -119,266 +169,120 @@ export default function MojiMecevi() {
   }
 
   return (
-    <Box sx={{ maxWidth: 1000, mx: 'auto' }}>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Button
-          startIcon={<ArrowBackIcon />}
-          onClick={() => navigate(-1)}
-          sx={{ mb: 2, color: 'text.secondary' }}
-        >
-          Nazad
-        </Button>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} flexWrap="wrap" sx={{ gap: 2 }}>
-          <Typography variant="h4" fontWeight={700}>
-            <EventIcon sx={{ mr: 1, verticalAlign: 'middle', color: 'primary.main' }} />
-            Moji Mečevi
-          </Typography>
+    <Box sx={{ maxWidth: 720, mx: 'auto', px: { xs: '10px', md: 0 } }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: '16px' }}>
+        <Typography component="h1" sx={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', color: '#0B1B3F' }}>
+          Moji mečevi
+        </Typography>
+        {!isMobile && (
           <Button
             variant="contained"
             startIcon={<AddIcon />}
             component={Link}
             to="/create"
-            sx={{ borderRadius: 3 }}
+            sx={{ borderRadius: '12px', fontWeight: 700 }}
           >
             Kreiraj meč
           </Button>
+        )}
+      </Stack>
+
+      <SegmentedControl<Role>
+        value={role}
+        onChange={setRole}
+        options={[
+          { value: 'created', label: 'Ja sam okupio' },
+          { value: 'joined', label: 'Prijavio sam se' },
+        ]}
+      />
+
+      <Stack direction="row" spacing="8px" sx={{ mt: '12px', mb: '16px' }}>
+        {STATUS_TABS.map((t) => {
+          const selected = t.value === statusTab;
+          return (
+            <ButtonBase
+              key={t.value}
+              aria-pressed={selected}
+              onClick={() => setStatusTab(t.value)}
+              sx={{
+                flex: 1,
+                height: 38,
+                borderRadius: '19px',
+                fontSize: 14.5,
+                fontWeight: 600,
+                color: selected ? '#FFFFFF' : '#0B1B3F',
+                bgcolor: selected ? 'primary.main' : '#FFFFFF',
+                border: '1px solid',
+                borderColor: selected ? 'primary.main' : '#DCE5F2',
+                transition: 'background-color 0.15s ease, color 0.15s ease',
+              }}
+            >
+              {t.label}
+            </ButtonBase>
+          );
+        })}
+      </Stack>
+
+      {visibleMatches.length === 0 ? (
+        renderEmpty()
+      ) : (
+        <Stack spacing="12px">
+          {visibleMatches.map((match) => {
+            const detailsPath = `/matches/${match._id}`;
+            const note = getNote(match);
+            const showConfirm = role === 'created' && canShowConfirmMatchButton(match);
+            return (
+              <Box
+                key={match._id}
+                sx={{ bgcolor: '#FFFFFF', border: '1px solid #E3E9F3', borderRadius: '16px', p: '16px' }}
+              >
+                <ButtonBase
+                  component="div"
+                  onClick={() => navigate(detailsPath)}
+                  aria-label={`${getGameTypeName(match.sport)} — ${getMatchLocationName(match)}`}
+                  sx={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start',
+                    textAlign: 'left',
+                    gap: '12px',
+                  }}
+                >
+                  <SportIcon sport={match.sport} size={46} />
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography noWrap sx={{ fontSize: 18, fontWeight: 700, lineHeight: 1.25, color: '#0B1B3F' }}>
+                      {getGameTypeName(match.sport)}
+                    </Typography>
+                    <Typography sx={{ fontSize: 15, fontWeight: 600, lineHeight: 1.4, color: '#0B1B3F' }}>
+                      {formatRelativeMatchTime(match.dateTime)}
+                    </Typography>
+                    <Typography noWrap sx={{ fontSize: 14, lineHeight: 1.4, color: '#6B7A99' }}>
+                      {getMatchLocationName(match)} · {formatPlayersProgress(match)}
+                    </Typography>
+                  </Box>
+                  <ChevronRightIcon sx={{ color: '#6B7A99', flexShrink: 0 }} />
+                </ButtonBase>
+
+                {note}
+
+                {showConfirm && (
+                  <Button
+                    variant="contained"
+                    color="success"
+                    component={Link}
+                    to={`/matches/${match._id}?confirmMatch=1`}
+                    fullWidth
+                    sx={{ mt: '12px', borderRadius: '11px', fontWeight: 600, height: 40 }}
+                  >
+                    Potvrdi meč
+                  </Button>
+                )}
+              </Box>
+            );
+          })}
         </Stack>
-      </Box>
-
-      <Paper elevation={0} sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
-        <Tabs
-          value={activeTab}
-          onChange={(_, newValue) => setActiveTab(newValue)}
-          variant="scrollable"
-          scrollButtons="auto"
-          sx={{ borderBottom: 1, borderColor: 'divider', minHeight: 56 }}
-        >
-          <Tab 
-            label={`Kreirani (${createdMatches.length})`} 
-            sx={{ textTransform: 'none', fontWeight: 600 }}
-            icon={<SportsIcon fontSize="small" />}
-            iconPosition="start"
-          />
-          <Tab 
-            label={`Prijavljeni (${joinedMatches.length})`} 
-            sx={{ textTransform: 'none', fontWeight: 600 }}
-            icon={<CheckCircleIcon fontSize="small" />}
-            iconPosition="start"
-          />
-        </Tabs>
-
-        <Box sx={{ p: 3 }}>
-          {/* Created Matches Tab */}
-          {activeTab === 0 && (
-            <Stack spacing={2}>
-              {createdMatches.length === 0 ? (
-                <Alert severity="info" sx={{ borderRadius: 2 }}>
-                  Još niste kreirali nijedan meč.{' '}
-                  <Link to="/create" style={{ color: 'inherit', fontWeight: 600 }}>
-                    Kreirajte prvi meč!
-                  </Link>
-                </Alert>
-              ) : (
-                <>
-                  <Alert severity="info" sx={{ borderRadius: 2 }} icon={<PeopleIcon />}>
-                    Prikazani su mečevi koje ste kreirali sa listom svih prijavljenih igrača.
-                  </Alert>
-                  {createdMatches.map((match) => (
-                    <Card key={match._id} elevation={0} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
-                      <CardContent sx={{ p: 3 }}>
-                        <Stack spacing={2}>
-                          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
-                            <Stack direction="row" spacing={2} alignItems="center">
-                              <Box sx={{ width: 48, height: 48, borderRadius: 3, bgcolor: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                                <SportsIcon />
-                              </Box>
-                              <Box>
-                                <Typography variant="h6" fontWeight={700}>
-                                  {getMatchLocationName(match)}
-                                </Typography>
-                                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                  <Chip label={getGameTypeName(match.sport)} size="small" color="primary" />
-                                  <Chip label={getMatchStatusLabel(match)} size="small" color={getMatchStatusColor(match)} />
-                                </Stack>
-                              </Box>
-                            </Stack>
-                            <Chip icon={<CheckCircleIcon sx={{ fontSize: 16 }} />} label="Organizator" color="success" size="small" />
-                          </Stack>
-
-                          <Divider />
-
-                          <Stack spacing={2}>
-                            <Typography variant="body2" color="text.secondary">
-                              <strong>Datum:</strong> {formatDateTime(match.dateTime)}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              <strong>Igrači:</strong> {formatPlayersCount(match)}
-                            </Typography>
-
-                            {/* Players who joined */}
-                            {match.players.length > 0 && (
-                              <Paper elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: 'action.hover' }}>
-                                <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
-                                  Prijavljeni igrači ({match.players.length}):
-                                </Typography>
-                                <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
-                                  {match.players.map((player) => {
-                                    const badge = getTrustBadge(player.reliabilityScore);
-                                    return (
-                                    <Chip
-                                      key={player._id}
-                                      avatar={
-                                        <Avatar sx={{ width: 24, height: 24 }}>
-                                          {player.name.charAt(0).toUpperCase()}
-                                        </Avatar>
-                                      }
-                                      label={
-                                        <Stack direction="row" spacing={0.75} alignItems="center">
-                                          <span>{player.name}</span>
-                                          <Box
-                                            component="span"
-                                            sx={{ fontSize: '0.75rem', lineHeight: 1 }}
-                                            title={`${badge.label} (${player.reliabilityScore ?? 100}%)`}
-                                          >
-                                            {badge.emoji}
-                                          </Box>
-                                        </Stack>
-                                      }
-                                      size="small"
-                                      variant="outlined"
-                                      sx={{ borderRadius: 2 }}
-                                    />
-                                    );
-                                  })}
-                                </Stack>
-                              </Paper>
-                            )}
-
-                            {match.players.length === 0 && (
-                              <Alert severity="info" sx={{ borderRadius: 2 }}>
-                                Još nema prijavljenih igrača na ovaj meč.
-                              </Alert>
-                            )}
-                          </Stack>
-
-                          <Stack
-                            direction={{ xs: 'column', sm: 'row' }}
-                            spacing={1.5}
-                            sx={{
-                              alignSelf: 'stretch',
-                              width: '100%',
-                            }}
-                          >
-                            <Button
-                              variant="outlined"
-                              component={Link}
-                              to={`/matches/${match._id}`}
-                              fullWidth
-                              sx={{
-                                borderRadius: 3,
-                              }}
-                            >
-                              Vidi detalje
-                            </Button>
-                            {canShowInvitePlayersButton(match) && (
-                              <Button
-                                variant="contained"
-                                color="primary"
-                                component={Link}
-                                to={`/matches/${match._id}?promote=1`}
-                                fullWidth
-                                startIcon={<PeopleIcon />}
-                                sx={{ borderRadius: 3, fontWeight: 700 }}
-                              >
-                                Pozovi igrače
-                              </Button>
-                            )}
-                            {canShowConfirmMatchButton(match) && (
-                              <Button
-                                variant="contained"
-                                color="success"
-                                component={Link}
-                                to={`/matches/${match._id}?confirmMatch=1`}
-                                fullWidth
-                                sx={{ borderRadius: 3 }}
-                              >
-                                Potvrdi meč
-                              </Button>
-                            )}
-                          </Stack>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </>
-              )}
-            </Stack>
-          )}
-
-          {/* Joined Matches Tab */}
-          {activeTab === 1 && (
-            <Stack spacing={2}>
-              {joinedMatches.length === 0 ? (
-                <Alert severity="info" sx={{ borderRadius: 2 }}>
-                  Još niste prijavljeni ni na jedan meč.{' '}
-                  <Link to="/" style={{ color: 'inherit', fontWeight: 600 }}>
-                    Pronađite mečeve na mapi!
-                  </Link>
-                </Alert>
-              ) : (
-                joinedMatches.map((match) => (
-                  <Card key={match._id} elevation={0} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
-                    <CardContent sx={{ p: 3 }}>
-                      <Stack spacing={2}>
-                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
-                          <Stack direction="row" spacing={2} alignItems="center">
-                            <Box sx={{ width: 48, height: 48, borderRadius: 3, bgcolor: 'success.main', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                              <CheckCircleIcon />
-                            </Box>
-                            <Box>
-                              <Typography variant="h6" fontWeight={700}>
-                                {getMatchLocationName(match)}
-                              </Typography>
-                              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                <Chip label={getGameTypeName(match.sport)} size="small" color="primary" />
-                                <Chip label={getMatchStatusLabel(match)} size="small" color={getMatchStatusColor(match)} />
-                              </Stack>
-                            </Box>
-                          </Stack>
-                        </Stack>
-
-                        <Divider />
-
-                        <Stack spacing={1}>
-                          <Typography variant="body2" color="text.secondary">
-                            <strong>Datum:</strong> {formatDateTime(match.dateTime)}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            <strong>Igrači:</strong> {formatPlayersCount(match)}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            <strong>Organizator:</strong> {match.createdBy.name}
-                          </Typography>
-                        </Stack>
-
-                        <Button
-                          variant="outlined"
-                          component={Link}
-                          to={`/matches/${match._id}`}
-                          sx={{ borderRadius: 3, alignSelf: 'flex-start' }}
-                        >
-                          Vidi detalje
-                        </Button>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </Stack>
-          )}
-        </Box>
-      </Paper>
+      )}
     </Box>
   );
 }
