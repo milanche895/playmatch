@@ -1,14 +1,14 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { PlayerRoute } from '@/components/RouteGuards';
+import { AuthRoute } from '@/components/RouteGuards';
 
 const NotificationSettings = dynamic(() => import('@/views/NotificationSettings'), { ssr: false });
 
 export default function Page() {
   return (
-    <PlayerRoute>
+    <AuthRoute>
       <NotificationSettings />
-    </PlayerRoute>
+    </AuthRoute>
   );
 }

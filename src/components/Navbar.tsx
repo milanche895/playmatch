@@ -41,7 +41,7 @@ import InstallButton from "./InstallButton";
 import PlejkoLogo from "./PlejkoLogo";
 import NotificationSetupAlert from "./NotificationSetupAlert";
 import MobileHeader from "./MobileHeader";
-import BottomNav, { BOTTOM_NAV_VISIBLE_PATHS } from "./BottomNav";
+import BottomNav, { BOTTOM_NAV_VISIBLE_PATHS, COURT_BOTTOM_NAV_PATHS } from "./BottomNav";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -123,13 +123,13 @@ export default function Navbar() {
     {
       label: "Obaveštenja",
       path: "/notification-settings",
-      show: !!user && user?.role === "player",
+      show: !!user,
       icon: <NotificationsIcon fontSize="small" />
     },
     {
       label: "Moj Profil",
       path: "/profil",
-      show: !!user && user?.role === "player",
+      show: !!user,
       icon: <PersonIcon fontSize="small" />
     },
     { 
@@ -274,6 +274,9 @@ export default function Navbar() {
   const showBottomNav =
     isMobile && user?.role === "player" && BOTTOM_NAV_VISIBLE_PATHS.includes(location.pathname);
 
+  const showCourtBottomNav =
+    isMobile && user?.role === "court" && COURT_BOTTOM_NAV_PATHS.includes(location.pathname);
+
   // Mobile home (player): screenshot-style header (wordmark + bell) + bottom navigation
   if (showBottomNav && location.pathname === "/") {
     return (
@@ -311,6 +314,11 @@ export default function Navbar() {
       location.pathname === "/notification-settings" ||
       location.pathname === "/profil")
   ) {
+    return <BottomNav />;
+  }
+
+  // Court mobile tabs have their own page headers. Keep player tabs off this bar.
+  if (showCourtBottomNav) {
     return <BottomNav />;
   }
 

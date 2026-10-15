@@ -11,20 +11,31 @@ import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNone
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import PersonOutlineOutlinedIcon from '@mui/icons-material/PersonOutlineOutlined';
 import PersonIcon from '@mui/icons-material/Person';
+import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
+import PlaceIcon from '@mui/icons-material/Place';
 import { Link as RouterLink, useLocation, useNavigate } from '@/lib/router';
+import { useAuth } from '../context/AuthContext';
 
 export const BOTTOM_NAV_HEIGHT = 64;
 
 type Item = { label: string; path: string; Icon: ElementType; ActiveIcon: ElementType };
 
-const ITEMS: Item[] = [
+const PLAYER_ITEMS: Item[] = [
   { label: 'Početna', path: '/', Icon: HomeOutlinedIcon, ActiveIcon: HomeIcon },
   { label: 'Moji mečevi', path: '/moji-mecevi', Icon: EventAvailableOutlinedIcon, ActiveIcon: EventAvailableIcon },
   { label: 'Obaveštenja', path: '/notification-settings', Icon: NotificationsNoneOutlinedIcon, ActiveIcon: NotificationsIcon },
   { label: 'Profil', path: '/profil', Icon: PersonOutlineOutlinedIcon, ActiveIcon: PersonIcon },
 ];
 
-export const BOTTOM_NAV_PATHS = ITEMS.map((i) => i.path);
+const COURT_ITEMS: Item[] = [
+  { label: 'Moja mesta', path: '/manage-fields', Icon: PlaceOutlinedIcon, ActiveIcon: PlaceIcon },
+  { label: 'Moji termini', path: '/moji-termini', Icon: EventAvailableOutlinedIcon, ActiveIcon: EventAvailableIcon },
+  { label: 'Obaveštenja', path: '/notification-settings', Icon: NotificationsNoneOutlinedIcon, ActiveIcon: NotificationsIcon },
+  { label: 'Profil', path: '/profil', Icon: PersonOutlineOutlinedIcon, ActiveIcon: PersonIcon },
+];
+
+export const BOTTOM_NAV_PATHS = PLAYER_ITEMS.map((i) => i.path);
+export const COURT_BOTTOM_NAV_PATHS = COURT_ITEMS.map((i) => i.path);
 
 /** Sub-pages that keep the bottom navigation and highlight their parent tab. */
 const PARENT_TAB: Record<string, string> = { '/moji-igraci': '/profil' };
@@ -32,10 +43,13 @@ const PARENT_TAB: Record<string, string> = { '/moji-igraci': '/profil' };
 /** Every path on which the bottom navigation is shown (tabs + their sub-pages). */
 export const BOTTOM_NAV_VISIBLE_PATHS = [...BOTTOM_NAV_PATHS, ...Object.keys(PARENT_TAB)];
 
-/** Fixed bottom navigation (mobile, players): 2 items, raised create button, 2 items. */
+/** Fixed bottom navigation. Players get a raised create button; court owners get their four tabs. */
 export default function BottomNav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isCourt = user?.role === 'court';
+  const items = isCourt ? COURT_ITEMS : PLAYER_ITEMS;
 
   return (
     <Box
@@ -54,7 +68,7 @@ export default function BottomNav() {
         borderTop: '1px solid #E3E9F3',
       }}
     >
-      {ITEMS.flatMap(({ label, path, Icon, ActiveIcon }, index) => {
+      {items.flatMap(({ label, path, Icon, ActiveIcon }, index) => {
         const active = (PARENT_TAB[pathname] ?? pathname) === path;
         const Glyph = active ? ActiveIcon : Icon;
         const link = (
@@ -81,7 +95,7 @@ export default function BottomNav() {
             {label}
           </Box>
         );
-        if (index !== 1) return [link];
+        if (isCourt || index !== 1) return [link];
         return [
           link,
           <Box key="create" sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

@@ -39,6 +39,22 @@ export function PlayerRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+export function AuthRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      router.replace(`/login?from=${encodeURIComponent(safeFrom(pathname ?? '/'))}`);
+    }
+  }, [loading, user, pathname, router]);
+
+  if (loading || !user) return <Loader />;
+  return <>{children}</>;
+}
+
 export function CourtRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();

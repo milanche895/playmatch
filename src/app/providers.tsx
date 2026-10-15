@@ -20,7 +20,7 @@ import { trackPlayerLocation } from '../lib/location';
 import PostRegisterNotificationDialog from '../components/PostRegisterNotificationDialog';
 import OnboardingTour from '../components/OnboardingTour';
 import { initPushNotifications } from '../lib/notifications';
-import { BOTTOM_NAV_HEIGHT, BOTTOM_NAV_VISIBLE_PATHS } from '../components/BottomNav';
+import { BOTTOM_NAV_HEIGHT, BOTTOM_NAV_VISIBLE_PATHS, COURT_BOTTOM_NAV_PATHS } from '../components/BottomNav';
 import { useLocation } from '../lib/router';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -53,7 +53,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   const isMobile = useMediaQuery('(max-width:899.95px)');
   const hasBottomNav =
-    isMobile && user?.role === 'player' && BOTTOM_NAV_VISIBLE_PATHS.includes(pathname);
+    isMobile &&
+    ((user?.role === 'player' && BOTTOM_NAV_VISIBLE_PATHS.includes(pathname)) ||
+      (user?.role === 'court' && COURT_BOTTOM_NAV_PATHS.includes(pathname)));
 
   useEffect(() => {
     if (user?.role === 'player') {

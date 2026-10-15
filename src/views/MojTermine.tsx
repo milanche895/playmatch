@@ -52,6 +52,13 @@ function translateMatchStatus(status: string): string {
   }
 }
 
+function ownerStatusLabel(match: Match): string {
+  if (match.courtApproval === 'pending' && match.status === 'open') return 'Ekipa se još popunjava';
+  if (match.courtApproval === 'pending' && match.status === 'full') return 'Ekipa je spremna — čeka tvoju potvrdu';
+  if (match.courtApproval === 'approved' && match.status === 'full') return 'Rezervisano';
+  return translateMatchStatus(match.status);
+}
+
 type FreeSlot = {
   fieldId: { _id: string; name: string; sport: string; sports?: string[] };
   dateTime: string;
@@ -77,7 +84,19 @@ type AppointmentsData = {
 };
 
 // Match Card Component
-function MatchCard({ match, onComplete, onCancel }: { match: Match; onComplete?: (id: string) => void; onCancel?: (id: string) => void }) {
+function MatchCard({
+  match,
+  onComplete,
+  onCancel,
+  onApprove,
+  onReject,
+}: {
+  match: Match;
+  onComplete?: (id: string) => void;
+  onCancel?: (id: string) => void;
+  onApprove?: (id: string) => void;
+  onReject?: (id: string) => void;
+}) {
   const navigate = useNavigate();
   
   return (
@@ -107,7 +126,7 @@ function MatchCard({ match, onComplete, onCancel }: { match: Match; onComplete?:
                     <Chip label="Nepoznat sport" size="small" color="primary" />
                   )}
                   <Chip
-                    label={translateMatchStatus(match.status)}
+                    label={ownerStatusLabel(match)}
                     size="small"
                     color={match.status === 'completed' ? 'success' : match.status === 'full' ? 'warning' : match.status === 'open' ? 'info' : match.status === 'failed' || match.status === 'otkazano' ? 'error' : 'default'}
                   />
@@ -159,6 +178,16 @@ function MatchCard({ match, onComplete, onCancel }: { match: Match; onComplete?:
 
           {/* Actions */}
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            {match.courtApproval === 'pending' && onApprove && onReject && (
+              <>
+                <Button variant="contained" size="small" color="success" onClick={() => onApprove(match._id)} startIcon={<CheckCircleIcon />} sx={{ borderRadius: 3 }}>
+                  Potvrdi termin
+                </Button>
+                <Button variant="outlined" size="small" color="error" onClick={() => onReject(match._id)} startIcon={<CancelIcon />} sx={{ borderRadius: 3 }}>
+                  Odbij
+                </Button>
+              </>
+            )}
             <Button variant="outlined" size="small" onClick={() => navigate(`/matches/${match._id}`)} sx={{ borderRadius: 3 }}>
               Vidi detalje
             </Button>
@@ -276,6 +305,25 @@ export default function MojTermine() {
     } catch (err: any) { alert(err.response?.data?.message || 'Greška pri označavanju termina'); }
   }
 
+  async function handleApproveMatch(matchId: string) {
+    try {
+      await api.post(`/api/courts/matches/${matchId}/approve`);
+      await loadAppointments();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Greška pri potvrdi termina');
+    }
+  }
+
+  async function handleRejectMatch(matchId: string) {
+    if (!window.confirm('Odbijanjem se ovaj termin otkazuje. Nastaviti?')) return;
+    try {
+      await api.post(`/api/courts/matches/${matchId}/reject`);
+      await loadAppointments();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Greška pri odbijanju termina');
+    }
+  }
+
   if (loading) return <Box display="flex" justifyContent="center" p={8}><CircularProgress /></Box>;
   if (error) return <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>;
 
@@ -314,9 +362,11 @@ export default function MojTermine() {
       {activeTab === 1 && (
         <Stack spacing={3}>
           {appointments.pending.length === 0 ? (
-            <Alert severity="info" sx={{ borderRadius: 2 }}>Nema termina na čekanju za danas.</Alert>
+            <Alert severity="info" sx={{ borderRadius: 2 }}>Nema termina koji čekaju tvoju potvrdu.</Alert>
           ) : (
-            appointments.pending.map(match => <MatchCard key={match._id} match={match} />)
+            appointments.pending.map(match => (
+              <MatchCard key={match._id} match={match} onApprove={handleApproveMatch} onReject={handleRejectMatch} />
+            ))
           )}
         </Stack>
       )}

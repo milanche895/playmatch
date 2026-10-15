@@ -8,6 +8,7 @@ const NOTIFICATION_TYPES = [
   'reminder',
   'court_approved',
   'court_rejected',
+  'team_ready',
 ];
 
 // In-app notification feed ("Obaveštenja" screen). Titles are derived from `type` on the client.
@@ -19,6 +20,8 @@ const notificationSchema = new mongoose.Schema(
     sport: { type: String },
     locationName: { type: String },
     matchDateTime: { type: Date },
+    playerCount: { type: Number },
+    fieldId: { type: mongoose.Schema.Types.ObjectId, ref: 'Field' },
     readAt: { type: Date },
   },
   { timestamps: { createdAt: true, updatedAt: false } }
