@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AppBar,
   Toolbar,
@@ -17,6 +17,7 @@ import {
   useTheme,
   useMediaQuery,
   Avatar,
+  Badge,
   Tooltip,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
@@ -34,6 +35,9 @@ import LightModeIcon from "@mui/icons-material/LightMode";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import PersonAddAltOutlinedIcon from "@mui/icons-material/PersonAddAltOutlined";
+import NotificationsNoneOutlinedIcon from "@mui/icons-material/NotificationsNoneOutlined";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import api from "@/lib/api";
 import { Link as RouterLink, useNavigate, useLocation } from '@/lib/router';
 import { useAuth } from "../context/AuthContext";
 import { useThemeMode } from "../context/ThemeContext";
@@ -42,6 +46,70 @@ import PlejkoLogo from "./PlejkoLogo";
 import NotificationSetupAlert from "./NotificationSetupAlert";
 import MobileHeader from "./MobileHeader";
 import BottomNav, { BOTTOM_NAV_VISIBLE_PATHS, COURT_BOTTOM_NAV_PATHS } from "./BottomNav";
+
+/** Court mobile header actions: notification bell (red dot when unread) + profile shortcut. */
+function CourtHeaderActions() {
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ unreadCount?: number }>("/api/notifications")
+      .then((res) => {
+        if (!cancelled) setUnread(res.data?.unreadCount ?? 0);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mr: "-4px" }}>
+      <IconButton
+        component={RouterLink}
+        to="/notification-settings"
+        aria-label="Obaveštenja"
+        sx={{ color: "primary.main", p: 0.75 }}
+      >
+        <Badge
+          variant="dot"
+          invisible={unread === 0}
+          sx={{
+            "& .MuiBadge-badge": {
+              bgcolor: "#EF4444",
+              width: 9,
+              height: 9,
+              minWidth: 9,
+              borderRadius: "50%",
+              top: 3,
+              right: 3,
+              border: "1.5px solid #F4F7FC",
+              boxSizing: "content-box",
+            },
+          }}
+        >
+          <NotificationsNoneOutlinedIcon sx={{ fontSize: 28 }} />
+        </Badge>
+      </IconButton>
+      <IconButton
+        component={RouterLink}
+        to="/profil"
+        aria-label="Profil"
+        sx={{
+          width: 40,
+          height: 40,
+          bgcolor: "#fff",
+          border: "1px solid #E3E9F3",
+          color: "primary.main",
+          "&:hover": { bgcolor: "#fff" },
+        }}
+      >
+        <PersonOutlineIcon sx={{ fontSize: 24 }} />
+      </IconButton>
+    </Box>
+  );
+}
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -317,7 +385,20 @@ export default function Navbar() {
     return <BottomNav />;
   }
 
-  // Court mobile tabs have their own page headers. Keep player tabs off this bar.
+  // Court "Moja mesta" / "Moji termini": logo + bell + profile header, court bottom navigation
+  if (
+    showCourtBottomNav &&
+    (location.pathname === "/manage-fields" || location.pathname === "/moji-termini")
+  ) {
+    return (
+      <>
+        <MobileHeader action={<CourtHeaderActions />} />
+        <BottomNav />
+      </>
+    );
+  }
+
+  // Other court mobile tabs have their own page headers
   if (showCourtBottomNav) {
     return <BottomNav />;
   }

@@ -99,7 +99,7 @@ function notificationHref(n: AppNotification): string {
   if (n.fieldId) params.set('field', n.fieldId);
   if (n.matchId) params.set('match', n.matchId);
   const query = params.toString();
-  return query ? `/manage-fields?${query}` : '/manage-fields';
+  return query ? `/moji-termini?${query}` : '/moji-termini';
 }
 
 export default function NotificationSettings() {
