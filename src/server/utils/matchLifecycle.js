@@ -13,11 +13,27 @@ function getMinPlayersValue(match) {
 /**
  * Mark the match full once the minimum is reached.
  * Court approval stays whatever the owner (or creation flow) set.
+ * @returns {{ becameFull: boolean }} true only on a real open -> full transition
  */
 function applyFullStatus(match) {
+  const wasFull = match.status === 'full';
   if ((match.players || []).length >= getMinPlayersValue(match)) {
     match.status = 'full';
   }
+  return { becameFull: !wasFull && match.status === 'full' };
+}
+
+/**
+ * Owner "Ekipa je spremna" is only for a formal match that still needs approval
+ * on a field that has an owner. `courtOwner` is the loaded owner id, or empty.
+ */
+function shouldSendTeamReady(match, courtOwner) {
+  if (!match || match.isInformal) return false;
+  if (match.courtApproval !== 'pending') return false;
+  const field = match.fieldId;
+  const fieldId = field && field._id ? field._id : field;
+  if (!fieldId) return false;
+  return Boolean(courtOwner);
 }
 
 /**
@@ -65,6 +81,7 @@ module.exports = {
   isMatchAtCapacity,
   getMinPlayersValue,
   applyFullStatus,
+  shouldSendTeamReady,
   applyOpenStatusIfBelowMin,
   getMatchAccessBlock,
   getCourtCompleteBlock,

@@ -30,7 +30,7 @@ const {
   applyOpenStatusIfBelowMin,
   getMatchAccessBlock,
 } = require('../utils/matchLifecycle');
-const { notifyUsers } = require('../utils/inAppNotifications');
+const { notifyUsers, notifyMatchBecameFull } = require('../utils/inAppNotifications');
 
 const PLAYER_PUBLIC_FIELDS = 'name avatarUrl ratingAvg reliabilityScore sportSkillLevels';
 
@@ -78,11 +78,13 @@ async function notifyWaitlistPromotion(user, match) {
 /**
  * Promote the first eligible waitlisted player into players[].
  * Mutates match in memory; caller must save.
- * @returns {Promise<string|null>} promoted user id or null
+ * @returns {Promise<{ promotedUserId: string|null, becameFull: boolean }>}
  */
 async function promoteFromWaitlist(match) {
-  if (!Array.isArray(match.waitlist) || match.waitlist.length === 0) return null;
-  if (isMatchAtCapacity(match)) return null;
+  if (!Array.isArray(match.waitlist) || match.waitlist.length === 0) {
+    return { promotedUserId: null, becameFull: false };
+  }
+  if (isMatchAtCapacity(match)) return { promotedUserId: null, becameFull: false };
 
   const creator = await User.findById(match.createdBy).select('blockedPlayers');
   const blocked = new Set((creator?.blockedPlayers || []).map((id) => id.toString()));
@@ -98,7 +100,7 @@ async function promoteFromWaitlist(match) {
     if (!user || user.role === 'court') continue;
 
     match.players.push(nextId);
-    applyFullStatus(match);
+    const lifecycle = applyFullStatus(match);
 
     if (match.playerCancellations?.length > 0) {
       match.playerCancellations = match.playerCancellations.filter(
@@ -113,10 +115,10 @@ async function promoteFromWaitlist(match) {
     }
 
     await notifyWaitlistPromotion(user, matchForNotify);
-    return nextIdStr;
+    return { promotedUserId: nextIdStr, becameFull: lifecycle.becameFull };
   }
 
-  return null;
+  return { promotedUserId: null, becameFull: false };
 }
 
 async function findPopulatedMatch(matchId) {
@@ -728,7 +730,13 @@ function matchesRoutesFactory(io) {
         matchData.fieldId = fieldId;
       }
 
+      // Organizer already counts. minPlayers === 1 (or any roster that is already enough)
+      // must become full on create, not stay open until a later join.
+      const lifecycle = applyFullStatus(matchData);
       const match = await Match.create(matchData);
+      if (lifecycle.becameFull) {
+        void notifyMatchBecameFull(match);
+      }
       const populated = await findPopulatedMatch(match._id);
 
       // Send push notifications to nearby players (non-blocking)
@@ -811,15 +819,14 @@ function matchesRoutesFactory(io) {
       }
     }
     // Check if minimum players requirement is met - reserve the slot when minPlayers is reached
-    const statusBeforeJoin = match.status;
-    applyFullStatus(match);
+    const lifecycle = applyFullStatus(match);
     await match.save();
 
     // In-app notification feed: organizer learns about the new player; everyone when the match fills up
     if (!already) {
       void notifyUsers(match, 'player_joined', [match.createdBy], { excludeUserId: req.user.id });
-      if (statusBeforeJoin !== 'full' && match.status === 'full') {
-        void notifyUsers(match, 'match_full', match.players);
+      if (lifecycle.becameFull) {
+        void notifyMatchBecameFull(match);
       }
     }
 
@@ -864,13 +871,16 @@ function matchesRoutesFactory(io) {
       match.players.splice(playerIndex, 1);
       removePlayerPayment(match, req.user.id);
 
-      const promoted = await promoteFromWaitlist(match);
-      if (!promoted) {
-        applyOpenStatusIfBelowMin(match);
-      }
+      // Re-open before promotion so a waitlisted player who restores the minimum
+      // is a new open -> full event (same helper as join).
+      applyOpenStatusIfBelowMin(match);
+      const promotion = await promoteFromWaitlist(match);
 
       await match.save();
       void notifyUsers(match, 'player_left', [match.createdBy], { excludeUserId: req.user.id });
+      if (promotion.becameFull) {
+        void notifyMatchBecameFull(match);
+      }
       const populated = await findPopulatedMatch(match._id);
 
       // Check if populated match has valid location
@@ -928,13 +938,16 @@ function matchesRoutesFactory(io) {
       match.players.splice(playerIndex, 1);
       removePlayerPayment(match, req.user.id);
 
-      const promoted = await promoteFromWaitlist(match);
-      if (!promoted) {
-        applyOpenStatusIfBelowMin(match);
-      }
+      // Re-open before promotion so a waitlisted player who restores the minimum
+      // is a new open -> full event (same helper as join).
+      applyOpenStatusIfBelowMin(match);
+      const promotion = await promoteFromWaitlist(match);
 
       await match.save();
       void notifyUsers(match, 'player_left', [match.createdBy], { excludeUserId: req.user.id });
+      if (promotion.becameFull) {
+        void notifyMatchBecameFull(match);
+      }
       const populated = await findPopulatedMatch(match._id);
 
       // Check if populated match has valid location

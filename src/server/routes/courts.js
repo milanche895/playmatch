@@ -56,11 +56,13 @@ router.post('/matches/:id/approve', auth(true), requireCourt, async (req, res) =
       return res.status(403).json({ message: 'Ne posedujete ovaj teren' });
     }
     
-    match.courtApproval = 'approved';
-    match.courtApprovedBy = req.user.id;
-    match.courtApprovedAt = new Date();
-    await match.save();
-    void notifyUsers(match, 'court_approved', [match.createdBy]);
+    if (match.courtApproval !== 'approved') {
+      match.courtApproval = 'approved';
+      match.courtApprovedBy = req.user.id;
+      match.courtApprovedAt = new Date();
+      await match.save();
+      void notifyUsers(match, 'court_approved', [...(match.players || []), match.createdBy]);
+    }
     
     const populated = await Match.findById(match._id)
       .populate('fieldId')
@@ -276,21 +278,8 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
       });
     }
     
-    // Get today's date range (start and end of today) - for pending and free slots
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(today);
-    todayEnd.setHours(23, 59, 59, 999);
-    
-    // Get all matches for today (for pending and free slots)
-    const todayMatches = await Match.find({
-      fieldId: { $in: fieldIds },
-      dateTime: { $gte: today, $lte: todayEnd }
-    })
-      .populate('fieldId', 'name sports')
-      .populate('players', 'name')
-      .populate('createdBy', 'name')
-      .sort({ dateTime: 1 });
 
     // Rezervisani termini: svi full termini koji su approved i NISU završeni (completed)
     // Uzimamo SVE termine bez obzira na datum - samo oni koji još nisu završeni
@@ -306,11 +295,18 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
     
     const reserved = allReservedMatches;
     
-    // Termini na čekanju: pending approval (samo za danas)
-    const pending = todayMatches.filter(m => 
-      m.courtApproval === 'pending' && 
-      m.status !== 'otkazano'
-    );
+    // Upcoming matches still waiting for the court. Not limited to today,
+    // otherwise a ready team later in the week cannot be confirmed here.
+    const pending = await Match.find({
+      fieldId: { $in: fieldIds },
+      courtApproval: 'pending',
+      status: { $nin: ['otkazano', 'failed', 'completed'] },
+      dateTime: { $gte: today },
+    })
+      .populate('fieldId', 'name sports')
+      .populate('players', 'name')
+      .populate('createdBy', 'name')
+      .sort({ dateTime: 1 });
     
     // For free slots calculation, we need all matches in a wider range
     const start = startDate ? new Date(startDate) : new Date();
@@ -329,9 +325,7 @@ router.get('/appointments', auth(true), requireCourt, async (req, res) => {
     // Calculate free slots - ONLY FOR TODAY
     const free = [];
     const matchDuration = 60 * 60 * 1000; // 60 minutes in milliseconds
-    
-    // Use already declared today and todayEnd variables from above
-    
+
     // For each field, calculate free slots for today only
     for (const field of fields) {
       const fieldMatches = matches.filter(m => m.fieldId._id.toString() === field._id.toString());

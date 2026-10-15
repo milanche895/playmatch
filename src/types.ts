@@ -108,7 +108,8 @@ export type AppNotificationType =
   | 'player_left'
   | 'reminder'
   | 'court_approved'
-  | 'court_rejected';
+  | 'court_rejected'
+  | 'team_ready';
 
 /** In-app notification feed entry (GET /api/notifications). */
 export type AppNotification = {
@@ -118,6 +119,8 @@ export type AppNotification = {
   sport?: string;
   locationName?: string;
   matchDateTime?: string;
+  playerCount?: number;
+  fieldId?: string;
   createdAt: string;
   readAt?: string;
 };

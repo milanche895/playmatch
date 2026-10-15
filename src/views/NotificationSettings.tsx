@@ -22,12 +22,15 @@ import {
   EventNote as EventNoteIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
+  HowToReg as HowToRegIcon,
 } from '@mui/icons-material';
 import { useNavigate } from '@/lib/router';
 import api from '../lib/api';
 import { AppNotification, AppNotificationType } from '../types';
 import { getGameTypeName } from '../constants/games';
 import { getNotificationStatus } from '../lib/notifications';
+import { formatCourtApprovedMessage, formatTeamReadyMessage } from '../lib/teamReadyMessage';
+import { useAuth } from '../context/AuthContext';
 
 type FeedItem = AppNotification & { unread: boolean };
 
@@ -39,6 +42,7 @@ const TYPE_CONFIG: Record<AppNotificationType, { title: string; Icon: ElementTyp
   reminder: { title: 'Podsetnik', Icon: EventNoteIcon, color: '#6B7A99', bg: '#EAEFF7' },
   court_approved: { title: 'Teren je potvrdio termin', Icon: CheckCircleIcon, color: '#16A34A', bg: '#E3F6EA' },
   court_rejected: { title: 'Teren je odbio termin', Icon: CancelIcon, color: '#E5484D', bg: '#FDE6E6' },
+  team_ready: { title: 'Ekipa je spremna', Icon: HowToRegIcon, color: '#16A34A', bg: '#E3F6EA' },
 };
 
 /** Serbian plural: 1 → one, 2–4 → few, rest → many (11–14 always many). */
@@ -71,13 +75,37 @@ function reminderText(matchDateTime?: string): string {
 }
 
 function subtitleFor(n: AppNotification): string {
+  if (n.type === 'team_ready') {
+    return formatTeamReadyMessage({
+      playerCount: n.playerCount,
+      matchDateTime: n.matchDateTime,
+      locationName: n.locationName,
+    });
+  }
+  if (n.type === 'court_approved') {
+    return formatCourtApprovedMessage({
+      matchDateTime: n.matchDateTime,
+      locationName: n.locationName,
+    });
+  }
   if (n.type === 'reminder') return reminderText(n.matchDateTime);
   const sport = n.sport ? getGameTypeName(n.sport) : 'Meč';
   return n.locationName ? `${sport} · ${n.locationName}` : sport;
 }
 
+function notificationHref(n: AppNotification): string {
+  if (n.type !== 'team_ready') return `/matches/${n.matchId}`;
+  const params = new URLSearchParams();
+  if (n.fieldId) params.set('field', n.fieldId);
+  if (n.matchId) params.set('match', n.matchId);
+  const query = params.toString();
+  return query ? `/manage-fields?${query}` : '/manage-fields';
+}
+
 export default function NotificationSettings() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isCourt = user?.role === 'court';
   const [feed, setFeed] = useState<FeedItem[] | null>(null);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -124,7 +152,7 @@ export default function NotificationSettings() {
         <Typography component="h1" sx={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', color: '#0B1B3F' }}>
           Obaveštenja
         </Typography>
-        <IconButton
+        {!isCourt && <IconButton
           aria-label="Postavke obaveštenja"
           onClick={openPreferences}
           edge="end"
@@ -147,7 +175,7 @@ export default function NotificationSettings() {
           >
             <SettingsOutlinedIcon sx={{ fontSize: 26 }} />
           </Badge>
-        </IconButton>
+        </IconButton>}
       </Stack>
 
       {feedError && (
@@ -165,9 +193,11 @@ export default function NotificationSettings() {
           <NotificationsIcon sx={{ fontSize: 40, color: '#C3D0E6', mb: 1 }} />
           <Typography sx={{ fontSize: 16, fontWeight: 700, color: '#0B1B3F' }}>Još nema obaveštenja</Typography>
           <Typography sx={{ fontSize: 14, color: '#6B7A99', mt: 0.5 }}>
-            Ovde ćeš videti prijave igrača, popunjene mečeve i podsetnike.
+            {isCourt
+              ? 'Ovde ćeš videti kada je ekipa spremna i čeka tvoju potvrdu.'
+              : 'Ovde ćeš videti prijave igrača, popunjene mečeve i podsetnike.'}
           </Typography>
-          {needsSetup && (
+          {needsSetup && !isCourt && (
             <Button sx={{ mt: 1.5, fontWeight: 700, borderRadius: '12px' }} onClick={openPreferences}>
               Uključi obaveštenja
             </Button>
@@ -181,7 +211,7 @@ export default function NotificationSettings() {
             return (
               <ButtonBase
                 key={n._id}
-                onClick={() => navigate(`/matches/${n.matchId}`)}
+                onClick={() => navigate(notificationHref(n))}
                 sx={{
                   width: '100%',
                   display: 'flex',
@@ -223,7 +253,17 @@ export default function NotificationSettings() {
                       />
                     )}
                   </Stack>
-                  <Typography noWrap sx={{ fontSize: 14, lineHeight: 1.4, color: '#4A5878' }}>
+                  <Typography
+                    sx={{
+                      fontSize: 14,
+                      lineHeight: 1.4,
+                      color: '#4A5878',
+                      display: '-webkit-box',
+                      WebkitLineClamp: n.type === 'team_ready' || n.type === 'court_approved' ? 3 : 1,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
                     {subtitleFor(n)}
                   </Typography>
                   <Typography sx={{ fontSize: 13, lineHeight: 1.4, color: '#8A94A6' }}>

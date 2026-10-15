@@ -39,7 +39,7 @@ import MyLocationIcon from '@mui/icons-material/MyLocation';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { useNavigate } from '@/lib/router';
+import { useNavigate, useSearchParams } from '@/lib/router';
 import api from '../lib/api';
 import { parseIntegerInput, parseNumberInput, selectNumberField, toNumberOr } from '../lib/numberInput';
 import { Field, Match } from '../types';
@@ -91,6 +91,9 @@ type Appointments = {
 export default function ManageFields() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const focusFieldId = searchParams.get('field');
+  const focusMatchId = searchParams.get('match');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [fields, setFields] = useState<Field[]>([]);
@@ -143,6 +146,26 @@ export default function ManageFields() {
       setLoadingAppointments(prev => ({ ...prev, [fieldId]: false }));
     }
   }
+
+  useEffect(() => {
+    if (!focusFieldId || fields.length === 0) return;
+    if (!fields.some((field) => field._id === focusFieldId)) return;
+    setExpandedFields((prev) => {
+      if (prev.has(focusFieldId)) return prev;
+      const next = new Set(prev);
+      next.add(focusFieldId);
+      return next;
+    });
+    loadAppointments(focusFieldId);
+  }, [focusFieldId, fields]);
+
+  useEffect(() => {
+    if (!focusMatchId && !focusFieldId) return;
+    const node = document.getElementById(
+      focusMatchId ? `pending-match-${focusMatchId}` : `field-${focusFieldId}`
+    );
+    node?.scrollIntoView({ block: 'center' });
+  }, [focusMatchId, focusFieldId, appointments]);
 
   function toggleFieldExpanded(fieldId: string) {
     setExpandedFields(prev => {
@@ -405,7 +428,7 @@ export default function ManageFields() {
             const isLoading = loadingAppointments[field._id];
             
             return (
-              <Card key={field._id} elevation={0} sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
+              <Card id={`field-${field._id}`} key={field._id} elevation={0} sx={{ borderRadius: 4, border: '1px solid', borderColor: 'divider' }}>
                 <CardContent sx={{ p: 3 }}>
                   <Stack spacing={2}>
                     {/* Header */}
@@ -492,28 +515,59 @@ export default function ManageFields() {
                                 Na čekanju ({fieldAppointments.pending.length})
                               </Typography>
                               <Stack spacing={2}>
-                                {fieldAppointments.pending.map((match) => (
-                                  <Paper key={match._id} elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
-                                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
-                                      <Box>
-                                        <Typography variant="body1" fontWeight={600}>
-                                          {formatDateTime(match.dateTime)}
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                          Kreirao: {match.createdBy.name} • Igrači: {formatPlayersCount(match)}
-                                        </Typography>
-                                      </Box>
-                                      <Stack direction="row" spacing={1}>
-                                        <Button size="small" variant="contained" color="success" startIcon={<CheckCircleIcon />} onClick={() => handleApprove(match._id, field._id)}>
-                                          Odobri
-                                        </Button>
-                                        <Button size="small" variant="outlined" color="error" startIcon={<CancelIcon />} onClick={() => handleReject(match._id, field._id)}>
-                                          Odbij
-                                        </Button>
-                                      </Stack>
-                                    </Stack>
-                                  </Paper>
-                                ))}
+                                {[...fieldAppointments.pending]
+                                  .sort((a, b) => {
+                                    const rank = (m: Match) => (m.status === 'full' ? 0 : 1);
+                                    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+                                    return new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime();
+                                  })
+                                  .map((match) => {
+                                    const ready = match.status === 'full';
+                                    const roster = `${match.players?.length || 0}/${match.minPlayers ?? match.playersNeeded} igrača`;
+                                    const focused = focusMatchId === match._id;
+                                    return (
+                                      <Paper
+                                        id={`pending-match-${match._id}`}
+                                        key={match._id}
+                                        elevation={0}
+                                        sx={{
+                                          p: 3,
+                                          borderRadius: 3,
+                                          border: '1px solid',
+                                          borderColor: focused || ready ? 'primary.main' : 'divider',
+                                          bgcolor: ready ? 'action.selected' : 'background.paper',
+                                        }}
+                                      >
+                                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
+                                          <Box>
+                                            <Typography variant="body2" color="text.secondary">
+                                              {formatDateTime(match.dateTime)}
+                                              {match.createdBy?.name ? ` • ${match.createdBy.name}` : ''}
+                                            </Typography>
+                                            <Typography variant="body1" fontWeight={ready ? 800 : 600} sx={{ mt: 0.5 }}>
+                                              {ready ? 'Ekipa je spremna' : match.status === 'open' ? 'Ekipa se još popunjava.' : 'Na čekanju'}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                              {roster}
+                                            </Typography>
+                                            {ready && (
+                                              <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>
+                                                Čekaju tvoju potvrdu termina.
+                                              </Typography>
+                                            )}
+                                          </Box>
+                                          <Stack direction="row" spacing={1}>
+                                            <Button size="small" variant="contained" color="success" startIcon={<CheckCircleIcon />} onClick={() => handleApprove(match._id, field._id)}>
+                                              Potvrdi
+                                            </Button>
+                                            <Button size="small" variant="outlined" color="error" startIcon={<CancelIcon />} onClick={() => handleReject(match._id, field._id)}>
+                                              Odbij
+                                            </Button>
+                                          </Stack>
+                                        </Stack>
+                                      </Paper>
+                                    );
+                                  })}
                               </Stack>
                             </Grid>
                           )}
