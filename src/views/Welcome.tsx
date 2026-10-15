@@ -66,7 +66,7 @@ export default function Welcome() {
         }}
       >
         <Stack alignItems="center" spacing={2.5}>
-          <PlejkoLogo size="lg" showTagline align="center" />
+          <PlejkoLogo size="lg" layout="stacked" showTagline align="center" />
           <Typography variant="h4" fontWeight={800}>
             Dobrodošao/la u Plejko
             {user.name ? `, ${user.name.split(' ')[0]}` : ''}!

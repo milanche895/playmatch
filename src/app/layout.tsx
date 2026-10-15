@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: '/icons/icon-192.png',
-    apple: '/icons/icon-192.png',
+    apple: '/icons/apple-touch-icon.png',
   },
   manifest: '/manifest.json',
 };
@@ -22,7 +22,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: '#050A18',
+  themeColor: '#F4F7FC',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

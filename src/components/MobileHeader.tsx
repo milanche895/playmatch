@@ -4,8 +4,9 @@ import type { ReactNode } from 'react';
 import { AppBar, Badge, Box, IconButton, Toolbar } from '@mui/material';
 import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined';
 import { Link as RouterLink } from '@/lib/router';
+import PlejkoLogo from './PlejkoLogo';
 
-/** Mobile top bar: blue "Plejko" wordmark on the left, notification bell (or a custom `action`) on the right. */
+/** Mobile top bar: Plejko logo (mark + wordmark) on the left, notification bell (or a custom `action`) on the right. */
 export default function MobileHeader({ showBellDot = false, action }: { showBellDot?: boolean; action?: ReactNode }) {
   return (
     <AppBar
@@ -23,16 +24,9 @@ export default function MobileHeader({ showBellDot = false, action }: { showBell
           component={RouterLink}
           to="/"
           aria-label="Plejko — početna"
-          sx={{
-            textDecoration: 'none',
-            color: 'primary.main',
-            fontSize: 30,
-            fontWeight: 800,
-            letterSpacing: '-0.02em',
-            lineHeight: 1,
-          }}
+          sx={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
         >
-          Plejko
+          <PlejkoLogo size="sm" />
         </Box>
         {action ?? (
         <IconButton

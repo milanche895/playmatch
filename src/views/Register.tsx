@@ -1,32 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  Stack,
-  Typography,
-  TextField,
-  Button,
-  Alert,
-  Box,
-  Paper,
-  InputAdornment,
-  IconButton,
-  LinearProgress,
-} from '@mui/material';
+import { Stack, Typography, Button, Alert, Box, Paper, Checkbox } from '@mui/material';
 import { useNavigate, Link, useSearchParams } from '@/lib/router';
 import { useAuth } from '../context/AuthContext';
-import PersonIcon from '@mui/icons-material/Person';
+import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
+import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import EmailIcon from '@mui/icons-material/Email';
-import LockIcon from '@mui/icons-material/Lock';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import GoogleIcon from '@mui/icons-material/Google';
 import FacebookIcon from '@mui/icons-material/Facebook';
 import SportsIcon from '@mui/icons-material/Sports';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import PlejkoLogo from '../components/PlejkoLogo';
+import { AuthShell, AuthField, AUTH_CONTROL_HEIGHT } from '../components/auth/AuthParts';
 import PreferredGamesPicker from '../components/PreferredGamesPicker';
 import { markOnboardingTourPending } from '../lib/onboardingTour';
 
@@ -94,7 +81,8 @@ export default function Register() {
   const [name, setName] = useState(() => readDraft()?.name ?? '');
   const [email, setEmail] = useState(() => readDraft()?.email ?? '');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -119,8 +107,9 @@ export default function Register() {
   if ((step === 'games' || step === 'account') && !activeRole) step = activeMethod ? 'role' : 'method';
   if (step !== 'method' && !activeMethod) step = 'method';
 
-  const stepIndex = Math.max(0, steps.indexOf(step));
-  const progress = ((stepIndex + 1) / steps.length) * 100;
+  // Progress dots cover the steps after the method choice (role → games → account)
+  const dotSteps: Step[] = steps.filter((s) => s !== 'method');
+  const dotIndex = dotSteps.indexOf(step);
 
   function buildRegisterUrl(next: Step, nextMethod = activeMethod, nextRole = activeRole) {
     const params = new URLSearchParams();
@@ -146,7 +135,10 @@ export default function Register() {
   }
 
   function handleBack() {
-    if (step === 'role') goTo('method');
+    if (step === 'method') {
+      if (typeof window !== 'undefined' && window.history.length > 1) navigate(-1);
+      else navigate('/');
+    } else if (step === 'role') goTo('method');
     else if (step === 'games') goTo('role');
     else if (step === 'account') goTo('games');
   }
@@ -197,6 +189,15 @@ export default function Register() {
       return;
     }
 
+    if (password !== confirmPassword) {
+      setError('Lozinke se ne poklapaju');
+      return;
+    }
+    if (!acceptedTerms) {
+      setError('Prihvati Uslove korišćenja i Politiku privatnosti da nastaviš');
+      return;
+    }
+
     setLoading(true);
     try {
       await register(name, email, password, activeRole, preferredGames, referralId);
@@ -230,273 +231,236 @@ export default function Register() {
           : 'Otvori kategoriju i izaberi igre koje te zanimaju — može više',
     },
     account: {
-      heading: 'Napravi nalog',
-      subtitle: 'Unesi ime, email i lozinku da završiš registraciju',
+      heading: 'Kreiraj nalog',
+      subtitle: 'Popuni osnovne informacije da kreiraš svoj Plejko nalog.',
     },
   };
 
-  return (
-    <Box
-      sx={{
-        minHeight: 'calc(100vh - 200px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        py: 4,
-      }}
-    >
-      <Paper
-        elevation={0}
+  const loginFooter = (
+    <Typography sx={{ fontSize: 15, color: 'text.secondary', fontWeight: 400 }}>
+      Već imaš nalog?{' '}
+      <Box
+        component={Link}
+        to="/login"
         sx={{
-          width: '100%',
-          maxWidth: 560,
-          p: { xs: 3, sm: 5 },
-          borderRadius: 4,
-          border: '1px solid',
-          borderColor: 'divider',
-          backgroundImage: `linear-gradient(180deg, rgba(212,0,255,0.06) 0%, transparent 35%)`,
+          color: 'primary.main',
+          fontWeight: 700,
+          textDecoration: 'none',
+          '&:hover': { textDecoration: 'underline' },
         }}
       >
-        <Box sx={{ textAlign: 'center', mb: 3 }}>
-          <Stack alignItems="center" sx={{ mb: 2 }}>
-            <PlejkoLogo size="md" showTagline align="center" />
-          </Stack>
-          <Typography variant="h4" fontWeight={800} sx={{ mb: 1 }}>
-            {titles[step].heading}
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            {titles[step].subtitle}
-          </Typography>
-        </Box>
+        Uloguj se
+      </Box>
+    </Typography>
+  );
 
-        <Box sx={{ mb: 3 }}>
-          <LinearProgress
-            variant="determinate"
-            value={progress}
-            sx={{ height: 6, borderRadius: 3, mb: 1 }}
+  const primaryButtonSx = {
+    height: AUTH_CONTROL_HEIGHT,
+    borderRadius: '14px',
+    fontSize: 16,
+    fontWeight: 700,
+  };
+
+  return (
+    <AuthShell
+      title={titles[step].heading}
+      subtitle={titles[step].subtitle}
+      maxWidth={step === 'games' ? 560 : 440}
+      onBack={loading ? undefined : handleBack}
+      progress={
+        step !== 'method' && dotIndex >= 0
+          ? { total: dotSteps.length, current: dotIndex + 1 }
+          : undefined
+      }
+      footer={step === 'account' ? undefined : loginFooter}
+    >
+      {error && (
+        <Alert severity="error" sx={{ mb: '18px', borderRadius: '12px' }}>
+          {error}
+        </Alert>
+      )}
+
+      {referralId && step !== 'method' && (
+        <Alert severity="success" sx={{ mb: '18px', borderRadius: '12px' }}>
+          Registrovan si preko pozivnice — ti i prijatelj dobijate +2 kredita posle tvog prvog
+          odigranog meča.
+        </Alert>
+      )}
+
+      {step === 'method' && (
+        <Stack spacing={1.5}>
+          <MethodCard
+            icon={<EmailIcon />}
+            title="Email i lozinka"
+            description="Klasična registracija sa tvojim emailom"
+            selected={method === 'email'}
+            onClick={() => handleMethodSelect('email')}
           />
-          <Typography variant="caption" color="text.secondary">
-            Korak {stepIndex + 1} / {steps.length}
-          </Typography>
-        </Box>
+          <MethodCard
+            icon={<GoogleIcon />}
+            title="Google"
+            description="Brza registracija preko Gmail naloga"
+            selected={method === 'google'}
+            onClick={() => handleMethodSelect('google')}
+          />
+          <MethodCard
+            icon={<FacebookIcon />}
+            title="Facebook"
+            description="Registruj se preko Facebook naloga"
+            selected={method === 'facebook'}
+            onClick={() => handleMethodSelect('facebook')}
+          />
+        </Stack>
+      )}
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
-            {error}
-          </Alert>
-        )}
+      {step === 'role' && (
+        <Stack spacing={1.5}>
+          <RoleCard
+            icon={<SportsIcon sx={{ fontSize: 28 }} />}
+            title="Igrač"
+            description="Tražim mečeve i mesta za igru"
+            selected={activeRole === 'player'}
+            onClick={() => handleRoleSelect('player')}
+          />
+          <RoleCard
+            icon={<LocationOnIcon sx={{ fontSize: 28 }} />}
+            title="Teren"
+            description="Nudim teren ili prostor za sport, kviz, društvene igre ili gaming"
+            selected={activeRole === 'court'}
+            onClick={() => handleRoleSelect('court')}
+          />
+        </Stack>
+      )}
 
-        {referralId && step !== 'method' && (
-          <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
-            Registrovan si preko pozivnice — ti i prijatelj dobijate +2 kredita posle tvog prvog
-            odigranog meča.
-          </Alert>
-        )}
-
-        {step !== 'method' && (
-          <Button
-            startIcon={<ArrowBackIcon />}
-            onClick={handleBack}
-            disabled={loading}
-            sx={{ mb: 2, px: 0 }}
+      {step === 'games' && (
+        <Stack spacing={3}>
+          <Box
+            sx={{
+              p: 2,
+              borderRadius: 3,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.default',
+            }}
           >
-            Nazad
+            <PreferredGamesPicker
+              value={preferredGames}
+              onChange={setPreferredGames}
+              disabled={loading}
+              categoryTitle="Odaberi igre"
+              categoryHint={
+                activeRole === 'court'
+                  ? 'Otvori kategoriju i izaberi igre koje tvoj teren nudi'
+                  : 'Otvori kategoriju i izaberi igre koje te zanimaju'
+              }
+            />
+          </Box>
+          <Button
+            variant="contained"
+            fullWidth
+            disabled={loading || preferredGames.length === 0}
+            onClick={() => {
+              if (activeMethod === 'email') goTo('account');
+              else finishOAuth();
+            }}
+            sx={primaryButtonSx}
+          >
+            {loading
+              ? 'Preusmeravanje...'
+              : activeMethod === 'email'
+                ? 'Nastavi'
+                : `Nastavi sa ${activeMethod === 'google' ? 'Google' : 'Facebook'}`}
           </Button>
-        )}
+        </Stack>
+      )}
 
-        {step === 'method' && (
-          <Stack spacing={1.5}>
-            <MethodCard
-              icon={<EmailIcon />}
-              title="Email i lozinka"
-              description="Klasična registracija sa tvojim emailom"
-              selected={method === 'email'}
-              onClick={() => handleMethodSelect('email')}
+      {step === 'account' && (
+        <form onSubmit={onAccountSubmit}>
+          <Stack spacing="18px">
+            <AuthField
+              label="Ime i prezime"
+              name="name"
+              autoComplete="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              placeholder="Unesi ime i prezime"
+              icon={<PersonOutlineIcon sx={{ fontSize: 22 }} />}
             />
-            <MethodCard
-              icon={<GoogleIcon />}
-              title="Google"
-              description="Brza registracija preko Gmail naloga"
-              selected={method === 'google'}
-              onClick={() => handleMethodSelect('google')}
+            <AuthField
+              label="Email adresa"
+              type="email"
+              name="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="Unesi email adresu"
+              helperText="Poslaćemo ti link za potvrdu naloga"
+              icon={<EmailOutlinedIcon sx={{ fontSize: 22 }} />}
             />
-            <MethodCard
-              icon={<FacebookIcon />}
-              title="Facebook"
-              description="Registruj se preko Facebook naloga"
-              selected={method === 'facebook'}
-              onClick={() => handleMethodSelect('facebook')}
+            <AuthField
+              label="Lozinka"
+              name="new-password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              placeholder="Kreiraj lozinku"
+              icon={<LockOutlinedIcon sx={{ fontSize: 22 }} />}
+              passwordToggle
             />
-          </Stack>
-        )}
+            <AuthField
+              label="Potvrdi lozinku"
+              name="confirm-password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              placeholder="Ponovi lozinku"
+              error={confirmPassword.length > 0 && confirmPassword !== password}
+              helperText={
+                confirmPassword.length > 0 && confirmPassword !== password
+                  ? 'Lozinke se ne poklapaju'
+                  : undefined
+              }
+              icon={<LockOutlinedIcon sx={{ fontSize: 22 }} />}
+              passwordToggle
+            />
 
-        {step === 'role' && (
-          <Stack spacing={1.5}>
-            <RoleCard
-              icon={<SportsIcon sx={{ fontSize: 28 }} />}
-              title="Igrač"
-              description="Tražim mečeve i mesta za igru"
-              selected={activeRole === 'player'}
-              onClick={() => handleRoleSelect('player')}
-            />
-            <RoleCard
-              icon={<LocationOnIcon sx={{ fontSize: 28 }} />}
-              title="Teren"
-              description="Nudim teren ili prostor za sport, kviz, društvene igre ili gaming"
-              selected={activeRole === 'court'}
-              onClick={() => handleRoleSelect('court')}
-            />
-          </Stack>
-        )}
-
-        {step === 'games' && (
-          <Stack spacing={3}>
-            <Box
-              sx={{
-                p: 2,
-                borderRadius: 3,
-                border: '1px solid',
-                borderColor: 'divider',
-                bgcolor: 'background.default',
-              }}
-            >
-              <PreferredGamesPicker
-                value={preferredGames}
-                onChange={setPreferredGames}
-                disabled={loading}
-                categoryTitle="Odaberi igre"
-                categoryHint={
-                  activeRole === 'court'
-                    ? 'Otvori kategoriju i izaberi igre koje tvoj teren nudi'
-                    : 'Otvori kategoriju i izaberi igre koje te zanimaju'
-                }
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: '4px', ml: '-9px' }}>
+              <Checkbox
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                inputProps={{ 'aria-label': 'Prihvatam Uslove korišćenja i Politiku privatnosti' }}
+                sx={{ p: '9px', mt: '-3px' }}
               />
+              <Typography sx={{ fontSize: 14, lineHeight: '21px', color: 'text.primary', fontWeight: 400 }}>
+                Prihvatam{' '}
+                <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>
+                  Uslove korišćenja
+                </Box>{' '}
+                i{' '}
+                <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>
+                  Politiku privatnosti
+                </Box>
+                .
+              </Typography>
             </Box>
+
             <Button
+              type="submit"
               variant="contained"
               fullWidth
-              size="large"
-              disabled={loading || preferredGames.length === 0}
-              onClick={() => {
-                if (activeMethod === 'email') goTo('account');
-                else finishOAuth();
-              }}
-              sx={{ py: 1.5, fontSize: '1rem' }}
+              disabled={loading}
+              sx={{ ...primaryButtonSx, mt: '10px' }}
             >
-              {loading
-                ? 'Preusmeravanje...'
-                : activeMethod === 'email'
-                  ? 'Nastavi'
-                  : `Nastavi sa ${activeMethod === 'google' ? 'Google' : 'Facebook'}`}
+              {loading ? 'Kreiranje...' : 'Kreiraj nalog'}
             </Button>
           </Stack>
-        )}
-
-        {step === 'account' && (
-          <form onSubmit={onAccountSubmit}>
-            <Stack spacing={3}>
-              <TextField
-                label="Ime"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                fullWidth
-                placeholder="Vaše ime"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <PersonIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <TextField
-                label="Email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                fullWidth
-                placeholder="unesite@email.com"
-                helperText="Poslaćemo ti link za potvrdu naloga"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <EmailIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <TextField
-                label="Lozinka"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                fullWidth
-                placeholder="••••••••"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <LockIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() => setShowPassword(!showPassword)}
-                        edge="end"
-                        size="small"
-                      >
-                        {showPassword ? (
-                          <VisibilityOffIcon sx={{ fontSize: 20 }} />
-                        ) : (
-                          <VisibilityIcon sx={{ fontSize: 20 }} />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-              <Button
-                type="submit"
-                variant="contained"
-                fullWidth
-                size="large"
-                disabled={loading}
-                sx={{ py: 1.5, fontSize: '1rem' }}
-              >
-                {loading ? 'Kreiranje...' : 'Kreiraj nalog'}
-              </Button>
-            </Stack>
-          </form>
-        )}
-
-        <Box sx={{ mt: 4, textAlign: 'center' }}>
-          <Typography variant="body2" color="text.secondary">
-            Već imate nalog?{' '}
-            <Link
-              to="/login"
-              style={{
-                color: 'inherit',
-                fontWeight: 600,
-                textDecoration: 'none',
-              }}
-            >
-              <Box
-                component="span"
-                sx={{
-                  color: 'primary.main',
-                  '&:hover': { textDecoration: 'underline' },
-                }}
-              >
-                Prijavite se
-              </Box>
-            </Link>
-          </Typography>
-        </Box>
-      </Paper>
-    </Box>
+        </form>
+      )}
+    </AuthShell>
   );
 }
 

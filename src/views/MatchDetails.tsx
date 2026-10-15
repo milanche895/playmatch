@@ -71,6 +71,7 @@ import { socket } from '../lib/socket';
 import { useAuth } from '../context/AuthContext';
 import { getTrustBadge, getCancelPenaltyPoints } from '../lib/reliability';
 import CancelAttendanceSheet from '../components/CancelAttendanceSheet';
+import RatePlayersSheet from '../components/RatePlayersSheet';
 import MatchQuickChat from '../components/MatchQuickChat';
 import { getGameTypeName } from '../constants/games';
 import { getCreditsDisplay } from '../lib/gamification';
@@ -1441,74 +1442,25 @@ export default function MatchDetails() {
         </DialogActions>
       </Dialog>
 
-      {/* Post-match rating dialog */}
-      <Dialog open={ratingDialogOpen} onClose={() => setRatingDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Oceni saigrače</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            {pendingRatingUsers.map((p) => (
-              <Paper key={p._id} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                <Stack spacing={1.5}>
-                  <Typography fontWeight={600}>{p.name}</Typography>
-                  <TextField
-                    type="number"
-                    label="Zvezdice (1-5)"
-                    value={ratingValues[p._id]?.stars ?? 5}
-                    inputProps={{ min: 1, max: 5 }}
-                    onChange={(e) =>
-                      setRatingValues((prev) => ({
-                        ...prev,
-                        [p._id]: {
-                          ...(prev[p._id] || { stars: 5, fairPlay: true, skillLevel: 3 }),
-                          stars: Math.min(5, Math.max(1, Number(e.target.value || 5)))
-                        }
-                      }))
-                    }
-                    InputProps={{ startAdornment: <StarIcon sx={{ color: 'warning.main', mr: 1 }} /> }}
-                  />
-                  <TextField
-                    type="number"
-                    label={`Veština (${getGameTypeName(match.sport)}) 1-5`}
-                    value={ratingValues[p._id]?.skillLevel ?? 3}
-                    inputProps={{ min: 1, max: 5 }}
-                    onChange={(e) =>
-                      setRatingValues((prev) => ({
-                        ...prev,
-                        [p._id]: {
-                          ...(prev[p._id] || { stars: 5, fairPlay: true, skillLevel: 3 }),
-                          skillLevel: Math.min(5, Math.max(1, Number(e.target.value || 3)))
-                        }
-                      }))
-                    }
-                  />
-                  <Button
-                    size="small"
-                    variant={ratingValues[p._id]?.fairPlay !== false ? 'contained' : 'outlined'}
-                    color="success"
-                    onClick={() =>
-                      setRatingValues((prev) => ({
-                        ...prev,
-                        [p._id]: {
-                          ...(prev[p._id] || { stars: 5, fairPlay: true, skillLevel: 3 }),
-                          fairPlay: !(prev[p._id]?.fairPlay !== false)
-                        }
-                      }))
-                    }
-                  >
-                    Fer-plej: {ratingValues[p._id]?.fairPlay !== false ? 'Da' : 'Ne'}
-                  </Button>
-                </Stack>
-              </Paper>
-            ))}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRatingDialogOpen(false)} disabled={submittingRatings}>Kasnije</Button>
-          <Button variant="contained" onClick={handleSubmitRatings} disabled={submittingRatings}>
-            {submittingRatings ? 'Slanje...' : 'Sačuvaj ocene'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Post-match rating sheet */}
+      <RatePlayersSheet
+        open={ratingDialogOpen}
+        onClose={() => setRatingDialogOpen(false)}
+        players={pendingRatingUsers}
+        sportName={getGameTypeName(match.sport)}
+        values={ratingValues}
+        onChange={(playerId, patch) =>
+          setRatingValues((prev) => ({
+            ...prev,
+            [playerId]: {
+              ...(prev[playerId] || { stars: 5, fairPlay: true, skillLevel: 3 }),
+              ...patch
+            }
+          }))
+        }
+        onSubmit={handleSubmitRatings}
+        submitting={submittingRatings}
+      />
 
       {/* Achievement celebration after rating */}
       <Dialog

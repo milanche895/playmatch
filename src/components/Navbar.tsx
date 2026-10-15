@@ -314,10 +314,13 @@ export default function Navbar() {
     return <BottomNav />;
   }
 
-  // Mobile create-match wizard, match details and another player's profile are full-screen flows with their own top bar
+  // Mobile create-match wizard, match details, another player's profile and the login/register screens
+  // are full-screen flows with their own top bar
   if (
     isMobile &&
     (location.pathname === "/create" ||
+      location.pathname === "/login" ||
+      location.pathname === "/register" ||
       location.pathname.startsWith("/matches/") ||
       location.pathname.startsWith("/profil/") ||
       location.pathname === "/notification-settings/postavke")
