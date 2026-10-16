@@ -9,6 +9,7 @@ const NOTIFICATION_TYPES = [
   'court_approved',
   'court_rejected',
   'team_ready',
+  'slot_reserved',
 ];
 
 // In-app notification feed ("Obaveštenja" screen). Titles are derived from `type` on the client.

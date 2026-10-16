@@ -31,6 +31,7 @@ const {
   getMatchAccessBlock,
 } = require('../utils/matchLifecycle');
 const { notifyUsers, notifyMatchBecameFull } = require('../utils/inAppNotifications');
+const { formatSlotReservedMessage } = require('../../lib/teamReadyMessage');
 
 const PLAYER_PUBLIC_FIELDS = 'name avatarUrl ratingAvg reliabilityScore sportSkillLevels';
 
@@ -42,6 +43,56 @@ function removePlayerPayment(match, playerId) {
   );
 }
 
+
+async function notifySlotReserved(match) {
+  const locationName = match.isInformal
+    ? (match.informalLocation?.name || 'Privatni teren')
+    : 'Privatni teren';
+  const body = formatSlotReservedMessage({
+    matchDateTime: match.dateTime,
+    locationName,
+  });
+  const playerIds = [...new Set(
+    (match.players || []).map((p) => (p._id || p).toString())
+  )];
+
+  void notifyUsers(match, 'slot_reserved', playerIds);
+
+  try {
+    const users = await User.find({
+      _id: { $in: playerIds },
+      notificationEnabled: { $ne: false },
+      pushSubscription: { $exists: true, $ne: null },
+    }).select('pushSubscription');
+
+    const subscriptions = users
+      .filter((u) => hasPushEndpoint(u.pushSubscription))
+      .map((u) => u.pushSubscription);
+
+    if (subscriptions.length === 0) return;
+
+    const result = await sendPushNotifications(subscriptions, {
+      title: 'Termin je rezervisan',
+      body,
+      url: `/matches/${match._id}`,
+      matchId: match._id.toString(),
+      image: '/icons/icon-192.png',
+    });
+
+    if (result.expiredSubscriptions && result.expiredSubscriptions.length > 0) {
+      for (const expiredSub of result.expiredSubscriptions) {
+        if (expiredSub.endpoint) {
+          await User.updateMany(
+            { 'pushSubscription.endpoint': expiredSub.endpoint },
+            { $unset: { pushSubscription: 1 } }
+          );
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[PushDebug] slot reserved push failed:', error.message);
+  }
+}
 
 async function notifyWaitlistPromotion(user, match) {
   try {
@@ -350,7 +401,8 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
     requireNotificationEnabled = false,
     matchSportOrCategory = false,
     excludePlayerIds = [],
-    minRadiusKm = 0
+    minRadiusKm = 0,
+    includeUnknownLocation = false
   } = options;
 
   const { lat, lng } = getMatchCoords(match, field);
@@ -377,11 +429,11 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
     ...(match.players || []).map(idString)
   ]);
 
-  const query = {
-    role: 'player',
-    'lastKnownLocation.lat': { $exists: true, $ne: null },
-    'lastKnownLocation.lng': { $exists: true, $ne: null }
-  };
+  const query = { role: 'player' };
+  if (!includeUnknownLocation) {
+    query['lastKnownLocation.lat'] = { $exists: true, $ne: null };
+    query['lastKnownLocation.lng'] = { $exists: true, $ne: null };
+  }
   if (requireNotificationEnabled) query.notificationEnabled = true;
   if (requirePush) query.pushSubscription = { $exists: true, $ne: null };
 
@@ -409,11 +461,24 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
       continue;
     }
 
+    const playerLat = player.lastKnownLocation?.lat;
+    const playerLng = player.lastKnownLocation?.lng;
+    const hasLocation = playerLat != null && playerLng != null;
+    if (!hasLocation) {
+      if (!includeUnknownLocation) continue;
+      debugLog('[PushDebug] findNearby keep: unknown location', {
+        name: player.name,
+        hasPush: hasPushEndpoint(player.pushSubscription)
+      });
+      results.push({ player, distance: null });
+      continue;
+    }
+
     const distance = calculateDistance(
       lat,
       lng,
-      Number(player.lastKnownLocation.lat),
-      Number(player.lastKnownLocation.lng)
+      Number(playerLat),
+      Number(playerLng)
     );
     const radius = Math.max(Number(player.notificationRadius) || 10, minRadiusKm);
     if (distance > radius) {
@@ -455,7 +520,12 @@ async function findNearbyPlayerCandidates(match, field, options = {}) {
 
   debugLog('[PushDebug] findNearby result count', results.length);
 
-  results.sort((a, b) => a.distance - b.distance);
+  results.sort((a, b) => {
+    if (a.distance == null && b.distance == null) return 0;
+    if (a.distance == null) return 1;
+    if (b.distance == null) return -1;
+    return a.distance - b.distance;
+  });
   return results;
 }
 
@@ -1136,6 +1206,42 @@ function matchesRoutesFactory(io) {
     }
   });
 
+  // Organizer of a full informal match confirms the private court is booked
+  router.post('/:id/reserve-slot', auth(true), async (req, res) => {
+    try {
+      const match = await Match.findById(req.params.id);
+      if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
+      if (match.createdBy.toString() !== req.user.id) {
+        return res.status(403).json({ message: 'Samo organizator može rezervisati termin' });
+      }
+      if (!match.isInformal) {
+        return res.status(400).json({ message: 'Rezervacija je dostupna samo za privatne mečeve' });
+      }
+      if (match.status === 'failed' || match.status === 'otkazano' || match.status === 'completed') {
+        return res.status(400).json({ message: 'Ovaj meč više nije aktivan' });
+      }
+      if (match.status !== 'full') {
+        return res.status(400).json({ message: 'Termin možeš rezervisati kad se meč napuni' });
+      }
+      if (match.slotReserved) {
+        return res.status(400).json({ message: 'Termin je već rezervisan' });
+      }
+
+      match.slotReserved = true;
+      match.slotReservedAt = new Date();
+      await match.save();
+
+      void notifySlotReserved(match);
+
+      const populated = await findPopulatedMatch(match._id);
+      io.to(`match:${match._id.toString()}`).emit('match_updated', populated);
+      res.json(populated);
+    } catch (e) {
+      console.error('Reserve slot error:', e);
+      res.status(500).json({ message: 'Greška servera' });
+    }
+  });
+
   // Organizer confirms informal match was played, with optional no-show list
   router.post('/:id/complete', auth(true), async (req, res) => {
     try {
@@ -1222,7 +1328,10 @@ function matchesRoutesFactory(io) {
         field = await Field.findById(match.fieldId).select('name lat lng');
       }
 
-      const nearby = await findNearbyPlayerCandidates(match, field, { minRadiusKm: 25 });
+      const nearby = await findNearbyPlayerCandidates(match, field, {
+        minRadiusKm: 25,
+        includeUnknownLocation: true
+      });
       debugLog('[PushDebug] GET nearby-players', {
         matchId: req.params.id,
         count: nearby.length,
@@ -1239,6 +1348,7 @@ function matchesRoutesFactory(io) {
           avatarUrl: player.avatarUrl || null,
           reliabilityScore: player.reliabilityScore ?? 100,
           distance,
+          locationUnknown: distance == null,
           hasPush: hasPushEndpoint(player.pushSubscription)
         }))
       );

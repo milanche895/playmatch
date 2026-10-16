@@ -28,6 +28,9 @@ const matchSchema = new mongoose.Schema(
     },
     courtApprovedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     courtApprovedAt: { type: Date },
+    // Informal matches: organizer booked the private court after the roster filled
+    slotReserved: { type: Boolean, default: false },
+    slotReservedAt: { type: Date },
     description: { type: String }, // Opis rezervacije (npr. za koga je rezervisan termin)
     // Player cancellations - track when players cancel their attendance with comments
     playerCancellations: [{

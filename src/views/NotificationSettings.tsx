@@ -23,13 +23,14 @@ import {
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
   HowToReg as HowToRegIcon,
+  EventAvailable as EventAvailableIcon,
 } from '@mui/icons-material';
 import { useNavigate } from '@/lib/router';
 import api from '../lib/api';
 import { AppNotification, AppNotificationType } from '../types';
 import { getGameTypeName } from '../constants/games';
 import { getNotificationStatus } from '../lib/notifications';
-import { formatCourtApprovedMessage, formatTeamReadyMessage } from '../lib/teamReadyMessage';
+import { formatCourtApprovedMessage, formatSlotReservedMessage, formatTeamReadyMessage } from '../lib/teamReadyMessage';
 import { useAuth } from '../context/AuthContext';
 
 type FeedItem = AppNotification & { unread: boolean };
@@ -43,6 +44,7 @@ const TYPE_CONFIG: Record<AppNotificationType, { title: string; Icon: ElementTyp
   court_approved: { title: 'Teren je potvrdio termin', Icon: CheckCircleIcon, color: '#16A34A', bg: '#E3F6EA' },
   court_rejected: { title: 'Teren je odbio termin', Icon: CancelIcon, color: '#E5484D', bg: '#FDE6E6' },
   team_ready: { title: 'Ekipa je spremna', Icon: HowToRegIcon, color: '#16A34A', bg: '#E3F6EA' },
+  slot_reserved: { title: 'Termin je rezervisan', Icon: EventAvailableIcon, color: '#16A34A', bg: '#E3F6EA' },
 };
 
 /** Serbian plural: 1 → one, 2–4 → few, rest → many (11–14 always many). */
@@ -84,6 +86,12 @@ function subtitleFor(n: AppNotification): string {
   }
   if (n.type === 'court_approved') {
     return formatCourtApprovedMessage({
+      matchDateTime: n.matchDateTime,
+      locationName: n.locationName,
+    });
+  }
+  if (n.type === 'slot_reserved') {
+    return formatSlotReservedMessage({
       matchDateTime: n.matchDateTime,
       locationName: n.locationName,
     });
@@ -259,7 +267,7 @@ export default function NotificationSettings() {
                       lineHeight: 1.4,
                       color: '#4A5878',
                       display: '-webkit-box',
-                      WebkitLineClamp: n.type === 'team_ready' || n.type === 'court_approved' ? 3 : 1,
+                      WebkitLineClamp: n.type === 'team_ready' || n.type === 'court_approved' || n.type === 'slot_reserved' ? 3 : 1,
                       WebkitBoxOrient: 'vertical',
                       overflow: 'hidden',
                     }}

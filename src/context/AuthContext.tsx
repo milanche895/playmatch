@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useState, useEffect } fr
 import api from '../lib/api';
 import { User } from '../types';
 import { mergeAuthUser } from '../lib/emailVerified';
+import { beginLoginLocationCapture, clearPlayerLocationSession } from '../lib/location';
 
 type AuthContextValue = {
   user: User | null;
@@ -48,9 +49,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function login(email: string, password: string) {
+    beginLoginLocationCapture();
     try {
       const res = await api.post('/api/auth/login', { email, password });
       const { token: _token, ...userData } = res.data;
+      if (userData.role !== 'player') clearPlayerLocationSession();
       setUser(userData);
     } catch (error) {
       throw error;
@@ -65,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     preferredSports?: string[],
     referredBy?: string
   ) {
+    if (role !== 'court') beginLoginLocationCapture();
     try {
       const res = await api.post('/api/auth/register', {
         name,
@@ -75,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...(referredBy ? { referredBy } : {}),
       });
       const { token: _token, ...userData } = res.data;
+      if (userData.role !== 'player') clearPlayerLocationSession();
       setUser(userData);
     } catch (error) {
       throw error;
@@ -82,6 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function logout() {
+    clearPlayerLocationSession();
     await api.post('/api/auth/logout');
     setUser(null);
   }
@@ -108,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   function loginWithGoogle(role?: 'player' | 'court', preferredSports?: string[]) {
+    if (role !== 'court') beginLoginLocationCapture();
     const state = buildOAuthState(role, preferredSports);
     const url = state
       ? `/api/auth/google?state=${state}`
@@ -116,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   function loginWithFacebook(role?: 'player' | 'court', preferredSports?: string[]) {
+    if (role !== 'court') beginLoginLocationCapture();
     const state = buildOAuthState(role, preferredSports);
     const url = state
       ? `/api/auth/facebook?state=${state}`

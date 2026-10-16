@@ -16,7 +16,7 @@ import { ThemeProvider as CustomThemeProvider, useThemeMode } from '../context/T
 import createAppTheme from '../theme';
 import Navbar from '../components/Navbar';
 import { AuthProvider, useAuth } from '../context/AuthContext';
-import { trackPlayerLocation } from '../lib/location';
+import { clearPlayerLocationSession, syncPlayerLocation } from '../lib/location';
 import PostRegisterNotificationDialog from '../components/PostRegisterNotificationDialog';
 import OnboardingTour from '../components/OnboardingTour';
 import { initPushNotifications } from '../lib/notifications';
@@ -59,7 +59,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user?.role === 'player') {
-      trackPlayerLocation();
+      syncPlayerLocation();
+    } else if (user?.role === 'court') {
+      clearPlayerLocationSession();
     }
   }, [user?._id, user?.role]);
 

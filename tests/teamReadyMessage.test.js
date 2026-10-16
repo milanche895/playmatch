@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { formatTeamReadyMessage, formatCourtApprovedMessage, playersWaitingPhrase } = require('../src/lib/teamReadyMessage');
+const { formatTeamReadyMessage, formatCourtApprovedMessage, formatSlotReservedMessage, playersWaitingPhrase } = require('../src/lib/teamReadyMessage');
 
 test('team ready copy uses the roster size, weekday, and field name', () => {
   const wednesdayEvening = new Date(2026, 9, 14, 20, 0, 0, 0);
@@ -24,6 +24,17 @@ test('confirmed slot tells players when and where', () => {
       locationName: 'Balon Arena',
     }),
     'Termin je potvrđen za sredu u 20:00 na Balon Arena.'
+  );
+});
+
+test('reserved informal slot tells players when and where to meet', () => {
+  const wednesdayEvening = new Date(2026, 9, 14, 20, 0, 0, 0);
+  assert.equal(
+    formatSlotReservedMessage({
+      matchDateTime: wednesdayEvening,
+      locationName: 'Školsko igralište',
+    }),
+    'Vidimo se u sredu u 20:00 na Školsko igralište.'
   );
 });
 

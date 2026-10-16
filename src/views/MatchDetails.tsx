@@ -44,6 +44,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import PersonIcon from '@mui/icons-material/Person';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
 import ShareIcon from '@mui/icons-material/Share';
@@ -77,6 +78,7 @@ import { getGameTypeName } from '../constants/games';
 import { getCreditsDisplay } from '../lib/gamification';
 import { formatPlayersCount } from '../lib/matchPlayers';
 import { debugLog } from '../lib/debugLog';
+import { formatSlotReservedMessage } from '../lib/teamReadyMessage';
 
 // Fix default Leaflet icon URLs
 // @ts-ignore
@@ -144,6 +146,10 @@ export default function MatchDetails() {
   const promoteSectionRef = useRef<HTMLDivElement | null>(null);
   const [showAllPlayers, setShowAllPlayers] = useState(false);
   const [moreAnchor, setMoreAnchor] = useState<HTMLElement | null>(null);
+  const [reserveDialogOpen, setReserveDialogOpen] = useState(false);
+  const [reserving, setReserving] = useState(false);
+  const [reserveError, setReserveError] = useState<string | null>(null);
+  const [didAutoOpenReserveDialog, setDidAutoOpenReserveDialog] = useState(false);
 
   const shouldAutoOpenCompleteDialog = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -153,6 +159,11 @@ export default function MatchDetails() {
   const shouldFocusPromote = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get('promote') === '1';
+  }, [location.search]);
+
+  const shouldAutoOpenReserveDialog = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('reserveSlot') === '1';
   }, [location.search]);
 
   useEffect(() => {
@@ -496,6 +507,31 @@ export default function MatchDetails() {
     );
   }, [match, user]);
 
+  const canReserveSlot = useMemo(() => {
+    if (!match || !user) return false;
+    return (
+      Boolean(match.isInformal) &&
+      match.createdBy._id === user._id &&
+      match.status === 'full' &&
+      !match.slotReserved
+    );
+  }, [match, user]);
+
+  async function handleReserveSlot() {
+    if (!id) return;
+    try {
+      setReserving(true);
+      setReserveError(null);
+      const res = await api.post(`/api/matches/${id}/reserve-slot`);
+      setMatch(res.data);
+      setReserveDialogOpen(false);
+    } catch (err: any) {
+      setReserveError(err.response?.data?.message || 'Rezervacija nije uspela');
+    } finally {
+      setReserving(false);
+    }
+  }
+
   async function handleBoostConfirm() {
     if (!id) return;
     try {
@@ -579,6 +615,13 @@ export default function MatchDetails() {
     setCompleteDialogOpen(true);
     setDidAutoOpenCompleteDialog(true);
   }, [shouldAutoOpenCompleteDialog, didAutoOpenCompleteDialog, canCompleteMatch]);
+
+  useEffect(() => {
+    if (!shouldAutoOpenReserveDialog || didAutoOpenReserveDialog || !canReserveSlot) return;
+    setReserveError(null);
+    setReserveDialogOpen(true);
+    setDidAutoOpenReserveDialog(true);
+  }, [shouldAutoOpenReserveDialog, didAutoOpenReserveDialog, canReserveSlot]);
 
   useEffect(() => {
     if (!shouldFocusPromote || !canPromoteMatch || loading) return;
@@ -894,7 +937,32 @@ export default function MatchDetails() {
 
       {/* Primary action */}
       <Stack spacing="12px" sx={{ mt: '22px' }}>
+        {match.slotReserved && (
+          <Alert severity="success" icon={<EventAvailableIcon />} sx={{ borderRadius: '12px' }}>
+            Termin je rezervisan. {formatSlotReservedMessage({
+              matchDateTime: match.dateTime,
+              locationName,
+            })}
+          </Alert>
+        )}
         {primaryAction}
+        {canReserveSlot && (
+          <>
+            <Typography sx={{ fontSize: 14, color: 'text.secondary', textAlign: 'center' }}>
+              Ekipa je spremna. Označi da je termin rezervisan i svi igrači dobijaju obaveštenje.
+            </Typography>
+            <Button
+              variant="contained"
+              color="success"
+              onClick={() => { setReserveError(null); setReserveDialogOpen(true); }}
+              fullWidth
+              startIcon={<EventAvailableIcon />}
+              sx={actionButtonSx}
+            >
+              Rezervisano
+            </Button>
+          </>
+        )}
         {match.status === 'completed' && user && match.players.some((p) => p._id === user._id) && (
           <Button
             variant="contained"
@@ -1549,6 +1617,47 @@ export default function MatchDetails() {
         </DialogContent>
       </Dialog>
 
+      {/* Reserve informal slot */}
+      <Dialog
+        open={reserveDialogOpen}
+        onClose={() => !reserving && setReserveDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 4 } }}
+      >
+        <DialogTitle fontWeight={700}>Rezervacija termina</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Ekipa je spremna. Kad označiš termin kao rezervisan, svi igrači dobijaju obaveštenje:
+          </Typography>
+          <Alert severity="success" icon={<EventAvailableIcon />} sx={{ mt: 2, borderRadius: 2 }}>
+            Termin je rezervisan. {formatSlotReservedMessage({
+              matchDateTime: match?.dateTime,
+              locationName,
+            })}
+          </Alert>
+          {reserveError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {reserveError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setReserveDialogOpen(false)} disabled={reserving}>
+            Otkaži
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={handleReserveSlot}
+            disabled={reserving}
+            startIcon={reserving ? <CircularProgress size={16} color="inherit" /> : <EventAvailableIcon />}
+          >
+            {reserving ? 'Šaljem...' : 'Rezervisano'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Boost confirmation */}
       <Dialog
         open={boostDialogOpen}
@@ -1612,8 +1721,8 @@ export default function MatchDetails() {
             </Box>
           ) : nearbyPlayers.length === 0 ? (
             <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-              Nema dostupnih igrača u blizini. Igrači se pojavljuju ovde kada otvore mapu
-              (sa dozvolom za lokaciju) i još nisu prijavljeni na meč.
+              Nema dostupnih igrača. Pojavljuju se ovde ako nisu već prijavljeni na meč
+              i nisu blokirani.
             </Typography>
           ) : (
             <List dense disablePadding>
@@ -1642,7 +1751,7 @@ export default function MatchDetails() {
                       </ListItemAvatar>
                       <ListItemText
                         primary={p.name}
-                        secondary={`${p.distance.toFixed(1)} km · ${badge.emoji} ${badge.label}${p.hasPush === false ? ' · bez obaveštenja' : ''}`}
+                        secondary={`${p.locationUnknown || p.distance == null ? 'Lokacija nepoznata' : `${p.distance.toFixed(1)} km`} · ${badge.emoji} ${badge.label}${p.hasPush === false ? ' · bez obaveštenja' : ''}`}
                       />
                     </ListItemButton>
                   </ListItem>

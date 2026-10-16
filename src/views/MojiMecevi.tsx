@@ -6,6 +6,7 @@ import AddIcon from '@mui/icons-material/Add';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import { useNavigate, Link } from '@/lib/router';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -59,18 +60,25 @@ function canShowConfirmMatchButton(match: Match): boolean {
   return Boolean(match.isInformal && inProgress && new Date() > new Date(match.dateTime));
 }
 
+function canShowReserveButton(match: Match): boolean {
+  return Boolean(match.isInformal && match.status === 'full' && !match.slotReserved);
+}
+
 function idOf(ref: string | { _id: string } | undefined): string {
   if (!ref) return '';
   return typeof ref === 'string' ? ref : String(ref._id);
 }
 
-function Note({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+function Note({ icon, children, tone = 'warning' }: { icon: ReactNode; children: ReactNode; tone?: 'warning' | 'success' }) {
+  const palette = tone === 'success'
+    ? { bgcolor: '#E3F6EA', color: '#15803D' }
+    : { bgcolor: '#FFF5DB', color: '#B4540A' };
   return (
     <Stack
       direction="row"
       alignItems="center"
       spacing="10px"
-      sx={{ mt: '12px', px: '12px', py: '10px', borderRadius: '10px', bgcolor: '#FFF5DB', color: '#B4540A' }}
+      sx={{ mt: '12px', px: '12px', py: '10px', borderRadius: '10px', ...palette }}
     >
       <Box sx={{ display: 'flex', flexShrink: 0, '& .MuiSvgIcon-root': { fontSize: 20 } }}>{icon}</Box>
       <Typography sx={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>{children}</Typography>
@@ -130,6 +138,12 @@ export default function MojiMecevi() {
     }
     if (match.courtApproval === 'pending' && (match.status === 'open' || match.status === 'full')) {
       return <Note icon={<HourglassEmptyIcon />}>Vlasnik još nije potvrdio termin.</Note>;
+    }
+    if (match.isInformal && match.slotReserved && (match.status === 'open' || match.status === 'full')) {
+      return <Note icon={<EventAvailableIcon />} tone="success">Termin je rezervisan.</Note>;
+    }
+    if (role === 'created' && canShowReserveButton(match)) {
+      return <Note icon={<EventAvailableIcon />}>Ekipa je spremna. Označi termin kao rezervisan.</Note>;
     }
     return null;
   }
@@ -231,6 +245,7 @@ export default function MojiMecevi() {
             const detailsPath = `/matches/${match._id}`;
             const note = getNote(match);
             const showConfirm = role === 'created' && canShowConfirmMatchButton(match);
+            const showReserve = role === 'created' && canShowReserveButton(match);
             return (
               <Box
                 key={match._id}
@@ -265,6 +280,20 @@ export default function MojiMecevi() {
                 </ButtonBase>
 
                 {note}
+
+                {showReserve && (
+                  <Button
+                    variant="contained"
+                    color="success"
+                    component={Link}
+                    to={`/matches/${match._id}?reserveSlot=1`}
+                    fullWidth
+                    startIcon={<EventAvailableIcon />}
+                    sx={{ mt: '12px', borderRadius: '11px', fontWeight: 600, height: 40 }}
+                  >
+                    Rezervisano
+                  </Button>
+                )}
 
                 {showConfirm && (
                   <Button

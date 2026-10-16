@@ -28,9 +28,17 @@ function formatCourtApprovedMessage({ matchDateTime, locationName }) {
   return `Termin je potvrđen za ${formatTeamReadyWhen(matchDateTime)} na ${place}.`;
 }
 
+/** Body sent to players when the organizer marks an informal slot as booked. */
+function formatSlotReservedMessage({ matchDateTime, locationName }) {
+  const when = formatTeamReadyWhen(matchDateTime);
+  const place = locationName ? ` na ${locationName}` : '';
+  return `Vidimo se u ${when}${place}.`;
+}
+
 module.exports = {
   playersWaitingPhrase,
   formatTeamReadyWhen,
   formatTeamReadyMessage,
   formatCourtApprovedMessage,
+  formatSlotReservedMessage,
 };

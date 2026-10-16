@@ -53,7 +53,8 @@ export type NearbyPlayer = {
   name: string;
   avatarUrl?: string | null;
   reliabilityScore?: number;
-  distance: number;
+  distance: number | null;
+  locationUnknown?: boolean;
   hasPush?: boolean;
 };
 
@@ -109,7 +110,8 @@ export type AppNotificationType =
   | 'reminder'
   | 'court_approved'
   | 'court_rejected'
-  | 'team_ready';
+  | 'team_ready'
+  | 'slot_reserved';
 
 /** In-app notification feed entry (GET /api/notifications). */
 export type AppNotification = {
@@ -152,6 +154,9 @@ export type Match = {
   courtApproval?: 'pending' | 'approved' | 'rejected';
   courtApprovedBy?: string;
   courtApprovedAt?: string;
+  /** Informal match: organizer confirmed the private court is booked. */
+  slotReserved?: boolean;
+  slotReservedAt?: string;
   description?: string; // Opis rezervacije
   playerCancellations?: PlayerCancellation[];
   noShows?: string[];
