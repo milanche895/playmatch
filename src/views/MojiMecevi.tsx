@@ -14,6 +14,7 @@ import { Match } from '../types';
 import { getGameTypeName } from '../constants/games';
 import SportIcon from '../components/SportIcon';
 import SegmentedControl from '../components/ui/SegmentedControl';
+import InstallButton from '../components/InstallButton';
 
 type Role = 'created' | 'joined';
 type StatusTab = 'active' | 'completed' | 'cancelled';
@@ -188,17 +189,20 @@ export default function MojiMecevi() {
         <Typography component="h1" sx={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', color: '#0B1B3F' }}>
           Moji mečevi
         </Typography>
-        {!isMobile && (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            component={Link}
-            to="/create"
-            sx={{ borderRadius: '12px', fontWeight: 700 }}
-          >
-            Kreiraj meč
-          </Button>
-        )}
+        <Box sx={{ display: 'flex', alignItems: 'center', mr: '-6px' }}>
+          <InstallButton />
+          {!isMobile && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              component={Link}
+              to="/create"
+              sx={{ borderRadius: '12px', fontWeight: 700 }}
+            >
+              Kreiraj meč
+            </Button>
+          )}
+        </Box>
       </Stack>
 
       <SegmentedControl<Role>

@@ -45,6 +45,7 @@ import { useThemeMode } from '../context/ThemeContext';
 import { User, PlayerAnalytics } from '../types';
 import { getTrustBadge } from '../lib/reliability';
 import PreferredGamesPicker from '../components/PreferredGamesPicker';
+import InstallButton from '../components/InstallButton';
 import BottomSheet from '../components/BottomSheet';
 import { getGameTypeName } from '../constants/games';
 import { BADGE_CATALOG, getXpProgress, getCreditsDisplay } from '../lib/gamification';
@@ -434,7 +435,7 @@ export default function PlayerProfile() {
         >
           {user.name?.charAt(0).toUpperCase()}
         </Avatar>
-        <Box sx={{ minWidth: 0 }}>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography component="h1" sx={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', color: '#0B1B3F', lineHeight: 1.2 }}>
             {user.name}
           </Typography>
@@ -448,6 +449,7 @@ export default function PlayerProfile() {
             {experienceLabels[user.experience || 'beginner']}
           </Typography>
         </Box>
+        <InstallButton />
       </Stack>
       {user.bio && (
         <Typography sx={{ fontSize: 15.5, lineHeight: 1.45, color: '#0B1B3F', mt: '14px', whiteSpace: 'pre-line' }}>

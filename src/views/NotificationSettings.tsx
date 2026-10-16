@@ -26,6 +26,7 @@ import {
   EventAvailable as EventAvailableIcon,
 } from '@mui/icons-material';
 import { useNavigate } from '@/lib/router';
+import InstallButton from '../components/InstallButton';
 import api from '../lib/api';
 import { AppNotification, AppNotificationType } from '../types';
 import { getGameTypeName } from '../constants/games';
@@ -160,30 +161,35 @@ export default function NotificationSettings() {
         <Typography component="h1" sx={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', color: '#0B1B3F' }}>
           Obaveštenja
         </Typography>
-        {!isCourt && <IconButton
-          aria-label="Postavke obaveštenja"
-          onClick={openPreferences}
-          edge="end"
-          sx={{ color: '#6B7A99' }}
-        >
-          <Badge
-            variant="dot"
-            invisible={!needsSetup}
-            sx={{
-              '& .MuiBadge-badge': {
-                bgcolor: '#EF4444',
-                width: 9,
-                height: 9,
-                minWidth: 9,
-                borderRadius: '50%',
-                border: '1.5px solid #F4F7FC',
-                boxSizing: 'content-box',
-              },
-            }}
+        <Box sx={{ display: 'flex', alignItems: 'center', mr: '-6px' }}>
+          <InstallButton />
+          {!isCourt && (
+          <IconButton
+            aria-label="Postavke obaveštenja"
+            onClick={openPreferences}
+            edge="end"
+            sx={{ color: '#6B7A99' }}
           >
-            <SettingsOutlinedIcon sx={{ fontSize: 26 }} />
-          </Badge>
-        </IconButton>}
+            <Badge
+              variant="dot"
+              invisible={!needsSetup}
+              sx={{
+                '& .MuiBadge-badge': {
+                  bgcolor: '#EF4444',
+                  width: 9,
+                  height: 9,
+                  minWidth: 9,
+                  borderRadius: '50%',
+                  border: '1.5px solid #F4F7FC',
+                  boxSizing: 'content-box',
+                },
+              }}
+            >
+              <SettingsOutlinedIcon sx={{ fontSize: 26 }} />
+            </Badge>
+          </IconButton>
+          )}
+        </Box>
       </Stack>
 
       {feedError && (

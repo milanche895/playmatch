@@ -5,6 +5,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import { useNavigate } from '@/lib/router';
 import { useAuth } from '../context/AuthContext';
+import InstallButton from '../components/InstallButton';
 
 /** Minimal court account so the owner can open notifications and sign out. */
 export default function CourtAccount() {
@@ -13,9 +14,12 @@ export default function CourtAccount() {
 
   return (
     <Box sx={{ maxWidth: 720, mx: 'auto' }}>
-      <Typography component="h1" sx={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', mb: 2 }}>
-        Profil
-      </Typography>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Typography component="h1" sx={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>
+          Profil
+        </Typography>
+        <InstallButton />
+      </Stack>
       <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: '1px solid', borderColor: 'divider', mb: 2 }}>
         <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{user?.name}</Typography>
         {user?.email && (

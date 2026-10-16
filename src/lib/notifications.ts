@@ -56,16 +56,43 @@ function isStandalonePwa(): boolean {
   );
 }
 
-function assertPushSupportedOnThisDevice(): void {
-  if (isIOSDevice() && !isStandalonePwa()) {
-    throw new Error(
-      'Na iPhone-u push obaveštenja rade samo iz ikone na početnom ekranu. Dodajte sajt: Deli → Dodaj na početni ekran, pa otvorite Plejko odatle.'
-    );
-  }
+export type PushBlockReason = 'insecure' | 'ios' | 'unsupported' | null;
 
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    throw new Error('Ovaj pretraživač na telefonu ne podržava push obaveštenja. Otvorite sajt u Chrome-u.');
+const PUSH_BLOCK_MESSAGE: Record<Exclude<PushBlockReason, null>, string> = {
+  insecure:
+    'Obaveštenja rade samo preko sigurne veze (https). Na telefonu otvori Plejko preko https adrese, ne preko IP adrese računara (http://192.168…). Na računaru koristi http://localhost:3000.',
+  ios:
+    'Na iPhone-u push obaveštenja rade samo iz ikone na početnom ekranu. Dodajte sajt: Deli → Dodaj na početni ekran, pa otvorite Plejko odatle.',
+  unsupported:
+    'Ovaj pretraživač ne podržava push obaveštenja. Na telefonu otvori sajt u Chrome-u, na računaru u Chrome-u ili Edge-u.',
+};
+
+export function getPushBlockReason(): PushBlockReason {
+  if (typeof window === 'undefined') return null;
+  if (!window.isSecureContext) return 'insecure';
+  if (isIOSDevice() && !isStandalonePwa()) return 'ios';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
+    return 'unsupported';
   }
+  return null;
+}
+
+export function pushBlockMessage(reason: PushBlockReason): string | null {
+  return reason ? PUSH_BLOCK_MESSAGE[reason] : null;
+}
+
+function readNotificationPermission(): NotificationPermission {
+  if (typeof Notification === 'undefined') return 'default';
+  try {
+    return Notification.permission;
+  } catch {
+    return 'default';
+  }
+}
+
+function assertPushSupportedOnThisDevice(): void {
+  const message = pushBlockMessage(getPushBlockReason());
+  if (message) throw new Error(message);
 }
 
 function isPushServiceError(error: unknown): boolean {
@@ -74,7 +101,16 @@ function isPushServiceError(error: unknown): boolean {
   return name === 'AbortError' || /push service error|registration failed/i.test(message);
 }
 
+function serverMessage(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null || !('response' in error)) return null;
+  const message = (error as { response?: { data?: { message?: unknown } } }).response?.data?.message;
+  return typeof message === 'string' && message.trim() ? message : null;
+}
+
 function toUserFacingPushError(error: unknown): Error {
+  const fromServer = serverMessage(error);
+  if (fromServer) return new Error(fromServer);
+
   if (error instanceof Error && !isPushServiceError(error)) {
     return error;
   }
@@ -87,7 +123,7 @@ function toUserFacingPushError(error: unknown): Error {
   }
 
   return new Error(
-    'Telefon nije uspeo da se prijavi na push servis. Zatvorite Chrome, otvorite Plejko ponovo i pokušajte još jednom. Ako ste na iPhone-u, koristite ikonu sa početnog ekrana.'
+    'Pretraživač nije uspeo da uključi push obaveštenja. Osveži stranicu i pokušaj ponovo. Ako si na iPhone-u, otvori Plejko sa ikone na početnom ekranu.'
   );
 }
 
@@ -231,7 +267,8 @@ async function waitUntilActivated(registration: ServiceWorkerRegistration): Prom
 }
 
 /**
- * Get service worker registration (dev SW is /dev-sw.js, prod is /sw.js)
+ * Get the root service worker (/sw.js). Do not unregister it: this app has no separate dev worker,
+ * and dropping the registration on every enable attempt breaks Chrome's push database.
  */
 async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
   if (!('serviceWorker' in navigator)) {
@@ -242,30 +279,14 @@ async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration
   let registration: ServiceWorkerRegistration | undefined =
     pickRootRegistration(existing) || (await navigator.serviceWorker.getRegistration('/'));
 
-  // Dev: drop a stale /sw.js registration that cannot load ES module imports
-  if (process.env.NODE_ENV === 'development' && registration) {
-    const scriptURL =
-      registration.active?.scriptURL ||
-      registration.waiting?.scriptURL ||
-      registration.installing?.scriptURL ||
-      '';
-    if (scriptURL && !scriptURL.includes('dev-sw.js')) {
-      console.warn('[PushDebug] unregistering stale SW', scriptURL);
-      await registration.unregister();
-      registration = undefined;
-    }
-  }
-
-  if (!registration) {
+  const hasWorker = Boolean(registration?.active || registration?.waiting || registration?.installing);
+  if (registration && !hasWorker) {
     try {
-      registration = await withTimeout(
-        navigator.serviceWorker.ready,
-        4000,
-        'timeout'
-      );
+      await registration.unregister();
     } catch {
-      registration = undefined;
+      // A registration with no worker cannot receive push; replace it below.
     }
+    registration = undefined;
   }
 
   if (!registration) {
@@ -366,18 +387,20 @@ export async function getNotificationStatus(): Promise<{
   subscribed: boolean;
   enabled: boolean;
   permission: NotificationPermission;
+  blockReason: PushBlockReason;
   endpoint?: string;
 }> {
-  const permission = Notification.permission;
+  const permission = readNotificationPermission();
+  const blockReason = getPushBlockReason();
 
   try {
     // Check if service worker is registered
-    if (!('serviceWorker' in navigator)) {
-      console.log('Service workers not supported');
+    if (blockReason || !('serviceWorker' in navigator)) {
       return {
         subscribed: false,
         enabled: false,
-        permission
+        permission,
+        blockReason
       };
     }
 
@@ -396,7 +419,8 @@ export async function getNotificationStatus(): Promise<{
       return {
         subscribed: false,
         enabled: false,
-        permission
+        permission,
+        blockReason
       };
     }
 
@@ -408,22 +432,23 @@ export async function getNotificationStatus(): Promise<{
       console.warn('Could not get push subscription:', subError);
     }
 
-    // Get backend status
-    let backendSubscribed = false;
+    // Get backend status. A failed status call must not flip a working local subscription off.
+    let backendSubscribed: boolean | null = null;
     let backendEnabled = true;
     try {
       const res = await api.get('/api/players/push-subscription/status');
-      backendSubscribed = res.data.subscribed;
+      backendSubscribed = Boolean(res.data.subscribed);
       backendEnabled = res.data.enabled !== false;
     } catch (apiError) {
       console.warn('Could not get backend subscription status:', apiError);
-      // Continue with local status only
     }
-    
+
+    const localSubscribed = subscription !== null;
     return {
-      subscribed: subscription !== null && backendSubscribed,
+      subscribed: localSubscribed && backendSubscribed !== false && backendEnabled,
       enabled: backendEnabled,
       permission,
+      blockReason,
       endpoint: subscription?.endpoint
     };
   } catch (error: any) {
@@ -431,7 +456,8 @@ export async function getNotificationStatus(): Promise<{
     return {
       subscribed: false,
       enabled: false,
-      permission
+      permission,
+      blockReason
     };
   }
 }

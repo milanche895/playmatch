@@ -324,7 +324,8 @@ router.post('/push-subscription', auth(true), async (req, res) => {
       req.user.id,
       {
         $set: {
-          pushSubscription: subscription
+          pushSubscription: subscription,
+          notificationEnabled: true
         }
       },
       { new: true, runValidators: false }
@@ -362,9 +363,8 @@ router.delete('/push-subscription', auth(true), async (req, res) => {
     await User.findByIdAndUpdate(
       req.user.id,
       {
-        $unset: {
-          pushSubscription: 1
-        }
+        $unset: { pushSubscription: 1 },
+        $set: { notificationEnabled: false }
       },
       { new: true }
     );
@@ -384,8 +384,9 @@ router.get('/push-subscription/status', auth(true), async (req, res) => {
       return res.status(404).json({ message: 'Korisnik nije pronađen' });
     }
 
+    const endpoint = user.pushSubscription && user.pushSubscription.endpoint;
     res.json({
-      subscribed: user.pushSubscription !== null && user.pushSubscription !== undefined,
+      subscribed: Boolean(endpoint),
       enabled: user.notificationEnabled !== false
     });
   } catch (e) {

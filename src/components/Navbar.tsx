@@ -65,7 +65,7 @@ function CourtHeaderActions() {
   }, []);
 
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mr: "-4px" }}>
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
       <IconButton
         component={RouterLink}
         to="/notification-settings"
@@ -364,7 +364,7 @@ export default function Navbar() {
             <IconButton
               aria-label="Pozovi drugara"
               onClick={() => navigate("/profil?sheet=invite")}
-              sx={{ color: "text.primary", mr: "-8px" }}
+              sx={{ color: "text.primary" }}
             >
               <PersonAddAltOutlinedIcon sx={{ fontSize: 28 }} />
             </IconButton>

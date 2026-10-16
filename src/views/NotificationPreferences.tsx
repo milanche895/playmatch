@@ -8,24 +8,30 @@ import {
   Cancel as CancelIcon,
   InfoOutlined as InfoIcon,
   Send as SendIcon,
-  IosShare as ShareIcon,
 } from '@mui/icons-material';
 import { useNavigate } from '@/lib/router';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { syncPlayerLocation } from '../lib/location';
 import {
   subscribeToPushNotifications,
   unsubscribeFromPushNotifications,
   getNotificationStatus,
   requestNotificationPermission,
+  pushBlockMessage,
+  type PushBlockReason,
 } from '../lib/notifications';
 
 type PushStatus = {
   subscribed: boolean;
   enabled: boolean;
   permission: NotificationPermission;
+  blockReason: PushBlockReason;
   endpoint?: string;
 };
+
+const DENIED_HINT =
+  'Dozvola je blokirana. Klikni katanac pored adrese → Obaveštenja → Dozvoli, pa osveži stranicu. Na telefonu: podešavanja sajta → Obaveštenja → Dozvoli.';
 
 const PERMISSION_UI: Record<
   NotificationPermission,
@@ -34,7 +40,7 @@ const PERMISSION_UI: Record<
   granted: { label: 'Dozvoljeno', hint: 'Primaš push obaveštenja.', color: '#16A34A', Icon: CheckCircleIcon },
   denied: {
     label: 'Odbijeno',
-    hint: 'Omogući obaveštenja u postavkama pretraživača za ovaj sajt.',
+    hint: 'Klikni katanac pored adrese → Obaveštenja → Dozvoli, pa osveži stranicu.',
     color: '#E5484D',
     Icon: CancelIcon,
   },
@@ -46,14 +52,6 @@ const PERMISSION_UI: Record<
   },
 };
 
-function isStandalonePwa(): boolean {
-  if (typeof window === 'undefined') return true;
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    ('standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone))
-  );
-}
-
 export default function NotificationPreferences() {
   const navigate = useNavigate();
   const { user, refreshUser } = useAuth();
@@ -63,7 +61,6 @@ export default function NotificationPreferences() {
   const [savingRadius, setSavingRadius] = useState(false);
   const [testing, setTesting] = useState(false);
   const [radius, setRadius] = useState(10);
-  const [showInstallHint, setShowInstallHint] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -73,7 +70,6 @@ export default function NotificationPreferences() {
 
   useEffect(() => {
     loadStatus();
-    setShowInstallHint(!isStandalonePwa());
   }, []);
 
   async function loadStatus() {
@@ -104,9 +100,22 @@ export default function NotificationPreferences() {
           return;
         }
         await subscribeToPushNotifications();
-        setSuccess('Obaveštenja su uspešno omogućena!');
+        syncPlayerLocation();
+        let locationNote = '';
+        try {
+          const geo = await navigator.permissions.query({ name: 'geolocation' });
+          if (geo.state === 'denied') {
+            locationNote =
+              ' Dozvoli lokaciju za ovaj sajt, inače ne možemo da nađemo mečeve u tvom kraju.';
+          }
+        } catch {
+          // Safari does not support querying geolocation permission.
+        }
+        await refreshUser();
+        setSuccess('Obaveštenja su uspešno omogućena!' + locationNote);
       } else {
         await unsubscribeFromPushNotifications();
+        await refreshUser();
         setSuccess('Obaveštenja su onemogućena.');
       }
       await loadStatus();
@@ -154,6 +163,8 @@ export default function NotificationPreferences() {
   }
 
   const isSubscribed = status?.subscribed ?? false;
+  const blockMessage = pushBlockMessage(status?.blockReason ?? null);
+  const permissionDenied = status?.permission === 'denied';
   const permission = PERMISSION_UI[status?.permission || 'default'] ?? PERMISSION_UI.default;
   const PermissionIcon = permission.Icon;
 
@@ -210,17 +221,24 @@ export default function NotificationPreferences() {
               <Switch
                 checked={isSubscribed}
                 onChange={handleToggle}
-                disabled={!isSubscribed && status.permission === 'denied'}
+                disabled={Boolean(blockMessage)}
                 inputProps={{ 'aria-label': 'Mečevi u blizini' }}
                 sx={{
                   width: 58,
                   height: 34,
                   p: 0,
+                  overflow: 'visible',
                   '& .MuiSwitch-switchBase': {
                     p: '3px',
                     color: '#FFFFFF',
                     '&.Mui-checked': { transform: 'translateX(24px)', color: '#FFFFFF' },
                     '&.Mui-checked + .MuiSwitch-track': { bgcolor: 'primary.main', opacity: 1 },
+                  },
+                  // Default input sits left of the thumb (left: -100%), so taps on the track do nothing.
+                  '& .MuiSwitch-switchBase .MuiSwitch-input': {
+                    left: 0,
+                    width: 58,
+                    height: 34,
                   },
                   '& .MuiSwitch-thumb': { width: 28, height: 28, boxShadow: '0 1px 3px rgba(0,0,0,0.25)' },
                   '& .MuiSwitch-track': { borderRadius: 17, opacity: 1, bgcolor: '#C9D3E5' },
@@ -228,6 +246,17 @@ export default function NotificationPreferences() {
               />
             )}
           </Stack>
+
+          {blockMessage && (
+            <Alert severity="warning" sx={{ mt: '14px', borderRadius: '12px' }}>
+              {blockMessage}
+            </Alert>
+          )}
+          {!blockMessage && permissionDenied && !isSubscribed && (
+            <Alert severity="warning" sx={{ mt: '14px', borderRadius: '12px' }}>
+              {DENIED_HINT}
+            </Alert>
+          )}
 
           {/* Distance */}
           <Stack direction="row" alignItems="baseline" justifyContent="space-between" sx={{ mt: '28px' }}>
@@ -299,33 +328,6 @@ export default function NotificationPreferences() {
             <Typography sx={{ fontSize: 13.5, color: '#6B7A99', mt: '8px', textAlign: 'center' }}>
               Za probnu poruku prvo uključi obaveštenja.
             </Typography>
-          )}
-
-          {/* Add to home screen hint (needed for push on iPhone) */}
-          {showInstallHint && (
-            <Stack
-              direction="row"
-              spacing="14px"
-              alignItems="center"
-              sx={{ mt: '20px', p: '16px', bgcolor: '#FFFFFF', border: '1px solid #E3E9F3', borderRadius: '16px' }}
-            >
-              <Box
-                component="img"
-                src="/icons/icon-192.png"
-                alt=""
-                sx={{ width: 44, height: 44, borderRadius: '12px', flexShrink: 0 }}
-              />
-              <Box>
-                <Typography sx={{ fontSize: 15, fontWeight: 700, color: '#0B1B3F', lineHeight: 1.35 }}>
-                  Za obaveštenja prvo dodaj Plejko na početni ekran.
-                </Typography>
-                <Typography sx={{ fontSize: 14, color: '#6B7A99', mt: '4px', lineHeight: 1.5 }}>
-                  U Safariju izaberi{' '}
-                  <ShareIcon sx={{ fontSize: 20, color: 'primary.main', verticalAlign: 'middle', mt: '-3px' }} /> → Dodaj na
-                  početni ekran.
-                </Typography>
-              </Box>
-            </Stack>
           )}
         </>
       )}
