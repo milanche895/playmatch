@@ -5,6 +5,7 @@ import api from '../lib/api';
 import { User } from '../types';
 import { mergeAuthUser } from '../lib/emailVerified';
 import { beginLoginLocationCapture, clearPlayerLocationSession } from '../lib/location';
+import { markPromptNotificationsOnLogin } from '../lib/notificationPrompt';
 
 type AuthContextValue = {
   user: User | null;
@@ -23,6 +24,7 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   loginWithGoogle: (role?: 'player' | 'court', preferredSports?: string[]) => void;
   loginWithFacebook: (role?: 'player' | 'court', preferredSports?: string[]) => void;
+  completeOAuthRegistration: (role: 'player' | 'court', preferredSports: string[]) => Promise<void>;
   resendVerification: () => Promise<void>;
 };
 
@@ -53,7 +55,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await api.post('/api/auth/login', { email, password });
       const { token: _token, ...userData } = res.data;
-      if (userData.role !== 'player') clearPlayerLocationSession();
+      if (userData.role === 'player') markPromptNotificationsOnLogin();
+      else clearPlayerLocationSession();
       setUser(userData);
     } catch (error) {
       throw error;
@@ -131,12 +134,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = url;
   }
 
+  async function completeOAuthRegistration(role: 'player' | 'court', preferredSports: string[]) {
+    if (role !== 'court') beginLoginLocationCapture();
+    const res = await api.post('/api/auth/oauth/complete', { role, preferredSports });
+    if (res.data?.role !== 'player') clearPlayerLocationSession();
+    setUser(res.data);
+  }
+
   async function resendVerification() {
     await api.post('/api/auth/resend-verification');
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, setUser, refreshUser, login, register, logout, loginWithGoogle, loginWithFacebook, resendVerification }}>
+    <AuthContext.Provider value={{ user, loading, setUser, refreshUser, login, register, logout, loginWithGoogle, loginWithFacebook, completeOAuthRegistration, resendVerification }}>
       {children}
     </AuthContext.Provider>
   );

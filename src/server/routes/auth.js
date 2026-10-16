@@ -87,12 +87,25 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         }
         applyOAuthOnboarding(user, getOnboardingFromReq(req));
         await user.save();
+        if (shouldDeferToRegistration(req, user)) {
+          req.pendingOAuthRegistration = {
+            provider: 'google',
+            providerId: String(profile.id),
+            existingUserId: String(user._id),
+          };
+          return done(null, false);
+        }
         return done(null, user);
       }
 
-      // Create new user with all available profile data
+      // Login from the login page has no role/games yet — don't create a player with empty fields.
       const onboarding = getOnboardingFromReq(req);
       const { sanitizeGameIds } = require('../constants/games');
+      const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
+      if (!email) {
+        return done(new Error('MISSING_EMAIL'));
+      }
+
       let avatarUrl = null;
       if (profile.photos && profile.photos[0]) {
         // Upload to Cloudinary if Cloudinary is configured
@@ -112,21 +125,30 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         }
       }
 
-      user = await User.create({
-        name: profile.displayName || (profile.name ? profile.name.givenName + ' ' + profile.name.familyName : 'User'),
-        email: profile.emails && profile.emails[0] ? profile.emails[0].value : null,
-        emailVerified: true,
+      const pendingProfile = {
         provider: 'google',
-        providerId: profile.id,
-        providerData: { 
-          accessToken, 
+        providerId: String(profile.id),
+        name: profile.displayName || (profile.name ? profile.name.givenName + ' ' + profile.name.familyName : 'User'),
+        email,
+        emailVerified: true,
+        avatarUrl,
+        providerData: {
+          accessToken,
           refreshToken,
           displayName: profile.displayName,
           name: profile.name,
-          emails: profile.emails
+          emails: profile.emails,
         },
-        avatarUrl: avatarUrl,
-        role: onboarding.role === 'court' ? 'court' : 'player',
+      };
+
+      if (!onboardingIsComplete(onboarding)) {
+        req.pendingOAuthRegistration = pendingProfile;
+        return done(null, false);
+      }
+
+      user = await User.create({
+        ...pendingProfile,
+        role: onboarding.role,
         preferredSports: sanitizeGameIds(onboarding.preferredSports),
       });
       return done(null, user);
@@ -217,10 +239,19 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
         }
         applyOAuthOnboarding(user, getOnboardingFromReq(req));
         await user.save();
+        if (shouldDeferToRegistration(req, user)) {
+          req.pendingOAuthRegistration = {
+            provider: 'facebook',
+            providerId: String(profile.id),
+            existingUserId: String(user._id),
+          };
+          return done(null, false);
+        }
         return done(null, user);
       }
 
-      // Create new user with all available profile data
+      // Login from the login page has no role/games yet — don't create a player with empty fields.
+      const onboarding = getOnboardingFromReq(req);
       let avatarUrl = null;
       if (profile.photos && profile.photos[0]) {
         // Upload to Cloudinary if Cloudinary is configured
@@ -240,23 +271,30 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
         }
       }
 
-      user = await User.create({
+      const pendingProfile = {
+        provider: 'facebook',
+        providerId: String(profile.id),
         name: profile.displayName || (profile.name ? profile.name.givenName + ' ' + profile.name.familyName : 'User'),
         email: userEmail,
         emailVerified: true,
-        provider: 'facebook',
-        providerId: profile.id,
-        providerData: { 
-          accessToken, 
+        avatarUrl,
+        providerData: {
+          accessToken,
           refreshToken,
           displayName: profile.displayName,
-          name: profile.name
+          name: profile.name,
         },
-        avatarUrl: avatarUrl,
-        role: getOnboardingFromReq(req).role === 'court' ? 'court' : 'player',
-        preferredSports: require('../constants/games').sanitizeGameIds(
-          getOnboardingFromReq(req).preferredSports
-        ),
+      };
+
+      if (!onboardingIsComplete(onboarding)) {
+        req.pendingOAuthRegistration = pendingProfile;
+        return done(null, false);
+      }
+
+      user = await User.create({
+        ...pendingProfile,
+        role: onboarding.role,
+        preferredSports: require('../constants/games').sanitizeGameIds(onboarding.preferredSports),
       });
 
       return done(null, user);
@@ -265,6 +303,23 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
     }
   }));
 }
+function onboardingIsComplete(onboarding) {
+  const { sanitizeGameIds } = require('../constants/games');
+  const roleOk = onboarding?.role === 'player' || onboarding?.role === 'court';
+  return roleOk && sanitizeGameIds(onboarding?.preferredSports).length > 0;
+}
+
+function userNeedsRegistrationOnboarding(user) {
+  return !Array.isArray(user?.preferredSports) || user.preferredSports.length === 0;
+}
+
+/** Login-page OAuth has no role/games. Hold the profile until the register wizard finishes. */
+function shouldDeferToRegistration(req, user) {
+  return !onboardingIsComplete(getOnboardingFromReq(req)) && userNeedsRegistrationOnboarding(user);
+}
+
+const PENDING_OAUTH_TTL_MS = 15 * 60 * 1000;
+
 function parseOAuthState(state) {
   const result = { role: null, preferredSports: [] };
   if (!state || typeof state !== 'string') return result;
@@ -331,6 +386,77 @@ function consumeOAuthOnboarding(req, user) {
     delete req.session.oauthPreferredSports;
   }
   return applyOAuthOnboarding(user, onboarding);
+}
+
+function authUserPayload(user) {
+  return {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    avatarUrl: user.avatarUrl,
+    role: user.role,
+    preferredSports: user.preferredSports || [],
+    emailVerified: isEmailVerified(user),
+    provider: user.provider,
+    credits: user.credits ?? 3,
+    xp: user.xp ?? 0,
+    level: user.level ?? 1,
+  };
+}
+
+function handleOAuthCallback(req, res, provider, err, user) {
+  if (err) {
+    console.error(`${provider} OAuth callback error:`, err);
+    return res.redirect(`/login?error=${provider}_auth_failed`);
+  }
+
+  if (req.pendingOAuthRegistration) {
+    req.session.pendingOAuth = {
+      ...req.pendingOAuthRegistration,
+      createdAt: Date.now(),
+    };
+    return req.session.save((saveErr) => {
+      if (saveErr) {
+        console.error('Pending OAuth session save failed:', saveErr);
+        return res.redirect('/login?error=oauth_failed');
+      }
+      const method = provider === 'facebook' ? 'facebook' : 'google';
+      res.redirect(`/register?step=role&method=${method}&oauth=pending`);
+    });
+  }
+
+  if (!user) {
+    return res.redirect(`/login?error=${provider}_auth_failed`);
+  }
+
+  req.logIn(user, async (loginErr) => {
+    if (loginErr) {
+      console.error(`${provider} OAuth login error:`, loginErr);
+      return res.redirect('/login?error=oauth_failed');
+    }
+    try {
+      const isNewUser = consumeOAuthOnboarding(req, user);
+      if (isNewUser) {
+        await user.save();
+      }
+
+      setTokenCookie(res, user._id.toString());
+      const newUserQuery = isNewUser ? '&newUser=1' : '';
+      res.redirect(`/auth/callback?user=${encodeURIComponent(JSON.stringify({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        role: user.role,
+        preferredSports: user.preferredSports || [],
+        emailVerified: isEmailVerified(user),
+        provider: user.provider,
+      }))}${newUserQuery}`);
+    } catch (error) {
+      console.error(`${provider} OAuth callback error:`, error);
+      res.redirect('/login?error=oauth_failed');
+    }
+  });
 }
 
 function setTokenCookie(res, userId) {
@@ -572,6 +698,9 @@ router.get('/google', (req, res, next) => {
   const onboarding = parseOAuthState(req.query.state);
   req.session.oauthRole = onboarding.role;
   req.session.oauthPreferredSports = onboarding.preferredSports;
+  if (onboardingIsComplete(onboarding)) {
+    delete req.session.pendingOAuth;
+  }
 
   const callbackURL = getOAuthCallbackUrl(req, 'google');
   const state = typeof req.query.state === 'string' ? req.query.state : undefined;
@@ -586,47 +715,24 @@ router.get('/google', (req, res, next) => {
   });
 });
 
-router.get('/google/callback',
-  (req, res, next) => {
-    const callbackURL = getOAuthCallbackUrl(req, 'google');
-    passport.authenticate('google', {
-      session: true,
-      failureRedirect: '/login?error=google_auth_failed',
-      callbackURL,
-    })(req, res, next);
-  },
-  async (req, res) => {
-    try {
-      const user = req.user;
-      const isNewUser = consumeOAuthOnboarding(req, user);
-      if (isNewUser) {
-        await user.save();
-      }
-
-      setTokenCookie(res, user._id.toString());
-      const newUserQuery = isNewUser ? '&newUser=1' : '';
-      res.redirect(`/auth/callback?user=${encodeURIComponent(JSON.stringify({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        avatarUrl: user.avatarUrl,
-        role: user.role,
-        preferredSports: user.preferredSports || [],
-        emailVerified: isEmailVerified(user),
-        provider: user.provider,
-      }))}${newUserQuery}`);
-    } catch (error) {
-      console.error('Google OAuth callback error:', error);
-      res.redirect('/login?error=oauth_failed');
-    }
-  }
-);
+router.get('/google/callback', (req, res, next) => {
+  const callbackURL = getOAuthCallbackUrl(req, 'google');
+  passport.authenticate('google', {
+    session: false,
+    callbackURL,
+  }, (err, user) => {
+    handleOAuthCallback(req, res, 'google', err, user);
+  })(req, res, next);
+});
 
 // Facebook OAuth routes (redirect flow)
 router.get('/facebook', (req, res, next) => {
   const onboarding = parseOAuthState(req.query.state);
   req.session.oauthRole = onboarding.role;
   req.session.oauthPreferredSports = onboarding.preferredSports;
+  if (onboardingIsComplete(onboarding)) {
+    delete req.session.pendingOAuth;
+  }
 
   const callbackURL = getOAuthCallbackUrl(req, 'facebook');
   const state = typeof req.query.state === 'string' ? req.query.state : undefined;
@@ -641,41 +747,102 @@ router.get('/facebook', (req, res, next) => {
   });
 });
 
-router.get('/facebook/callback',
-  (req, res, next) => {
-    const callbackURL = getOAuthCallbackUrl(req, 'facebook');
-    passport.authenticate('facebook', {
-      session: true,
-      failureRedirect: '/login?error=facebook_auth_failed',
-      callbackURL,
-    })(req, res, next);
-  },
-  async (req, res) => {
-    try {
-      const user = req.user;
-      const isNewUser = consumeOAuthOnboarding(req, user);
-      if (isNewUser) {
-        await user.save();
-      }
+router.get('/facebook/callback', (req, res, next) => {
+  const callbackURL = getOAuthCallbackUrl(req, 'facebook');
+  passport.authenticate('facebook', {
+    session: false,
+    callbackURL,
+  }, (err, user) => {
+    handleOAuthCallback(req, res, 'facebook', err, user);
+  })(req, res, next);
+});
 
-      setTokenCookie(res, user._id.toString());
-      const newUserQuery = isNewUser ? '&newUser=1' : '';
-      res.redirect(`/auth/callback?user=${encodeURIComponent(JSON.stringify({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        avatarUrl: user.avatarUrl,
-        role: user.role,
-        preferredSports: user.preferredSports || [],
-        emailVerified: isEmailVerified(user),
-        provider: user.provider,
-      }))}${newUserQuery}`);
-    } catch (error) {
-      console.error('Facebook OAuth callback error:', error);
-      res.redirect('/login?error=oauth_failed');
+router.post('/oauth/complete', authRateLimit, async (req, res) => {
+  try {
+    const pending = req.session?.pendingOAuth;
+    const pendingFresh = pending
+      && (pending.provider === 'google' || pending.provider === 'facebook')
+      && typeof pending.createdAt === 'number'
+      && Date.now() - pending.createdAt <= PENDING_OAUTH_TTL_MS;
+
+    if (!pendingFresh) {
+      return res.status(401).json({
+        message: 'Sesija za registraciju je istekla. Pokušaj ponovo preko Google ili Facebook naloga.',
+      });
     }
+
+    const { role, preferredSports } = req.body || {};
+    if (role !== 'player' && role !== 'court') {
+      return res.status(400).json({ message: 'Izaberite da li ste igrač ili teren' });
+    }
+
+    const { sanitizeGameIds } = require('../constants/games');
+    const sports = sanitizeGameIds(preferredSports);
+    if (sports.length === 0) {
+      return res.status(400).json({
+        message: role === 'court'
+          ? 'Izaberite kategorije i igre koje vaše mesto nudi'
+          : 'Izaberite barem jednu igru',
+      });
+    }
+
+    let user = null;
+    if (pending.existingUserId && mongoose.Types.ObjectId.isValid(String(pending.existingUserId))) {
+      user = await User.findById(pending.existingUserId);
+    }
+    if (!user) {
+      const or = [{ provider: pending.provider, providerId: pending.providerId }];
+      if (pending.email) or.push({ email: pending.email });
+      user = await User.findOne({ $or: or });
+    }
+
+    if (user) {
+      if (userNeedsRegistrationOnboarding(user)) {
+        user.role = role;
+        user.preferredSports = sports;
+      }
+      if (pending.providerId && (user.provider !== pending.provider || user.providerId !== pending.providerId)) {
+        user.provider = pending.provider;
+        user.providerId = pending.providerId;
+      }
+      if (pending.providerData) user.providerData = pending.providerData;
+      if (!user.emailVerified) user.emailVerified = true;
+      if (!user.avatarUrl && pending.avatarUrl) user.avatarUrl = pending.avatarUrl;
+      if (!user.name && pending.name) user.name = pending.name;
+      await user.save();
+    } else {
+      if (!pending.email || !pending.name || !pending.providerId) {
+        return res.status(401).json({
+          message: 'Sesija za registraciju je istekla. Pokušaj ponovo preko Google ili Facebook naloga.',
+        });
+      }
+      user = await User.create({
+        name: pending.name,
+        email: pending.email,
+        emailVerified: true,
+        provider: pending.provider,
+        providerId: pending.providerId,
+        providerData: pending.providerData,
+        avatarUrl: pending.avatarUrl,
+        role,
+        preferredSports: sports,
+      });
+    }
+
+    delete req.session.pendingOAuth;
+    await new Promise((resolve, reject) => {
+      req.session.save((saveErr) => (saveErr ? reject(saveErr) : resolve()));
+    });
+    setTokenCookie(res, user._id.toString());
+    res.json(authUserPayload(user));
+  } catch (e) {
+    console.error('OAuth complete registration error:', e);
+    if (e.code === 11000) {
+      return res.status(409).json({ message: 'Email je već u upotrebi' });
+    }
+    res.status(500).json({ message: 'Registracija nije uspela' });
   }
-);
+});
 
 // Instagram OAuth - uses Facebook token (Instagram Basic Display API requires Facebook login)
 router.post('/instagram', authRateLimit, async (req, res) => {

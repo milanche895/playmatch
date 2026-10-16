@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { mergeAuthUser } from '../lib/emailVerified';
 import api from '../lib/api';
 import { markOnboardingTourPending } from '../lib/onboardingTour';
+import { markPromptNotificationsOnLogin } from '../lib/notificationPrompt';
 
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
@@ -30,6 +31,7 @@ export default function AuthCallback() {
     api.get('/api/auth/me')
       .then((res) => {
         if (res.data) setUser((prev) => mergeAuthUser(prev, res.data));
+        if (res.data?.role === 'player') markPromptNotificationsOnLogin();
         if (isNewUser) markOnboardingTourPending();
         navigate(isNewUser ? '/welcome' : '/', { replace: true });
       })

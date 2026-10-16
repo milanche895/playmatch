@@ -14,38 +14,21 @@ import { useLocation, useNavigate } from '@/lib/router';
 import { useAuth } from '../context/AuthContext';
 import { subscribeToPushNotifications } from '../lib/notifications';
 import {
+  clearLoginNotificationPrompt,
+  clearPromptNotificationsAfterRegister,
+  hasLoginPromptFlag,
+  hasPromptFlag,
+  isPushActivated,
+  markPromptNotificationsAfterRegister,
+} from '../lib/notificationPrompt';
+import {
   ONBOARDING_TOUR_FINISHED_EVENT,
   isOnboardingTourPending,
 } from '../lib/onboardingTour';
 
-const PROMPT_KEY = 'plejko:prompt-notifications';
-const PROMPT_ARMED_KEY = 'plejko:prompt-notifications-armed';
+const SKIP_PROMPT_PATHS = ['/welcome', '/register', '/create', '/login', '/auth/callback'];
 
-export function markPromptNotificationsAfterRegister() {
-  try {
-    if (sessionStorage.getItem(PROMPT_ARMED_KEY) === '1') return;
-    sessionStorage.setItem(PROMPT_KEY, '1');
-    sessionStorage.setItem(PROMPT_ARMED_KEY, '1');
-  } catch {
-    // sessionStorage may be unavailable in some private-mode browsers
-  }
-}
-
-export function clearPromptNotificationsAfterRegister() {
-  try {
-    sessionStorage.removeItem(PROMPT_KEY);
-  } catch {
-    // ignore
-  }
-}
-
-function hasPromptFlag(): boolean {
-  try {
-    return sessionStorage.getItem(PROMPT_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
+export { markPromptNotificationsAfterRegister };
 
 function isIosDevice(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -74,25 +57,50 @@ export default function PostRegisterNotificationDialog() {
 
   useEffect(() => {
     if (!user?._id || user.role !== 'player') return;
-    if (location.pathname === '/welcome' || location.pathname === '/register' || location.pathname === '/create') return;
+    if (SKIP_PROMPT_PATHS.includes(location.pathname)) return;
     if (isOnboardingTourPending()) return;
 
     const fromNav = Boolean(navState?.promptNotifications);
-    if (!fromNav && !hasPromptFlag()) return;
+    if (!fromNav && !hasPromptFlag() && !hasLoginPromptFlag()) return;
 
-    setOpen(true);
+    let cancelled = false;
+    isPushActivated()
+      .then((activated) => {
+        if (cancelled) return;
+        if (activated) {
+          clearPromptNotificationsAfterRegister();
+          clearLoginNotificationPrompt();
+          return;
+        }
+        setOpen(true);
+        if (fromNav) {
+          navigate(`${location.pathname}${location.search}`, { replace: true, state: {} });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setOpen(true);
+      });
 
-    if (fromNav) {
-      navigate(`${location.pathname}${location.search}`, { replace: true, state: {} });
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [user?._id, user?.role, navState?.promptNotifications, location.pathname, location.search, navigate]);
 
   useEffect(() => {
     const onTourFinished = () => {
       if (!user?._id || user.role !== 'player') return;
-      if (!hasPromptFlag()) return;
-      if (location.pathname === '/welcome' || location.pathname === '/register' || location.pathname === '/create') return;
-      setOpen(true);
+      if (!hasPromptFlag() && !hasLoginPromptFlag()) return;
+      if (SKIP_PROMPT_PATHS.includes(location.pathname)) return;
+      isPushActivated()
+        .then((activated) => {
+          if (activated) {
+            clearPromptNotificationsAfterRegister();
+            clearLoginNotificationPrompt();
+            return;
+          }
+          setOpen(true);
+        })
+        .catch(() => setOpen(true));
     };
     window.addEventListener(ONBOARDING_TOUR_FINISHED_EVENT, onTourFinished);
     return () => window.removeEventListener(ONBOARDING_TOUR_FINISHED_EVENT, onTourFinished);
@@ -100,6 +108,7 @@ export default function PostRegisterNotificationDialog() {
 
   function handleLater() {
     clearPromptNotificationsAfterRegister();
+    clearLoginNotificationPrompt();
     setOpen(false);
     setError(null);
   }
@@ -111,6 +120,7 @@ export default function PostRegisterNotificationDialog() {
       await subscribeToPushNotifications();
       await refreshUser();
       clearPromptNotificationsAfterRegister();
+      clearLoginNotificationPrompt();
       setSuccess(true);
       setTimeout(() => setOpen(false), 1400);
     } catch (err: unknown) {
@@ -170,7 +180,7 @@ export default function PostRegisterNotificationDialog() {
             textAlign: 'center',
           }}
         >
-          Dobrodošao na Plejko. Uključi obaveštenja da dobiješ poruku čim se u blizini otvori novi meč.
+          Uključi obaveštenja da dobiješ poruku čim se u blizini otvori novi meč.
         </Typography>
 
         {iosNeedsHomeScreen && (

@@ -63,7 +63,7 @@ function readDraft() {
 }
 
 export default function Register() {
-  const { register, loginWithGoogle, loginWithFacebook } = useAuth();
+  const { register, loginWithGoogle, loginWithFacebook, completeOAuthRegistration } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const referralId = searchParams.get('ref') || undefined;
@@ -73,6 +73,7 @@ export default function Register() {
   const requestedStep = isStep(stepParam) ? stepParam : 'method';
   const roleFromUrl = isRole(roleParam) ? roleParam : null;
   const methodFromUrl = isMethod(methodParam) ? methodParam : null;
+  const oauthPending = searchParams.get('oauth') === 'pending';
 
   const [method, setMethod] = useState<Method | null>(() => methodFromUrl ?? readDraft()?.method ?? null);
   const [role, setRole] = useState<Role | null>(() => roleFromUrl ?? readDraft()?.role ?? null);
@@ -111,19 +112,30 @@ export default function Register() {
   const dotSteps: Step[] = steps.filter((s) => s !== 'method');
   const dotIndex = dotSteps.indexOf(step);
 
-  function buildRegisterUrl(next: Step, nextMethod = activeMethod, nextRole = activeRole) {
+  function buildRegisterUrl(
+    next: Step,
+    nextMethod = activeMethod,
+    nextRole = activeRole,
+    keepOAuthPending = oauthPending && (nextMethod === 'google' || nextMethod === 'facebook') && nextMethod === (methodFromUrl ?? method)
+  ) {
     const params = new URLSearchParams();
     if (next !== 'method') params.set('step', next);
     if (nextMethod) params.set('method', nextMethod);
     if (nextRole) params.set('role', nextRole);
     if (referralId) params.set('ref', referralId);
+    if (keepOAuthPending) params.set('oauth', 'pending');
     const qs = params.toString();
     return qs ? `/register?${qs}` : '/register';
   }
 
-  function goTo(next: Step, nextMethod = activeMethod, nextRole = activeRole) {
+  function goTo(
+    next: Step,
+    nextMethod = activeMethod,
+    nextRole = activeRole,
+    keepOAuthPending?: boolean
+  ) {
     setError(null);
-    navigate(buildRegisterUrl(next, nextMethod, nextRole));
+    navigate(buildRegisterUrl(next, nextMethod, nextRole, keepOAuthPending));
   }
 
   function clearDraft() {
@@ -145,7 +157,8 @@ export default function Register() {
 
   function handleMethodSelect(next: Method) {
     setMethod(next);
-    goTo('role', next, activeRole);
+    const keepPending = oauthPending && next === (methodFromUrl ?? method);
+    goTo('role', next, activeRole, keepPending);
   }
 
   function handleRoleSelect(next: Role) {
@@ -164,6 +177,19 @@ export default function Register() {
       return;
     }
     setLoading(true);
+    if (oauthPending) {
+      try {
+        await completeOAuthRegistration(activeRole, preferredGames);
+        markOnboardingTourPending();
+        clearDraft();
+        navigate('/welcome');
+      } catch (e: unknown) {
+        const err = e as { response?: { data?: { message?: string } } };
+        setError(err.response?.data?.message || 'Registracija nije uspela');
+        setLoading(false);
+      }
+      return;
+    }
     clearDraft();
     if (activeMethod === 'google') {
       loginWithGoogle(activeRole, preferredGames);
@@ -261,6 +287,16 @@ export default function Register() {
     fontWeight: 700,
   };
 
+  const gamesButtonLabel = loading
+    ? oauthPending
+      ? 'Kreiranje...'
+      : 'Preusmeravanje...'
+    : oauthPending
+      ? 'Završi registraciju'
+      : activeMethod === 'email'
+        ? 'Nastavi'
+        : `Nastavi sa ${activeMethod === 'google' ? 'Google' : 'Facebook'}`;
+
   return (
     <AuthShell
       title={titles[step].heading}
@@ -277,6 +313,13 @@ export default function Register() {
       {error && (
         <Alert severity="error" sx={{ mb: '18px', borderRadius: '12px' }}>
           {error}
+        </Alert>
+      )}
+
+      {oauthPending && (step === 'role' || step === 'games') && (
+        <Alert severity="info" sx={{ mb: '18px', borderRadius: '12px' }}>
+          Ovaj nalog još nije registrovan na Plejku. Izaberi da li si igrač ili teren i koje igre te
+          zanimaju.
         </Alert>
       )}
 
@@ -365,11 +408,7 @@ export default function Register() {
             }}
             sx={primaryButtonSx}
           >
-            {loading
-              ? 'Preusmeravanje...'
-              : activeMethod === 'email'
-                ? 'Nastavi'
-                : `Nastavi sa ${activeMethod === 'google' ? 'Google' : 'Facebook'}`}
+            {gamesButtonLabel}
           </Button>
         </Stack>
       )}

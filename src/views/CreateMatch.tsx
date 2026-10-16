@@ -8,10 +8,6 @@ import {
   TextField,
   MenuItem,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Alert,
   Box,
   Paper,
@@ -22,8 +18,6 @@ import {
   IconButton,
   Menu,
   alpha,
-  useMediaQuery,
-  useTheme,
   type Theme,
 } from "@mui/material";
 import {
@@ -36,7 +30,7 @@ import {
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import api from "../lib/api";
-import { parseIntegerInput, parseNumberInput, selectNumberField, toNumberOr } from "../lib/numberInput";
+import { parseIntegerInput, selectNumberField, toNumberOr } from "../lib/numberInput";
 import { Field, Match } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { isEmailVerified } from "../lib/emailVerified";
@@ -131,8 +125,6 @@ export default function CreateMatch() {
   userRef.current = user;
   const navigate = useNavigate();
   const query = useQuery();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [activeStep, setActiveStep] = useState(0);
 
   // ── Informal mode ──
@@ -189,16 +181,6 @@ export default function CreateMatch() {
   // ── Success screen (shown after the match is published) ──
   const [createdMatch, setCreatedMatch] = useState<{ id: string; pending: boolean } | null>(null);
 
-  // ── Add Field dialog ──
-  const [openAddField, setOpenAddField] = useState(false);
-  const [newFieldName, setNewFieldName] = useState("");
-  const [newFieldSport, setNewFieldSport] = useState("football");
-  const [newFieldLat, setNewFieldLat] = useState("");
-  const [newFieldLng, setNewFieldLng] = useState("");
-  const [newFieldPrice, setNewFieldPrice] = useState<number | "">("");
-  const [dialogMapCenter, setDialogMapCenter] = useState<[number, number]>(BELGRADE);
-  const [dialogMarkerPosition, setDialogMarkerPosition] = useState<[number, number] | null>(null);
-
   // Formal: field sports ∩ preferred
   const allowedFieldSports = useMemo(() => {
     if (!selectedField) return sportOptions.map((o) => o.value);
@@ -248,13 +230,6 @@ export default function CreateMatch() {
   function applyLocationToInformal(loc: [number, number]) {
     setInformalMapCenter(loc);
     setInformalMarkerPosition(loc);
-  }
-
-  function applyLocationToDialog(loc: [number, number]) {
-    setDialogMapCenter(loc);
-    setDialogMarkerPosition(loc);
-    setNewFieldLat(loc[0].toFixed(6));
-    setNewFieldLng(loc[1].toFixed(6));
   }
 
   function persistUserLocation(loc: [number, number]) {
@@ -385,12 +360,6 @@ export default function CreateMatch() {
     setFieldId(qFieldId);
     setActiveStep(query.get("dateTime") ? 2 : 1);
   }, [fields, sport, preferredSports, query]);
-
-  useEffect(() => {
-    if (newFieldSport && !GAME_TYPES[newFieldSport] && preferredSports[0]) {
-      setNewFieldSport(preferredSports[0]);
-    }
-  }, [preferredSports, newFieldSport]);
 
   useEffect(() => {
     try {
@@ -530,34 +499,9 @@ export default function CreateMatch() {
     return slots.sort((a, b) => a.datetime.localeCompare(b.datetime));
   }
 
-  // ── Geolocation helpers ──
-  function getUserLocationForDialog() {
-    if (userLocation) {
-      applyLocationToDialog(userLocation);
-      return;
-    }
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-        setUserLocation(loc);
-        applyLocationToDialog(loc);
-        persistUserLocation(loc);
-      },
-      (err) => console.error("Geolocation error:", err),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
-  }
-
   function handleInformalMapClick(lat: number, lng: number) {
     setInformalMarkerPosition([lat, lng]);
     setInformalMapCenter([lat, lng]);
-  }
-
-  function handleDialogMapClick(lat: number, lng: number) {
-    setNewFieldLat(lat.toFixed(6));
-    setNewFieldLng(lng.toFixed(6));
-    setDialogMarkerPosition([lat, lng]);
   }
 
   // ── Mode toggle ──
@@ -726,45 +670,6 @@ export default function CreateMatch() {
       } else {
         setError(err.response?.data?.message || "Neuspešno kreiranje meča");
       }
-    }
-  }
-
-  // ── Add Field dialog ──
-  function handleDialogClose() {
-    setOpenAddField(false);
-    setError(null);
-    setNewFieldName(""); setNewFieldLat(""); setNewFieldLng("");
-    setNewFieldPrice(""); setDialogMarkerPosition(null);
-    setDialogMapCenter(userLocation || BELGRADE);
-  }
-
-  function handleOpenAddField() {
-    setNewFieldSport(sport || preferredSports[0] || "football");
-    if (userLocation) applyLocationToDialog(userLocation);
-    else getUserLocationForDialog();
-    setOpenAddField(true);
-  }
-
-  async function handleAddField() {
-    if (!newFieldName || !newFieldLat || !newFieldLng) {
-      setError("Molimo popunite sva polja i odaberite lokaciju na mapi");
-      return;
-    }
-    try {
-      const res = await api.post<Field>("/api/fields", {
-        name: newFieldName,
-        sport: newFieldSport,
-        lat: parseFloat(newFieldLat),
-        lng: parseFloat(newFieldLng),
-        price: toNumberOr(newFieldPrice, 0),
-        registrationDeadlineHours: 0,
-      });
-      setFields([...fields, res.data]);
-      handleSportChange(newFieldSport);
-      setFieldId(res.data._id);
-      handleDialogClose();
-    } catch {
-      setError("Neuspešno dodavanje terena");
     }
   }
 
@@ -1027,7 +932,7 @@ export default function CreateMatch() {
         )}
         {matchingFields.length === 0 ? (
           <Alert severity="info" sx={{ borderRadius: '12px' }}>
-            Nema mesta za {sport ? getGameTypeName(sport) : "tvoje igre"}. Dodaj mesto ili izaberi „Negde drugde“.
+            Nema mesta za {sport ? getGameTypeName(sport) : "tvoje igre"}. Izaberi „Negde drugde“.
           </Alert>
         ) : (
           <Stack spacing="14px" role="radiogroup" aria-label="Popularni tereni u blizini">
@@ -1087,13 +992,6 @@ export default function CreateMatch() {
             })}
           </Stack>
         )}
-        <Button
-          startIcon={<AddIcon />}
-          onClick={handleOpenAddField}
-          sx={{ mt: "12px", ml: "-8px", fontWeight: 700 }}
-        >
-          Dodaj mesto
-        </Button>
       </Box>
     );
   }
@@ -1609,66 +1507,6 @@ export default function CreateMatch() {
         </>
       )}
 
-      {/* Add Field Dialog */}
-      <Dialog
-        open={openAddField}
-        onClose={handleDialogClose}
-        maxWidth="md"
-        fullWidth
-        fullScreen={isMobile}
-        PaperProps={{ sx: { borderRadius: isMobile ? 0 : 4, p: 1 } }}
-      >
-        <DialogTitle>
-          <Typography variant="h5" fontWeight={700}>Dodaj novo mesto</Typography>
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={3} sx={{ mt: 1 }}>
-            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
-            <TextField label="Naziv mesta" value={newFieldName} onChange={(e) => setNewFieldName(e.target.value)} required fullWidth />
-            <TextField select label="Igra / sport" value={newFieldSport} onChange={(e) => setNewFieldSport(e.target.value)} required fullWidth>
-              {getSportSelectOptions(preferredSports.length ? preferredSports : undefined).map((s) => <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>)}
-            </TextField>
-            <TextField
-              type="text"
-              label="Cena (EUR) - opciono"
-              value={newFieldPrice}
-              onFocus={selectNumberField}
-              onChange={(e) => {
-                const value = parseNumberInput(e.target.value);
-                if (value === null) return;
-                if (value === "" || value >= 0) setNewFieldPrice(value);
-              }}
-              fullWidth
-              inputProps={{ inputMode: "decimal" }}
-            />
-            <Box>
-              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>Lokacija mesta</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Podrazumevano se koristi tvoja lokacija. Možeš pomeriti tačku klikom na mapu.
-              </Typography>
-              <Button startIcon={<MyLocationIcon />} onClick={getUserLocationForDialog} size="small" sx={{ mb: 2 }}>
-                Osveži moju lokaciju
-              </Button>
-              <Paper elevation={0} sx={{ height: { xs: 220, sm: 300 }, borderRadius: 3, overflow: "hidden", border: "1px solid", borderColor: dialogMarkerPosition ? "primary.main" : "divider", borderWidth: dialogMarkerPosition ? 2 : 1 }}>
-                <MapContainer center={dialogMapCenter} zoom={dialogMarkerPosition ? 15 : 13} style={{ height: "100%", width: "100%" }} scrollWheelZoom key={`dialog-${dialogMapCenter[0]}-${dialogMapCenter[1]}`}>
-                  <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  <MapCenter position={dialogMapCenter} />
-                  <MapClickHandler onMapClick={handleDialogMapClick} />
-                  {dialogMarkerPosition && <Marker position={dialogMarkerPosition} />}
-                </MapContainer>
-              </Paper>
-            </Box>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField label="Geografska širina" value={newFieldLat} InputProps={{ readOnly: true }} fullWidth helperText={!newFieldLat ? "Kliknite na mapu" : "✓ Postavljeno"} />
-              <TextField label="Geografska dužina" value={newFieldLng} InputProps={{ readOnly: true }} fullWidth helperText={!newFieldLng ? "Kliknite na mapu" : "✓ Postavljeno"} />
-            </Stack>
-          </Stack>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={handleDialogClose} variant="outlined" sx={{ borderRadius: 3, px: 3, width: { xs: "100%", sm: "auto" } }}>Otkaži</Button>
-          <Button onClick={handleAddField} variant="contained" disabled={!newFieldLat || !newFieldLng || !newFieldName} sx={{ borderRadius: 3, px: 3, width: { xs: "100%", sm: "auto" } }}>Dodaj mesto</Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }
