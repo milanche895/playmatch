@@ -177,7 +177,7 @@ export default function MatchQuickChat({ matchId, currentUserId, canSend, player
           justifyContent: 'flex-start',
           textAlign: 'left',
           gap: '14px',
-          borderRadius: '14px',
+          borderRadius: '16px',
           py: 0.5,
         }}
       >
@@ -221,7 +221,7 @@ export default function MatchQuickChat({ matchId, currentUserId, canSend, player
                 margin: fullScreen ? 0 : '16px',
                 width: fullScreen ? '100%' : 'calc(100% - 32px)',
                 bgcolor: PAGE_BG,
-                borderRadius: fullScreen ? 0 : '20px',
+                borderRadius: fullScreen ? 0 : '16px',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
@@ -269,7 +269,7 @@ export default function MatchQuickChat({ matchId, currentUserId, canSend, player
           onClose={() => setInfoAnchor(null)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
           transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-          slotProps={{ paper: { sx: { borderRadius: '14px', p: 1.5, minWidth: 220, maxHeight: 320 } } }}
+          slotProps={{ paper: { sx: { borderRadius: '16px', p: 1.5, minWidth: 220, maxHeight: 320 } } }}
         >
           <Typography sx={{ fontSize: 13, fontWeight: 700, color: 'text.secondary', mb: 1 }}>
             Učesnici ({players.length})
@@ -331,7 +331,7 @@ export default function MatchQuickChat({ matchId, currentUserId, canSend, player
                           py: 1.1,
                           bgcolor: 'primary.main',
                           color: '#fff',
-                          borderRadius: '16px 16px 4px 16px',
+                          borderRadius: '16px',
                           fontSize: 15,
                           lineHeight: 1.4,
                           overflowWrap: 'anywhere',
@@ -370,7 +370,7 @@ export default function MatchQuickChat({ matchId, currentUserId, canSend, player
                             py: 1.1,
                             bgcolor: '#fff',
                             border: `1px solid ${BORDER}`,
-                            borderRadius: '16px 16px 16px 4px',
+                            borderRadius: '16px',
                             fontSize: 15,
                             lineHeight: 1.4,
                             overflowWrap: 'anywhere',

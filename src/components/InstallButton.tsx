@@ -131,7 +131,7 @@ export default function InstallButton() {
         onClose={() => setHint(null)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 4, mx: 2 } }}
+        PaperProps={{ sx: { borderRadius: '16px', mx: 2 } }}
       >
         <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>Instaliraj Plejko</DialogTitle>
         <DialogContent>

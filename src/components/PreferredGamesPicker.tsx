@@ -129,7 +129,7 @@ export default function PreferredGamesPicker({
       })}
 
       {value.length > 0 && (
-        <Alert severity="success" sx={{ borderRadius: 2 }} icon={false}>
+        <Alert severity="success" sx={{ borderRadius: '16px' }} icon={false}>
           <Typography variant="caption" fontWeight={700} display="block" sx={{ mb: 1 }}>
             Odabrano ({value.length}):
           </Typography>

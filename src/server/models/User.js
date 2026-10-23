@@ -62,6 +62,8 @@ const userSchema = new mongoose.Schema(
     // Notification settings
     notificationEnabled: { type: Boolean, default: true }, // Da li želi push notifikacije
     notificationRadius: { type: Number, default: 10 }, // Radius u km za obaveštenja o mečevima
+    // true / missing = new-match pushes only for preferredSports; false = every sport in radius
+    notifyOnlyPreferredSports: { type: Boolean, default: true },
     lastKnownLocation: {
       lat: { type: Number },
       lng: { type: Number },

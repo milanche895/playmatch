@@ -10,6 +10,7 @@ const NOTIFICATION_TYPES = [
   'court_rejected',
   'team_ready',
   'slot_reserved',
+  'rate_players',
 ];
 
 // In-app notification feed ("Obaveštenja" screen). Titles are derived from `type` on the client.
@@ -31,5 +32,16 @@ const notificationSchema = new mongoose.Schema(
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, matchId: 1, type: 1 });
 
-module.exports = mongoose.models.Notification || mongoose.model('Notification', notificationSchema);
+const Notification = mongoose.models.Notification || mongoose.model('Notification', notificationSchema);
+
+// Hot reload keeps the already-compiled model. The enum validator reads this
+// same array, so new types are accepted without a process restart.
+const typePath = Notification.schema.path('type');
+if (typePath && Array.isArray(typePath.enumValues)) {
+  for (const type of NOTIFICATION_TYPES) {
+    if (!typePath.enumValues.includes(type)) typePath.enumValues.push(type);
+  }
+}
+
+module.exports = Notification;
 module.exports.NOTIFICATION_TYPES = NOTIFICATION_TYPES;

@@ -40,6 +40,8 @@ export type User = {
   // Notification settings
   notificationEnabled?: boolean;
   notificationRadius?: number;
+  /** Missing or true: new-match alerts only for preferredSports. False: every sport in radius. */
+  notifyOnlyPreferredSports?: boolean;
   lastKnownLocation?: {
     lat: number;
     lng: number;
@@ -111,7 +113,8 @@ export type AppNotificationType =
   | 'court_approved'
   | 'court_rejected'
   | 'team_ready'
-  | 'slot_reserved';
+  | 'slot_reserved'
+  | 'rate_players';
 
 /** In-app notification feed entry (GET /api/notifications). */
 export type AppNotification = {

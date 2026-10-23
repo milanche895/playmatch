@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -15,11 +15,14 @@ import { useAuth } from '../context/AuthContext';
 import { subscribeToPushNotifications } from '../lib/notifications';
 import {
   clearLoginNotificationPrompt,
+  clearNotificationsBeforeCreate,
   clearPromptNotificationsAfterRegister,
   hasLoginPromptFlag,
   hasPromptFlag,
+  isNotificationsBeforeCreate,
   isPushActivated,
   markPromptNotificationsAfterRegister,
+  PROMPT_BEFORE_CREATE_EVENT,
 } from '../lib/notificationPrompt';
 import {
   ONBOARDING_TOUR_FINISHED_EVENT,
@@ -52,16 +55,22 @@ export default function PostRegisterNotificationDialog() {
   const [subscribing, setSubscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const openingBeforeCreate = useRef(false);
 
   const navState = location.state as { promptNotifications?: boolean } | null;
 
   useEffect(() => {
     if (!user?._id || user.role !== 'player') return;
-    if (SKIP_PROMPT_PATHS.includes(location.pathname)) return;
-    if (isOnboardingTourPending()) return;
 
     const fromNav = Boolean(navState?.promptNotifications);
-    if (!fromNav && !hasPromptFlag() && !hasLoginPromptFlag()) return;
+    const promptPending = fromNav || hasPromptFlag() || hasLoginPromptFlag();
+    // After registration the create screen used to be skipped, so the prompt
+    // appeared only once the match already existed. Ask before the form is usable.
+    const askBeforeCreate = location.pathname === '/create' && promptPending;
+
+    if (!askBeforeCreate && SKIP_PROMPT_PATHS.includes(location.pathname)) return;
+    if (!askBeforeCreate && isOnboardingTourPending()) return;
+    if (!promptPending) return;
 
     let cancelled = false;
     isPushActivated()
@@ -106,11 +115,52 @@ export default function PostRegisterNotificationDialog() {
     return () => window.removeEventListener(ONBOARDING_TOUR_FINISHED_EVENT, onTourFinished);
   }, [user?._id, user?.role, location.pathname]);
 
-  function handleLater() {
+  useEffect(() => {
+    async function onBeforeCreate() {
+      if (openingBeforeCreate.current) return;
+      openingBeforeCreate.current = true;
+      try {
+        if (!user?._id || user.role !== 'player') {
+          clearNotificationsBeforeCreate();
+          navigate('/create', { replace: true });
+          return;
+        }
+        try {
+          const activated = await isPushActivated();
+          if (activated) {
+            clearPromptNotificationsAfterRegister();
+            clearLoginNotificationPrompt();
+            clearNotificationsBeforeCreate();
+            navigate('/create', { replace: true });
+            return;
+          }
+        } catch {
+          // Status check failed — still ask before creating the match.
+        }
+        setError(null);
+        setSuccess(false);
+        setOpen(true);
+      } finally {
+        openingBeforeCreate.current = false;
+      }
+    }
+
+    window.addEventListener(PROMPT_BEFORE_CREATE_EVENT, onBeforeCreate);
+    return () => window.removeEventListener(PROMPT_BEFORE_CREATE_EVENT, onBeforeCreate);
+  }, [user?._id, user?.role, navigate]);
+
+  function continueAfterPrompt() {
+    const goCreate = isNotificationsBeforeCreate();
     clearPromptNotificationsAfterRegister();
     clearLoginNotificationPrompt();
+    clearNotificationsBeforeCreate();
     setOpen(false);
     setError(null);
+    if (goCreate) navigate('/create', { replace: true });
+  }
+
+  function handleLater() {
+    continueAfterPrompt();
   }
 
   async function handleEnable() {
@@ -119,10 +169,8 @@ export default function PostRegisterNotificationDialog() {
     try {
       await subscribeToPushNotifications();
       await refreshUser();
-      clearPromptNotificationsAfterRegister();
-      clearLoginNotificationPrompt();
       setSuccess(true);
-      setTimeout(() => setOpen(false), 1400);
+      setTimeout(() => continueAfterPrompt(), 1400);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Greška pri omogućavanju obaveštenja';
       setError(message);
@@ -145,12 +193,12 @@ export default function PostRegisterNotificationDialog() {
       fullWidth
       PaperProps={{
         sx: {
-          borderRadius: 4,
+          borderRadius: '16px',
           p: 1,
         },
       }}
     >
-      <DialogTitle sx={{ textAlign: 'center', pt: 2 }}>
+      <DialogTitle component="div" sx={{ textAlign: 'center', pt: 2 }}>
         <Box
           sx={{
             width: 56,
@@ -166,7 +214,7 @@ export default function PostRegisterNotificationDialog() {
         >
           <NotificationsActiveIcon sx={{ color: 'white', fontSize: 28 }} />
         </Box>
-        <Typography variant="h5" fontWeight={700}>
+        <Typography variant="h5" component="h2" fontWeight={700}>
           Aktiviraj obaveštenja
         </Typography>
       </DialogTitle>
@@ -184,19 +232,19 @@ export default function PostRegisterNotificationDialog() {
         </Typography>
 
         {iosNeedsHomeScreen && (
-          <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+          <Alert severity="info" sx={{ mb: 2, borderRadius: '16px' }}>
             Na iPhone-u obaveštenja rade samo iz ikone na početnom ekranu: Deli → Dodaj na početni ekran, pa otvori Plejko odatle.
           </Alert>
         )}
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+          <Alert severity="error" sx={{ mb: 2, borderRadius: '16px' }}>
             {error}
           </Alert>
         )}
 
         {success && (
-          <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
+          <Alert severity="success" sx={{ mb: 2, borderRadius: '16px' }}>
             Obaveštenja su uključena.
           </Alert>
         )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AppBar,
   Toolbar,
@@ -17,7 +17,6 @@ import {
   useTheme,
   useMediaQuery,
   Avatar,
-  Badge,
   Tooltip,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
@@ -33,11 +32,10 @@ import AppRegistrationIcon from "@mui/icons-material/AppRegistration";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import SportsSoccerIcon from "@mui/icons-material/SportsSoccer";
 import NotificationsIcon from "@mui/icons-material/Notifications";
-import PersonAddAltOutlinedIcon from "@mui/icons-material/PersonAddAltOutlined";
 import NotificationsNoneOutlinedIcon from "@mui/icons-material/NotificationsNoneOutlined";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
-import api from "@/lib/api";
 import { Link as RouterLink, useNavigate, useLocation } from '@/lib/router';
 import { useAuth } from "../context/AuthContext";
 import { useThemeMode } from "../context/ThemeContext";
@@ -46,51 +44,24 @@ import PlejkoLogo from "./PlejkoLogo";
 import NotificationSetupAlert from "./NotificationSetupAlert";
 import MobileHeader from "./MobileHeader";
 import BottomNav, { BOTTOM_NAV_VISIBLE_PATHS, COURT_BOTTOM_NAV_PATHS } from "./BottomNav";
+import UnreadCountBadge from "./UnreadCountBadge";
+import { unreadAriaLabel, useUnreadCount } from "../lib/unreadNotifications";
 
-/** Court mobile header actions: notification bell (red dot when unread) + profile shortcut. */
+/** Court mobile header actions: notification bell (count when unread) + profile shortcut. */
 function CourtHeaderActions() {
-  const [unread, setUnread] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .get<{ unreadCount?: number }>("/api/notifications")
-      .then((res) => {
-        if (!cancelled) setUnread(res.data?.unreadCount ?? 0);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const unread = useUnreadCount();
 
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
       <IconButton
         component={RouterLink}
         to="/notification-settings"
-        aria-label="Obaveštenja"
+        aria-label={unreadAriaLabel(unread)}
         sx={{ color: "primary.main", p: 0.75 }}
       >
-        <Badge
-          variant="dot"
-          invisible={unread === 0}
-          sx={{
-            "& .MuiBadge-badge": {
-              bgcolor: "#EF4444",
-              width: 9,
-              height: 9,
-              minWidth: 9,
-              borderRadius: "50%",
-              top: 3,
-              right: 3,
-              border: "1.5px solid #F4F7FC",
-              boxSizing: "content-box",
-            },
-          }}
-        >
+        <UnreadCountBadge count={unread}>
           <NotificationsNoneOutlinedIcon sx={{ fontSize: 28 }} />
-        </Badge>
+        </UnreadCountBadge>
       </IconButton>
       <IconButton
         component={RouterLink}
@@ -111,8 +82,20 @@ function CourtHeaderActions() {
   );
 }
 
+function withUnreadBadge(icon: ReactNode, path: string, unread: number) {
+  if (path !== "/notification-settings") return icon;
+  return <UnreadCountBadge count={unread}>{icon}</UnreadCountBadge>;
+}
+
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const auth = useAuth();
+  const { logout } = auth;
+  const unread = useUnreadCount();
+  // Keep the server snapshot until this tree has hydrated. In dev, useSearchParams
+  // suspends the shell, so a session refresh can land before that paint.
+  const [authReady, setAuthReady] = useState(false);
+  useEffect(() => setAuthReady(true), []);
+  const user = authReady ? auth.user : auth.initialUser;
   const { mode, toggleColorMode } = useThemeMode();
   const navigate = useNavigate();
   const location = useLocation();
@@ -147,6 +130,8 @@ export default function Navbar() {
         return "tour-nav-matches";
       case "/moji-igraci":
         return "tour-nav-players";
+      case "/omiljene-igre":
+        return "tour-nav-favorites";
       case "/notification-settings":
         return "tour-nav-notifications";
       case "/profil":
@@ -187,6 +172,12 @@ export default function Navbar() {
       path: "/moji-igraci",
       show: !!user && user?.role === "player",
       icon: <PeopleIcon fontSize="small" />
+    },
+    {
+      label: "Omiljene igre",
+      path: "/omiljene-igre",
+      show: !!user && user?.role === "player",
+      icon: <SportsSoccerIcon fontSize="small" />
     },
     {
       label: "Obaveštenja",
@@ -281,7 +272,7 @@ export default function Navbar() {
               }}
             >
               <Box sx={{ mr: 2, color: isActive(item.path) ? 'primary.main' : 'text.secondary' }}>
-                {item.icon}
+                {withUnreadBadge(item.icon, item.path, unread)}
               </Box>
               <ListItemText 
                 primary={item.label}
@@ -355,24 +346,9 @@ export default function Navbar() {
     );
   }
 
-  // Mobile "Moji igrači" (sub-page of Profil): wordmark + invite-a-friend action, bottom navigation
+  // Mobile "Moji igrači" keeps the page back button and the bottom navigation
   if (showBottomNav && location.pathname === "/moji-igraci") {
-    return (
-      <>
-        <MobileHeader
-          action={
-            <IconButton
-              aria-label="Pozovi drugara"
-              onClick={() => navigate("/profil?sheet=invite")}
-              sx={{ color: "text.primary" }}
-            >
-              <PersonAddAltOutlinedIcon sx={{ fontSize: 28 }} />
-            </IconButton>
-          }
-        />
-        <BottomNav />
-      </>
-    );
+    return <BottomNav />;
   }
 
   // Mobile "Moji mečevi" / "Obaveštenja" / "Profil": the page has its own header, only the bottom navigation is shown
@@ -380,6 +356,7 @@ export default function Navbar() {
     showBottomNav &&
     (location.pathname === "/moji-mecevi" ||
       location.pathname === "/notification-settings" ||
+      location.pathname === "/omiljene-igre" ||
       location.pathname === "/profil")
   ) {
     return <BottomNav />;
@@ -478,7 +455,7 @@ export default function Navbar() {
                 key={item.label}
                 component={RouterLink}
                 to={item.path}
-                startIcon={item.icon}
+                startIcon={withUnreadBadge(item.icon, item.path, unread)}
                 data-tour={tourIdForPath(item.path)}
                 sx={{
                   color: isActive(item.path) ? 'primary.main' : 'text.secondary',

@@ -35,7 +35,7 @@ export default function EmailVerificationNeeded({ email }: { email?: string }) {
       elevation={0}
       sx={{
         p: 3,
-        borderRadius: 3,
+        borderRadius: '16px',
         border: '1px solid',
         borderColor: 'warning.main',
       }}
@@ -53,7 +53,7 @@ export default function EmailVerificationNeeded({ email }: { email?: string }) {
           otvori ga iz sandučeta.
         </Typography>
         {message && (
-          <Alert severity={status === 'error' ? 'error' : 'success'} sx={{ borderRadius: 2 }}>
+          <Alert severity={status === 'error' ? 'error' : 'success'} sx={{ borderRadius: '16px' }}>
             {message}
           </Alert>
         )}

@@ -32,6 +32,7 @@ import {
   PeopleOutline as PeopleIcon,
   EventAvailableOutlined as MyGamesIcon,
   NotificationsNone as NotificationsNoneIcon,
+  SportsSoccerOutlined as SportsIcon,
   PersonAddAltOutlined as InviteIcon,
   SettingsOutlined as SettingsIcon,
   MilitaryTechOutlined as BadgeIcon,
@@ -49,6 +50,7 @@ import InstallButton from '../components/InstallButton';
 import BottomSheet from '../components/BottomSheet';
 import { getGameTypeName } from '../constants/games';
 import { BADGE_CATALOG, getXpProgress, getCreditsDisplay } from '../lib/gamification';
+import { useUnreadCount } from '../lib/unreadNotifications';
 
 const TRUST_COLOR = { reliable: '#1B8A4B', caution: '#D9531E', risky: '#D92D20' } as const;
 
@@ -62,6 +64,7 @@ function MenuRow({
   icon: Icon,
   label,
   detail,
+  badge,
   onClick,
   danger = false,
   last = false,
@@ -70,6 +73,7 @@ function MenuRow({
   icon: ElementType;
   label: string;
   detail?: string;
+  badge?: number;
   onClick: () => void;
   danger?: boolean;
   last?: boolean;
@@ -94,6 +98,25 @@ function MenuRow({
     >
       <Icon sx={{ fontSize: 24, color: danger ? '#D92D20' : '#5B6B8C' }} />
       <Typography sx={{ flex: 1, fontSize: 16, fontWeight: 500, color: 'inherit' }}>{label}</Typography>
+      {badge != null && badge > 0 && (
+        <Box
+          sx={{
+            minWidth: 20,
+            height: 20,
+            px: '6px',
+            borderRadius: '10px',
+            bgcolor: '#EF4444',
+            color: '#fff',
+            fontSize: 12,
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {badge > 99 ? '99+' : badge}
+        </Box>
+      )}
       {detail && <Typography sx={{ fontSize: 14, color: '#6B7A99' }}>{detail}</Typography>}
       {!danger && <ChevronRightIcon sx={{ color: '#9AA6BF' }} />}
     </ButtonBase>
@@ -102,6 +125,7 @@ function MenuRow({
 
 export default function PlayerProfile() {
   const { user: currentUser, refreshUser, logout } = useAuth();
+  const unread = useUnreadCount();
   const { mode, toggleColorMode } = useThemeMode();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -113,7 +137,6 @@ export default function PlayerProfile() {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [sheet, setSheet] = useState<SheetKey>(null);
-  const gamesSectionRef = useRef<HTMLDivElement>(null);
   const shouldOpenPreferredGames = useRef(
     searchParams.get('edit') === 'igre' ||
     (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('edit') === 'igre')
@@ -137,11 +160,12 @@ export default function PlayerProfile() {
   });
 
   useEffect(() => {
+    if (shouldOpenPreferredGames.current) {
+      navigate('/omiljene-igre', { replace: true });
+      return;
+    }
     loadProfile();
     loadAnalytics();
-    if (shouldOpenPreferredGames.current) {
-      setEditing(true);
-    }
     // "/profil?sheet=invite" (from the Moji igrači header) opens the invite-a-friend sheet
     if (
       searchParams.get('sheet') === 'invite' ||
@@ -150,15 +174,6 @@ export default function PlayerProfile() {
       setSheet('invite');
     }
   }, []);
-
-  useEffect(() => {
-    if (!shouldOpenPreferredGames.current || !editing || loading || !user) return;
-    const timer = window.setTimeout(() => {
-      gamesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      shouldOpenPreferredGames.current = false;
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [editing, loading, user]);
 
   async function loadProfile() {
     try {
@@ -399,12 +414,12 @@ export default function PlayerProfile() {
   const alerts = (
     <>
       {error && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: '12px' }} onClose={() => setError(null)}>
+        <Alert severity="error" sx={{ mb: 2, borderRadius: '16px' }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
       {success && (
-        <Alert severity="success" sx={{ mb: 2, borderRadius: '12px' }} onClose={() => setSuccess(null)}>
+        <Alert severity="success" sx={{ mb: 2, borderRadius: '16px' }} onClose={() => setSuccess(null)}>
           {success}
         </Alert>
       )}
@@ -420,7 +435,7 @@ export default function PlayerProfile() {
     </Box>
   );
 
-  const infoPaperSx = { p: 2, borderRadius: '12px', bgcolor: '#F4F7FC', boxShadow: 'none' };
+  const infoPaperSx = { p: 2, borderRadius: '16px', bgcolor: '#F4F7FC', boxShadow: 'none' };
 
   return (
     <Box sx={{ maxWidth: 560, mx: 'auto', px: { xs: '10px', md: 0 } }}>
@@ -479,9 +494,15 @@ export default function PlayerProfile() {
       </Stack>
 
       {/* Sports */}
-      <Typography sx={{ fontSize: 18, fontWeight: 800, color: '#0B1B3F', mt: '24px', mb: '10px' }}>
-        Moji sportovi
-      </Typography>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: '24px', mb: '10px' }}>
+        <Typography sx={{ fontSize: 18, fontWeight: 800, color: '#0B1B3F' }}>Moji sportovi</Typography>
+        <Button
+          onClick={() => navigate('/omiljene-igre')}
+          sx={{ fontWeight: 700, textTransform: 'none', minWidth: 0, px: 1 }}
+        >
+          Izmeni
+        </Button>
+      </Stack>
       {user.preferredSports && user.preferredSports.length > 0 ? (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           {user.preferredSports.map((sport) => (
@@ -529,9 +550,10 @@ export default function PlayerProfile() {
 
       {/* Menu */}
       <Box sx={{ mt: '18px', bgcolor: '#FFFFFF', border: '1px solid #E3E9F3', borderRadius: '16px', overflow: 'hidden' }}>
+        <MenuRow icon={SportsIcon} label="Omiljene igre" onClick={() => navigate('/omiljene-igre')} />
         <MenuRow icon={PeopleIcon} label="Moji igrači" onClick={() => navigate('/moji-igraci')} />
         <MenuRow icon={MyGamesIcon} label="Moje igre" onClick={() => navigate('/moji-mecevi')} />
-        <MenuRow icon={NotificationsNoneIcon} label="Obaveštenja" onClick={() => navigate('/notification-settings')} />
+        <MenuRow icon={NotificationsNoneIcon} label="Obaveštenja" badge={unread} onClick={() => navigate('/notification-settings')} />
         <MenuRow icon={InviteIcon} label="Pozovi drugara" onClick={() => setSheet('invite')} />
         <MenuRow icon={BadgeIcon} label="Nivo i bedževi" detail={`Nivo ${level}`} onClick={() => setSheet('level')} />
         <MenuRow icon={StatsIcon} label="Statistika" onClick={() => setSheet('stats')} />
@@ -616,7 +638,7 @@ export default function PlayerProfile() {
             {trust && (
               <Paper
                 elevation={0}
-                sx={{ p: 2, borderRadius: '14px', bgcolor: trust.bgColor, color: 'white', boxShadow: 'none' }}
+                sx={{ p: 2, borderRadius: '16px', bgcolor: trust.bgColor, color: 'white', boxShadow: 'none' }}
               >
                 <Typography sx={{ fontSize: 13, opacity: 0.9 }}>Pouzdanost igrača</Typography>
                 <Typography sx={{ fontSize: 34, fontWeight: 800, lineHeight: 1.2 }}>{analytics.reliabilityScore}%</Typography>
@@ -735,7 +757,7 @@ export default function PlayerProfile() {
                 width: fullScreen ? '100%' : 'calc(100% - 32px)',
                 maxHeight: fullScreen ? '100dvh' : 'calc(100% - 32px)',
                 height: fullScreen ? '100dvh' : 'auto',
-                borderRadius: fullScreen ? 0 : '20px',
+                borderRadius: fullScreen ? 0 : '16px',
                 bgcolor: '#FFFFFF',
               },
             },
@@ -755,7 +777,7 @@ export default function PlayerProfile() {
 
         <Box sx={{ flex: 1, overflowY: 'auto', p: 2.5 }}>
           {error && (
-            <Alert severity="error" sx={{ mb: 2, borderRadius: '12px' }} onClose={() => setError(null)}>
+            <Alert severity="error" sx={{ mb: 2, borderRadius: '16px' }} onClose={() => setError(null)}>
               {error}
             </Alert>
           )}
@@ -853,7 +875,7 @@ export default function PlayerProfile() {
             </TextField>
 
             {/* Preferred games: category → game type */}
-            <Box ref={gamesSectionRef} sx={{ scrollMarginTop: 16 }}>
+            <Box sx={{ scrollMarginTop: 16 }}>
               <Typography sx={{ fontSize: 16, fontWeight: 800, mb: 1.5 }}>Omiljene igre</Typography>
               <PreferredGamesPicker
                 key={`preferred-games-${user._id}-${editing}`}

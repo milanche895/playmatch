@@ -35,10 +35,17 @@ function formatSlotReservedMessage({ matchDateTime, locationName }) {
   return `Vidimo se u ${when}${place}.`;
 }
 
+/** In-app and push copy when a finished match still needs teammate ratings. */
+function formatRatePlayersMessage({ locationName } = {}) {
+  const place = locationName ? ` na ${locationName}` : '';
+  return `Meč${place} je završen. Oceni saigrače.`;
+}
+
 module.exports = {
   playersWaitingPhrase,
   formatTeamReadyWhen,
   formatTeamReadyMessage,
   formatCourtApprovedMessage,
   formatSlotReservedMessage,
+  formatRatePlayersMessage,
 };

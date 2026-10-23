@@ -73,7 +73,7 @@ const PLAYER_STEPS: TourStep[] = [
   {
     id: 'nav-matches',
     title: 'Moji mečevi',
-    body: 'Ovde su mečevi koje si ti napravio i oni na koje si se prijavio. Koristi ovu stranicu da vidiš šta te čeka, da otkažeš dolazak (kasno otkazivanje smanjuje pouzdanost), ili da posle meča oceniš saigrače. Ocene grade tvoj prosek i pomažu drugima da znaju s kim igraju.',
+    body: 'Ovde su mečevi koje si ti napravio i oni na koje si se prijavio. Koristi ovu stranicu da vidiš šta te čeka i da otkažeš dolazak (kasno otkazivanje smanjuje pouzdanost). Posle meča koji si organizovao, ti ocenjuješ igrače. Ocene grade njihov prosek i pomažu drugima da znaju s kim igraju.',
     target: '[data-tour="tour-nav-matches"]',
     openDrawer: true,
   },
@@ -316,7 +316,7 @@ export default function OnboardingTour() {
           pointerEvents: 'auto',
           zIndex: 2002,
           p: { xs: 2.25, sm: 3 },
-          borderRadius: 3,
+          borderRadius: '16px',
           border: '1px solid',
           borderColor: 'divider',
           maxHeight: { xs: '48vh', sm: '70vh' },

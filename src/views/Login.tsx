@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Stack, Typography, Button, Alert, Box } from '@mui/material';
-import { useNavigate, Link, useSearchParams, useLocation } from '@/lib/router';
+import { useNavigate, useGoBack, Link, useSearchParams, useLocation } from '@/lib/router';
 import { useAuth } from '../context/AuthContext';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
@@ -19,6 +19,7 @@ import {
 export default function Login() {
   const { user, login, loginWithGoogle, loginWithFacebook } = useAuth();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const fromParam = searchParams.get('from');
@@ -61,8 +62,7 @@ export default function Login() {
   }
 
   function handleBack() {
-    if (typeof window !== 'undefined' && window.history.length > 1) navigate(-1);
-    else navigate('/');
+    goBack('/');
   }
 
   return (
@@ -89,12 +89,12 @@ export default function Login() {
       }
     >
       {error && (
-        <Alert severity="error" sx={{ mb: '18px', borderRadius: '12px' }}>
+        <Alert severity="error" sx={{ mb: '18px', borderRadius: '16px' }}>
           {error}
         </Alert>
       )}
       {notice && (
-        <Alert severity="info" sx={{ mb: '18px', borderRadius: '12px' }}>
+        <Alert severity="info" sx={{ mb: '18px', borderRadius: '16px' }}>
           {notice}
         </Alert>
       )}

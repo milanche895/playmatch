@@ -123,7 +123,7 @@ export default function FilterSheet({
             width: '100%',
             maxWidth: 520,
             bgcolor: '#FFFFFF',
-            borderRadius: '24px 24px 0 0',
+            borderRadius: '16px 16px 0 0',
             border: 'none',
             px: '20px',
             pt: '20px',

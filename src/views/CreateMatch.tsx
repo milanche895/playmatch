@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useLocation, useNavigate } from '@/lib/router';
+import { useLocation, useNavigate, useGoBack } from '@/lib/router';
 import {
   Stack,
   Typography,
@@ -124,6 +124,7 @@ export default function CreateMatch() {
   const userRef = useRef(user);
   userRef.current = user;
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const query = useQuery();
   const [activeStep, setActiveStep] = useState(0);
 
@@ -352,7 +353,7 @@ export default function CreateMatch() {
     if (!fieldOffersAnyPreferred(field, preferredSports)) {
       queryFieldHandled.current = true;
       setFieldId("");
-      setError("Ovaj teren ne podržava igre koje si odabrao na profilu. Izaberi drugo mesto.");
+      setError("Ovaj teren ne podržava igre koje si odabrao u omiljenim. Izaberi drugo mesto.");
       return;
     }
     if (!fieldOffersAnyPreferred(field, [sport])) return;
@@ -438,7 +439,7 @@ export default function CreateMatch() {
         }
       } else if (preferredSports.length > 0) {
         setError(
-          "Ovaj teren ne podržava igre koje si odabrao na profilu. Izaberi drugi teren ili ažuriraj omiljene igre."
+          "Ovaj teren ne podržava igre koje si odabrao u omiljenim. Izaberi drugi teren ili izmeni omiljene igre."
         );
       }
       const matchesRes = await api.get<Match[]>("/api/matches");
@@ -524,7 +525,7 @@ export default function CreateMatch() {
     if (!lastPreset) return;
     const presetSport = resolveToCanonicalGameId(lastPreset.sport) || lastPreset.sport;
     if (!preferredSports.includes(presetSport)) {
-      setError("Prošli meč je za igru koju više nemaš u omiljenim. Dodaj je na profilu ili izaberi drugu igru.");
+      setError("Prošli meč je za igru koju više nemaš u omiljenim. Dodaj je u Omiljenim igrama ili izaberi drugu igru.");
       return;
     }
     setIsInformal(lastPreset.isInformal);
@@ -572,7 +573,7 @@ export default function CreateMatch() {
   const handleNext = () => {
     if (activeStep === 0) {
       if (preferredSports.length === 0) {
-        setError("Prvo odaberi omiljene igre na profilu");
+        setError("Prvo odaberi omiljene igre");
         return;
       }
       if (!sport || !preferredSports.includes(sport)) {
@@ -617,11 +618,11 @@ export default function CreateMatch() {
       return;
     }
     if (preferredSports.length === 0) {
-      setError("Prvo odaberi omiljene igre na profilu da bi mogao da kreiraš meč.");
+      setError("Prvo odaberi omiljene igre da bi mogao da kreiraš meč.");
       return;
     }
     if (!sport || !preferredSports.includes(sport)) {
-      setError("Možeš kreirati meč samo za igre koje si odabrao na profilu.");
+      setError("Možeš kreirati meč samo za igre koje su ti u omiljenim.");
       return;
     }
     try {
@@ -739,7 +740,7 @@ export default function CreateMatch() {
 
     return (
       <Stack spacing="24px">
-        {error && <Alert severity="error" sx={{ borderRadius: '12px' }}>{error}</Alert>}
+        {error && <Alert severity="error" sx={{ borderRadius: '16px' }}>{error}</Alert>}
         <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
           {preferredSports.map((id, idx) => {
             const game = getGameType(id);
@@ -828,7 +829,7 @@ export default function CreateMatch() {
   function renderStepPlace() {
     return (
       <Stack spacing="24px">
-        {error && <Alert severity="error" sx={{ borderRadius: '12px' }}>{error}</Alert>}
+        {error && <Alert severity="error" sx={{ borderRadius: '16px' }}>{error}</Alert>}
         <Stack spacing="12px">
           <ChoiceCard
             icon={<AccountBalanceOutlinedIcon />}
@@ -886,14 +887,14 @@ export default function CreateMatch() {
             )}
           </Stack>
           {locationError && (
-            <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+            <Alert severity="warning" sx={{ mb: 2, borderRadius: '16px' }}>
               {locationError}
             </Alert>
           )}
           <Paper
             elevation={0}
             sx={{
-              height: { xs: 220, sm: 300 }, borderRadius: 3, overflow: "hidden",
+              height: { xs: 220, sm: 300 }, borderRadius: '16px', overflow: "hidden",
               border: "2px solid", borderColor: informalMarkerPosition ? "primary.main" : "divider",
             }}
           >
@@ -928,10 +929,10 @@ export default function CreateMatch() {
       <Box>
         <Typography sx={{ fontSize: 17, fontWeight: 800, mb: "14px" }}>Popularni tereni u blizini</Typography>
         {locationError && (
-          <Alert severity="warning" sx={{ mb: 2, borderRadius: '12px' }}>{locationError}</Alert>
+          <Alert severity="warning" sx={{ mb: 2, borderRadius: '16px' }}>{locationError}</Alert>
         )}
         {matchingFields.length === 0 ? (
-          <Alert severity="info" sx={{ borderRadius: '12px' }}>
+          <Alert severity="info" sx={{ borderRadius: '16px' }}>
             Nema mesta za {sport ? getGameTypeName(sport) : "tvoje igre"}. Izaberi „Negde drugde“.
           </Alert>
         ) : (
@@ -1044,22 +1045,22 @@ export default function CreateMatch() {
 
     return (
       <Stack spacing="24px">
-        {error && <Alert severity="error" sx={{ borderRadius: '12px' }}>{error}</Alert>}
+        {error && <Alert severity="error" sx={{ borderRadius: '16px' }}>{error}</Alert>}
         {presetApplied && (
-          <Alert severity="success" sx={{ borderRadius: '12px' }} onClose={() => setPresetApplied(false)}>
+          <Alert severity="success" sx={{ borderRadius: '16px' }} onClose={() => setPresetApplied(false)}>
             Postavke prethodnog meča su primenjene — samo odaberi novi termin.
           </Alert>
         )}
         {!isInformal && allowedFieldSports.length === 0 && (
-          <Alert severity="warning" sx={{ borderRadius: '12px' }}>
-            Teren ne podržava tvoje omiljene igre. Izaberi drugi teren ili ažuriraj profil.
+          <Alert severity="warning" sx={{ borderRadius: '16px' }}>
+            Teren ne podržava tvoje omiljene igre. Izaberi drugi teren ili izmeni omiljene igre.
           </Alert>
         )}
 
         {loadingSlots ? (
-          <Alert severity="info" sx={{ borderRadius: '12px' }}>Učitavanje dostupnih termina...</Alert>
+          <Alert severity="info" sx={{ borderRadius: '16px' }}>Učitavanje dostupnih termina...</Alert>
         ) : noSlots ? (
-          <Alert severity="warning" sx={{ borderRadius: '12px' }}>
+          <Alert severity="warning" sx={{ borderRadius: '16px' }}>
             Nema dostupnih termina za ovaj teren u narednih 30 dana. Proverite radno vreme terena.
           </Alert>
         ) : (
@@ -1417,7 +1418,7 @@ export default function CreateMatch() {
             <IconButton
               aria-label="Nazad"
               size="small"
-              onClick={() => (activeStep > 0 ? handleBack() : navigate(-1))}
+              onClick={() => (activeStep > 0 ? handleBack() : goBack("/"))}
               sx={{ color: "text.secondary", ml: "-6px" }}
             >
               <ArrowBackIcon />
@@ -1482,9 +1483,18 @@ export default function CreateMatch() {
         </>
       ) : (
         <>
-          <Typography component="h1" sx={{ fontSize: 28, fontWeight: 800, mb: "16px" }}>
-            Kreiraj meč
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing="10px" sx={{ mb: "16px" }}>
+            <IconButton
+              aria-label="Nazad"
+              onClick={() => goBack("/")}
+              sx={{ color: "text.secondary", ml: "-6px" }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography component="h1" sx={{ fontSize: 28, fontWeight: 800 }}>
+              Kreiraj meč
+            </Typography>
+          </Stack>
           {!verificationChecked ? (
             <Box display="flex" justifyContent="center" py={6}>
               <CircularProgress />
@@ -1494,14 +1504,14 @@ export default function CreateMatch() {
           ) : (
             <Alert
               severity="warning"
-              sx={{ borderRadius: '12px' }}
+              sx={{ borderRadius: '16px' }}
               action={
-                <Button color="inherit" size="small" onClick={() => navigate("/profil?edit=igre")}>
-                  Profil
+                <Button color="inherit" size="small" onClick={() => navigate("/omiljene-igre")}>
+                  Izaberi
                 </Button>
               }
             >
-              Nemaš odabrane omiljene igre. Dodaj ih na profilu da bi mogao da kreiraš meč.
+              Nemaš odabrane omiljene igre. Dodaj ih da bi mogao da kreiraš meč.
             </Alert>
           )}
         </>
@@ -1591,7 +1601,7 @@ function ExpandRow({
   children: ReactNode;
 }) {
   return (
-    <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: "14px", bgcolor: "background.paper", overflow: "hidden" }}>
+    <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: "16px", bgcolor: "background.paper", overflow: "hidden" }}>
       <ButtonBase
         onClick={onToggle}
         aria-expanded={open}

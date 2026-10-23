@@ -7,13 +7,16 @@ import {
   Box,
   Button,
   CircularProgress,
+  IconButton,
   InputAdornment,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import { useNavigate, Link } from '@/lib/router';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import PersonAddAltOutlinedIcon from '@mui/icons-material/PersonAddAltOutlined';
+import { useNavigate, useGoBack, Link } from '@/lib/router';
 import api from '../lib/api';
 import { User } from '../types';
 import { getTrustBadge } from '../lib/reliability';
@@ -41,6 +44,7 @@ function sharedMatchesLabel(n: number): string {
 
 export default function MojiIgraci() {
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const [players, setPlayers] = useState<Player[]>([]);
   const [blockedPlayers, setBlockedPlayers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,12 +88,29 @@ export default function MojiIgraci() {
 
   return (
     <Box sx={{ maxWidth: 560, mx: 'auto', px: { xs: '10px', md: 0 } }}>
-      <Typography
-        component="h1"
-        sx={{ fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em', color: '#0B1B3F', lineHeight: 1.2 }}
-      >
-        Moji igrači
-      </Typography>
+      <Stack direction="row" alignItems="center" spacing="6px" sx={{ mb: '6px' }}>
+        <IconButton
+          aria-label="Nazad"
+          onClick={() => goBack('/profil')}
+          edge="start"
+          sx={{ color: '#0B1B3F' }}
+        >
+          <ArrowBackIcon />
+        </IconButton>
+        <Typography
+          component="h1"
+          sx={{ flex: 1, fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em', color: '#0B1B3F', lineHeight: 1.2 }}
+        >
+          Moji igrači
+        </Typography>
+        <IconButton
+          aria-label="Pozovi drugara"
+          onClick={() => navigate('/profil?sheet=invite')}
+          sx={{ color: 'text.primary' }}
+        >
+          <PersonAddAltOutlinedIcon sx={{ fontSize: 28 }} />
+        </IconButton>
+      </Stack>
       <Typography sx={{ fontSize: 17, color: '#6B7A99', mt: '6px', lineHeight: 1.4 }}>
         Ljudi koji su igrali na mečevima koje si ti napravio.
       </Typography>
@@ -110,7 +131,7 @@ export default function MojiIgraci() {
           <CircularProgress />
         </Box>
       ) : players.length === 0 ? (
-        <Alert severity="info" sx={{ mt: 3, borderRadius: '12px' }}>
+        <Alert severity="info" sx={{ mt: 3, borderRadius: '16px' }}>
           Još nema igrača koji su se prijavili na tvoje mečeve.{' '}
           <Link to="/create" style={{ color: 'inherit', fontWeight: 600 }}>
             Napravi meč i pozovi igrače!

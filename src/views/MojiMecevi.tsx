@@ -79,7 +79,7 @@ function Note({ icon, children, tone = 'warning' }: { icon: ReactNode; children:
       direction="row"
       alignItems="center"
       spacing="10px"
-      sx={{ mt: '12px', px: '12px', py: '10px', borderRadius: '10px', ...palette }}
+      sx={{ mt: '12px', px: '12px', py: '10px', borderRadius: '16px', ...palette }}
     >
       <Box sx={{ display: 'flex', flexShrink: 0, '& .MuiSvgIcon-root': { fontSize: 20 } }}>{icon}</Box>
       <Typography sx={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>{children}</Typography>
@@ -131,7 +131,9 @@ export default function MojiMecevi() {
 
   function getNote(match: Match): ReactNode | null {
     const myId = currentUser?._id;
-    if (match.status === 'completed' && myId && match.players.length > 1) {
+    const isCreator = Boolean(myId && idOf(match.createdBy) === myId);
+    const hasPlayersToRate = match.players.some((p) => idOf(p) !== myId);
+    if (match.status === 'completed' && isCreator && hasPlayersToRate) {
       const alreadyRated = (match.ratings || []).some((r) => idOf(r.raterId) === myId);
       if (!alreadyRated) {
         return <Note icon={<StarBorderIcon />}>Treba da oceniš saigrače.</Note>;

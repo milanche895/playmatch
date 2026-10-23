@@ -540,7 +540,7 @@ export const createAppTheme = (mode: PaletteMode) => {
       MuiDialog: {
         styleOverrides: {
           paper: {
-            borderRadius: designTokens.borderRadius.xl,
+            borderRadius: designTokens.borderRadius.lg,
             boxShadow: isDark
               ? '0 25px 50px rgba(0,0,0,0.6)'
               : '0 25px 50px rgba(0,0,0,0.15)',

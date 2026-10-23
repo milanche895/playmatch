@@ -880,7 +880,7 @@ export default function Home() {
 
       {/* Alerts */}
       {locationError && user && (
-        <Alert severity="warning" sx={{ mb: 3, borderRadius: 3 }}>
+        <Alert severity="warning" sx={{ mb: 3, borderRadius: '16px' }}>
           {locationError}
         </Alert>
       )}
@@ -890,7 +890,7 @@ export default function Home() {
           elevation={0}
           sx={{
             mb: 3,
-            borderRadius: 3,
+            borderRadius: '16px',
             border: '1px solid',
             borderColor: 'divider',
             bgcolor: 'background.paper',
@@ -919,13 +919,13 @@ export default function Home() {
               </RadioGroup>
 
               {notificationPreferenceError && (
-                <Alert severity="error" sx={{ borderRadius: 2 }}>
+                <Alert severity="error" sx={{ borderRadius: '16px' }}>
                   {notificationPreferenceError}
                 </Alert>
               )}
 
               {notificationPreferenceSuccess && (
-                <Alert severity="success" sx={{ borderRadius: 2 }}>
+                <Alert severity="success" sx={{ borderRadius: '16px' }}>
                   {notificationPreferenceSuccess}
                 </Alert>
               )}
@@ -953,7 +953,7 @@ export default function Home() {
 
       {/* No matches alert */}
       {!loading && displayedMatches.length === 0 && (
-        <Alert severity="info" sx={{ mb: 3, borderRadius: 3 }}>
+        <Alert severity="info" sx={{ mb: 3, borderRadius: '16px' }}>
           {sportFilter === 'mine' && isPlayer
             ? 'Nema mečeva koje si okupio ili na koje si se prijavio. Prebaci se na „Sve“ ili kreiraj novi.'
             : user && userLocation
@@ -1159,7 +1159,7 @@ export default function Home() {
                                     p: 1.5,
                                     border: '1px solid',
                                     borderColor: 'divider',
-                                    borderRadius: 2,
+                                    borderRadius: '16px',
                                     bgcolor: 'action.hover',
                                   }}
                                 >
@@ -1194,7 +1194,7 @@ export default function Home() {
                                     p: 1.5,
                                     border: '1px solid',
                                     borderColor: 'divider',
-                                    borderRadius: 2,
+                                    borderRadius: '16px',
                                   }}
                                 >
                                   <Stack direction="row" spacing={1} sx={{ mb: 1 }}>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, type ElementType, type ReactNode } from 'react';
-import { useParams, useNavigate } from '@/lib/router';
+import { useParams, useNavigate, useGoBack } from '@/lib/router';
 import {
   Box,
   Button,
@@ -122,6 +122,7 @@ function MenuRow({
 export default function PublicPlayerProfile() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { user: currentUser } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [analytics, setAnalytics] = useState<PlayerAnalytics | null>(null);
@@ -211,10 +212,10 @@ export default function PublicPlayerProfile() {
   if (error || !user) {
     return (
       <Box sx={{ maxWidth: 560, mx: 'auto', px: { xs: '10px', md: 0 } }}>
-        <Alert severity="error" sx={{ borderRadius: '12px' }}>
+        <Alert severity="error" sx={{ borderRadius: '16px' }}>
           {error || 'Korisnik nije pronađen'}
         </Alert>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(-1)} sx={{ mt: 2 }}>
+        <Button startIcon={<ArrowBackIcon />} onClick={() => goBack('/')} sx={{ mt: 2 }}>
           Nazad
         </Button>
       </Box>
@@ -270,7 +271,7 @@ export default function PublicPlayerProfile() {
     <Box sx={{ maxWidth: 560, mx: 'auto', px: { xs: '10px', md: 0 } }}>
       {/* Top bar */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: '4px' }}>
-        <IconButton aria-label="Nazad" onClick={() => navigate(-1)} edge="start" sx={{ color: '#0B1B3F' }}>
+        <IconButton aria-label="Nazad" onClick={() => goBack('/')} edge="start" sx={{ color: '#0B1B3F' }}>
           <ArrowBackIcon />
         </IconButton>
         <IconButton aria-label="Više opcija" onClick={() => setSheet('details')} edge="end" sx={{ color: '#0B1B3F' }}>
@@ -381,7 +382,7 @@ export default function PublicPlayerProfile() {
                   minWidth: 100,
                   px: '8px',
                   py: '10px',
-                  borderRadius: '14px',
+                  borderRadius: '16px',
                   bgcolor: '#EAF1FD',
                   border: '1px solid #DCE7FA',
                 }}
@@ -421,7 +422,7 @@ export default function PublicPlayerProfile() {
       {user.bio && (
         <>
           <Typography sx={sectionTitleSx}>Kratko o meni</Typography>
-          <Box sx={{ p: '14px 16px', bgcolor: '#EDF2FA', border: '1px solid #E3E9F3', borderRadius: '14px' }}>
+          <Box sx={{ p: '14px 16px', bgcolor: '#EDF2FA', border: '1px solid #E3E9F3', borderRadius: '16px' }}>
             <Typography sx={{ fontSize: 15.5, lineHeight: 1.45, color: '#0B1B3F', whiteSpace: 'pre-line' }}>
               {user.bio}
             </Typography>
@@ -544,7 +545,7 @@ export default function PublicPlayerProfile() {
                   width: '100%',
                   px: '14px',
                   py: '12px',
-                  borderRadius: '14px',
+                  borderRadius: '16px',
                   border: '1px solid #E3E9F3',
                   bgcolor: '#FFFFFF',
                 }}

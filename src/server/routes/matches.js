@@ -30,7 +30,7 @@ const {
   applyOpenStatusIfBelowMin,
   getMatchAccessBlock,
 } = require('../utils/matchLifecycle');
-const { notifyUsers, notifyMatchBecameFull } = require('../utils/inAppNotifications');
+const { notifyUsers, notifyMatchBecameFull, notifyPlayersToRate, markRateNotificationRead } = require('../utils/inAppNotifications');
 const { formatSlotReservedMessage } = require('../../lib/teamReadyMessage');
 
 const PLAYER_PUBLIC_FIELDS = 'name avatarUrl ratingAvg reliabilityScore sportSkillLevels';
@@ -278,6 +278,16 @@ async function notifyNearbyPlayers(match, field) {
         continue;
       }
 
+      if (!playerWantsSportPush(player, match.sport)) {
+        debugLog('[PushDebug] skip candidate: sport outside notification prefs', {
+          name: player.name,
+          sport: match.sport,
+          prefs: player.preferredSports || [],
+          notifyOnlyPreferredSports: player.notifyOnlyPreferredSports !== false,
+        });
+        continue;
+      }
+
       debugLog('[PushDebug] nearby candidate OK', {
         name: player.name,
         distanceKm: Number(distance.toFixed(2)),
@@ -304,10 +314,10 @@ async function notifyNearbyPlayers(match, field) {
       minute: '2-digit'
     });
 
-    // Prepare notification payload
+    const sportName = GAME_TYPES[match.sport]?.name || 'Meč';
     const payload = {
-      title: 'Novi meč u blizini! ⚽',
-      body: `${locationName} - ${dateStr}`,
+      title: `Novi meč: ${sportName}`,
+      body: `${locationName} — ${dateStr}`,
       url: `/matches/${match._id}`,
       matchId: match._id.toString(),
       image: '/icons/icon-192.png'
@@ -349,6 +359,13 @@ async function notifyNearbyPlayers(match, field) {
     console.error('[PushDebug] notifyNearbyPlayers error:', error);
     throw error;
   }
+}
+
+/** New-match push: preferred sports only, unless the player opted into every sport. */
+function playerWantsSportPush(player, matchSport) {
+  if (player.notifyOnlyPreferredSports === false) return true;
+  const prefs = Array.isArray(player.preferredSports) ? player.preferredSports : [];
+  return prefs.includes(matchSport);
 }
 
 function idString(value) {
@@ -1295,6 +1312,8 @@ function matchesRoutesFactory(io) {
       match.status = 'completed';
       await match.save();
 
+      void notifyPlayersToRate(match);
+
       // Gamification: +50 XP attendees, +80 XP creator (once)
       await awardMatchCompletionXp(match, User);
 
@@ -1679,20 +1698,15 @@ function matchesRoutesFactory(io) {
     }
   });
 
-  // Pending ratings for completed match participants
+  // Pending ratings for the match creator
   router.get('/:id/rating-status', auth(true), async (req, res) => {
     try {
       const match = await Match.findById(req.params.id)
         .populate('players', PLAYER_PUBLIC_FIELDS)
         .populate('createdBy', PLAYER_PUBLIC_FIELDS);
       if (!match) return res.status(404).json({ message: 'Meč nije pronađen' });
-      if (match.status !== 'completed') {
+      if (match.status !== 'completed' || idString(match.createdBy) !== req.user.id.toString()) {
         return res.json({ shouldPrompt: false, pendingUsers: [] });
-      }
-
-      const isParticipant = match.players.some((p) => p._id.toString() === req.user.id.toString());
-      if (!isParticipant) {
-        return res.status(403).json({ message: 'Samo učesnici mogu oceniti saigrače' });
       }
 
       const ratedUserIds = (match.ratings || [])
@@ -1732,9 +1746,8 @@ function matchesRoutesFactory(io) {
         return res.status(400).json({ message: 'Ocene su moguće samo za završene mečeve' });
       }
 
-      const isParticipant = match.players.some((p) => p.toString() === req.user.id.toString());
-      if (!isParticipant) {
-        return res.status(403).json({ message: 'Samo učesnici mogu oceniti saigrače' });
+      if (idString(match.createdBy) !== req.user.id.toString()) {
+        return res.status(403).json({ message: 'Samo organizator može oceniti igrače' });
       }
 
       const participantIds = match.players.map((p) => p.toString());
@@ -1779,6 +1792,18 @@ function matchesRoutesFactory(io) {
 
       match.ratings = [...(match.ratings || []), ...newRatings];
       await match.save();
+
+      const ratedByMe = new Set(
+        (match.ratings || [])
+          .filter((r) => r.raterId.toString() === req.user.id.toString())
+          .map((r) => r.ratedUserId.toString())
+      );
+      const stillPending = match.players.some(
+        (p) => p.toString() !== req.user.id.toString() && !ratedByMe.has(p.toString())
+      );
+      if (!stillPending) {
+        void markRateNotificationRead(req.user.id, match._id);
+      }
 
       const ratedUserIds = [...new Set(newRatings.map((r) => r.ratedUserId.toString()))];
       await Promise.all(ratedUserIds.map((id) => recalculateUserRatings(id)));

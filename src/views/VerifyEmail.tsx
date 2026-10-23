@@ -66,7 +66,7 @@ export default function VerifyEmail() {
 
   if (status === 'success') {
     return (
-      <Paper elevation={0} sx={{ maxWidth: 520, mx: 'auto', p: 3, borderRadius: 3, border: '1px solid', borderColor: 'success.light' }}>
+      <Paper elevation={0} sx={{ maxWidth: 520, mx: 'auto', p: 3, borderRadius: '16px', border: '1px solid', borderColor: 'success.light' }}>
         <Stack spacing={2} alignItems="flex-start">
           <Stack direction="row" spacing={1} alignItems="center">
             <CheckCircleIcon color="success" />
@@ -86,7 +86,7 @@ export default function VerifyEmail() {
   return (
     <Box sx={{ maxWidth: 560, mx: 'auto' }}>
       <Stack spacing={2}>
-        <Alert severity={status === 'missing' ? 'info' : 'error'} sx={{ borderRadius: 2 }}>
+        <Alert severity={status === 'missing' ? 'info' : 'error'} sx={{ borderRadius: '16px' }}>
           {message || 'Otvori link iz emaila da potvrdiš nalog.'}
         </Alert>
         {user && !user.emailVerified && (!user.provider || user.provider === 'local') && (

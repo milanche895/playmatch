@@ -31,7 +31,7 @@ export default function BottomSheet({ open, onClose, title, children }: BottomSh
             maxWidth: 520,
             maxHeight: '90vh',
             bgcolor: '#FFFFFF',
-            borderRadius: '24px 24px 0 0',
+            borderRadius: '16px 16px 0 0',
             border: 'none',
             px: '20px',
             pt: '20px',

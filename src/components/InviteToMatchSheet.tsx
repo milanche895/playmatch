@@ -113,7 +113,7 @@ export default function InviteToMatchSheet({ open, onClose, playerId, playerName
         Izaberi svoj meč na koji pozivaš igrača {firstName}. Pozivnica košta 1 kredit (imaš {credits}).
       </Typography>
       {error && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: '12px' }}>
+        <Alert severity="error" sx={{ mb: 2, borderRadius: '16px' }}>
           {error}
         </Alert>
       )}
@@ -157,7 +157,7 @@ export default function InviteToMatchSheet({ open, onClose, playerId, playerName
                     width: '100%',
                     px: '14px',
                     py: '12px',
-                    borderRadius: '14px',
+                    borderRadius: '16px',
                     border: '1px solid',
                     borderColor: selected ? 'primary.main' : '#E3E9F3',
                     bgcolor: selected ? '#EEF5FF' : '#FFFFFF',

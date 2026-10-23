@@ -487,7 +487,7 @@ export default function ManageFields() {
   }
 
   if (user?.role !== 'court') {
-    return <Alert severity="error" sx={{ borderRadius: 2 }}>Samo vlasnici prostora mogu pristupiti ovoj stranici</Alert>;
+    return <Alert severity="error" sx={{ borderRadius: '16px' }}>Samo vlasnici prostora mogu pristupiti ovoj stranici</Alert>;
   }
 
   return (
@@ -508,14 +508,14 @@ export default function ManageFields() {
         Dodaj novo mesto
       </Button>
 
-      {error && !openDialog && <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>{error}</Alert>}
+      {error && !openDialog && <Alert severity="error" sx={{ mb: 3, borderRadius: '16px' }}>{error}</Alert>}
 
       {loading ? (
         <Box display="flex" justifyContent="center" py={8}>
           <CircularProgress />
         </Box>
       ) : fields.length === 0 ? (
-        <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
+        <Paper elevation={0} sx={{ p: 4, borderRadius: '16px', border: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
           <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
             Dodaj prvo mesto
           </Typography>
@@ -547,14 +547,14 @@ export default function ManageFields() {
         maxWidth="md"
         fullWidth
         fullScreen={isMobile}
-        PaperProps={{ sx: { borderRadius: isMobile ? 0 : 4 } }}
+        PaperProps={{ sx: { borderRadius: isMobile ? 0 : '16px' } }}
       >
         <DialogTitle sx={{ pb: 1, fontSize: '1.5rem', fontWeight: 700 }}>
           {editingField ? 'Izmeni mesto' : 'Dodaj novo mesto'}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 1 }}>
-            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+            {error && <Alert severity="error" sx={{ borderRadius: '16px' }}>{error}</Alert>}
             <TextField
               label={getVenueNameLabel(sports)}
               value={name}
@@ -567,7 +567,7 @@ export default function ManageFields() {
             <Box
               sx={{
                 p: 2,
-                borderRadius: 3,
+                borderRadius: '16px',
                 border: '1px solid',
                 borderColor: sports.length === 0 ? 'error.main' : 'divider',
                 bgcolor: 'background.default',
@@ -628,7 +628,7 @@ export default function ManageFields() {
                   Moja lokacija
                 </Button>
               </Stack>
-              <Paper elevation={0} sx={{ height: { xs: 220, sm: 300 }, borderRadius: 3, overflow: 'hidden', border: '1px solid', borderColor: markerPosition ? 'primary.main' : 'divider' }}>
+              <Paper elevation={0} sx={{ height: { xs: 220, sm: 300 }, borderRadius: '16px', overflow: 'hidden', border: '1px solid', borderColor: markerPosition ? 'primary.main' : 'divider' }}>
                 <MapContainer center={markerPosition || mapCenter} zoom={markerPosition ? 15 : 13} style={{ height: '100%', width: '100%' }} scrollWheelZoom={true} key={`${mapCenter[0]}-${mapCenter[1]}`}>
                   <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                   <MapCenter position={markerPosition || mapCenter} />
@@ -656,13 +656,13 @@ export default function ManageFields() {
       </Dialog>
 
       {/* Working Hours Dialog */}
-      <Dialog open={openWorkingHoursDialog} onClose={closeWorkingHoursDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+      <Dialog open={openWorkingHoursDialog} onClose={closeWorkingHoursDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '16px' } }}>
         <DialogTitle sx={{ fontSize: '1.5rem', fontWeight: 700 }}>
           Radno Vreme - {editingWorkingHoursField?.name}
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+            {error && <Alert severity="error" sx={{ borderRadius: '16px' }}>{error}</Alert>}
             {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => {
               const dayNames: Record<string, string> = {
                 monday: 'Ponedeljak', tuesday: 'Utorak', wednesday: 'Sreda',
@@ -673,7 +673,7 @@ export default function ManageFields() {
               const endHour = dayData.end.includes(':') ? dayData.end.split(':')[0] : dayData.end;
               
               return (
-                <Paper key={day} elevation={0} sx={{ p: 2, borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+                <Paper key={day} elevation={0} sx={{ p: 2, borderRadius: '16px', border: '1px solid', borderColor: 'divider' }}>
                   <Stack spacing={2}>
                     <FormControlLabel
                       control={

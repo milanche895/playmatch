@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
 import { Box, CircularProgress } from '@mui/material';
+import { useNavigate, usePathname } from '@/lib/router';
 import { useAuth } from '@/context/AuthContext';
 
 function Loader() {
@@ -21,18 +21,18 @@ function safeFrom(pathname: string) {
 export function PlayerRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.replace(`/login?from=${encodeURIComponent(safeFrom(pathname ?? '/'))}`);
+      navigate(`/login?from=${encodeURIComponent(safeFrom(pathname ?? '/'))}`, { replace: true });
       return;
     }
     if (user.role !== 'player') {
-      router.replace('/');
+      navigate('/', { replace: true });
     }
-  }, [loading, user, pathname, router]);
+  }, [loading, user, pathname, navigate]);
 
   if (loading) return <Loader />;
   if (!user || user.role !== 'player') return <Loader />;
@@ -42,14 +42,14 @@ export function PlayerRoute({ children }: { children: React.ReactNode }) {
 export function AuthRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.replace(`/login?from=${encodeURIComponent(safeFrom(pathname ?? '/'))}`);
+      navigate(`/login?from=${encodeURIComponent(safeFrom(pathname ?? '/'))}`, { replace: true });
     }
-  }, [loading, user, pathname, router]);
+  }, [loading, user, pathname, navigate]);
 
   if (loading || !user) return <Loader />;
   return <>{children}</>;
@@ -58,18 +58,18 @@ export function AuthRoute({ children }: { children: React.ReactNode }) {
 export function CourtRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.replace(`/login?from=${encodeURIComponent(safeFrom(pathname ?? '/'))}`);
+      navigate(`/login?from=${encodeURIComponent(safeFrom(pathname ?? '/'))}`, { replace: true });
       return;
     }
     if (user.role !== 'court') {
-      router.replace('/');
+      navigate('/', { replace: true });
     }
-  }, [loading, user, pathname, router]);
+  }, [loading, user, pathname, navigate]);
 
   if (loading) return <Loader />;
   if (!user || user.role !== 'court') return <Loader />;

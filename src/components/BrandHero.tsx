@@ -64,7 +64,7 @@ export default function BrandHero() {
       <Box
         sx={{
           mb: 3,
-          borderRadius: 4,
+          borderRadius: '16px',
           overflow: 'hidden',
           border: '1px solid',
           borderColor: 'divider',

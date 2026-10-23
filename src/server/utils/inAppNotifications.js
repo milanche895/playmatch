@@ -1,7 +1,10 @@
 const Notification = require('../models/Notification');
 const Match = require('../models/Match');
 const Field = require('../models/Field');
+const User = require('../models/User');
 const { shouldSendTeamReady } = require('./matchLifecycle');
+const { sendPushNotifications, hasPushEndpoint } = require('./pushNotifications');
+const { formatRatePlayersMessage } = require('../../lib/teamReadyMessage');
 
 const REMINDER_WINDOW_MS = 2 * 60 * 60 * 1000;
 const FEED_RETENTION_DAYS = 30;
@@ -134,10 +137,84 @@ async function notifyMatchBecameFull(match) {
   return fullDocs;
 }
 
+async function sendRatePlayersPush(userIds, match, locationName) {
+  const users = await User.find({
+    _id: { $in: userIds },
+    notificationEnabled: { $ne: false },
+    pushSubscription: { $exists: true, $ne: null },
+  }).select('pushSubscription');
+
+  const subscriptions = users
+    .filter((u) => hasPushEndpoint(u.pushSubscription))
+    .map((u) => u.pushSubscription);
+  if (subscriptions.length === 0) return;
+
+  const result = await sendPushNotifications(subscriptions, {
+    title: 'Oceni saigrače',
+    body: formatRatePlayersMessage({ locationName }),
+    url: `/matches/${match._id}`,
+    matchId: match._id.toString(),
+    image: '/icons/icon-192.png',
+  });
+
+  for (const expiredSub of result.expiredSubscriptions || []) {
+    if (expiredSub.endpoint) {
+      await User.updateMany(
+        { 'pushSubscription.endpoint': expiredSub.endpoint },
+        { $unset: { pushSubscription: 1 } }
+      );
+    }
+  }
+}
+
+/**
+ * Ask the match creator to rate the other players once a match is completed.
+ * Skipped when nobody else played. Idempotent: one rate_players entry per match.
+ */
+async function notifyPlayersToRate(match) {
+  try {
+    const creatorId = String(match.createdBy?._id || match.createdBy || '');
+    const players = [...new Set((match.players || []).map((p) => String(p._id || p)))].filter(Boolean);
+    const others = players.filter((id) => id !== creatorId);
+    if (!creatorId || others.length === 0) return [];
+
+    const existing = await Notification.find({ matchId: match._id, type: 'rate_players', userId: creatorId }).select('userId');
+    if (existing.length > 0) return [];
+    const pending = [creatorId];
+
+    const docs = await notifyUsers(match, 'rate_players', pending);
+    if (docs.length === 0) return [];
+    const locationName = docs[0]?.locationName;
+    try {
+      await sendRatePlayersPush(pending, match, locationName);
+    } catch (err) {
+      console.error('[Notifications] rate_players push failed:', err.message);
+    }
+    return docs;
+  } catch (err) {
+    console.error('[Notifications] rate_players failed:', err.message);
+    return [];
+  }
+}
+
+/** Clear the rate prompt once this player has rated everyone on the match. */
+async function markRateNotificationRead(userId, matchId) {
+  try {
+    await Notification.updateMany(
+      { userId, matchId, type: 'rate_players', readAt: { $exists: false } },
+      { $set: { readAt: new Date() } }
+    );
+  } catch (err) {
+    console.error('[Notifications] mark rate read failed:', err.message);
+  }
+}
+
 module.exports = {
   notifyUsers,
   notifyMatchBecameReady,
   notifyMatchBecameFull,
+  notifyPlayersToRate,
+  markRateNotificationRead,
   processMatchReminders,
   pruneOldNotifications,
 };

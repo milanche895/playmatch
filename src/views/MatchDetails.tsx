@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useRef, type ReactNode } from 'react';
-import { useParams, useNavigate, useLocation } from '@/lib/router';
+import { useParams, useNavigate, useLocation, useGoBack } from '@/lib/router';
 import {
   Stack,
   Typography,
@@ -66,6 +66,7 @@ import StatusPill from '../components/ui/StatusPill';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import api from '../lib/api';
+import { refreshUnreadCount } from '../lib/unreadNotifications';
 import { parseIntegerInput, selectNumberField } from '../lib/numberInput';
 import { Match, MatchRatingStatus, NearbyPlayer } from '../types';
 import { socket } from '../lib/socket';
@@ -112,6 +113,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 export default function MatchDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const location = useLocation();
   const { user, refreshUser } = useAuth();
   const [match, setMatch] = useState<Match | null>(null);
@@ -180,8 +182,7 @@ export default function MatchDetails() {
 
   useEffect(() => {
     if (!id || !user || !match || match.status !== 'completed') return;
-    const userIsParticipant = match.players.some((p) => p._id === user._id);
-    if (!userIsParticipant) return;
+    if (match.createdBy?._id !== user._id) return;
 
     api.get(`/api/matches/${id}/rating-status`)
       .then((res) => {
@@ -373,9 +374,8 @@ export default function MatchDetails() {
 
   async function openRatingDialog() {
     if (!id || !user || !match) return;
-    const userIsParticipant = match.players.some((p) => p._id === user._id);
-    if (!userIsParticipant) {
-      alert('Samo učesnici mogu oceniti saigrače');
+    if (match.createdBy?._id !== user._id) {
+      alert('Samo organizator može oceniti igrače');
       return;
     }
     try {
@@ -472,6 +472,7 @@ export default function MatchDetails() {
       }));
 
       await api.post(`/api/matches/${id}/rate`, { ratings });
+      refreshUnreadCount();
       setRatingDialogOpen(false);
       setPendingRatingUsers([]);
 
@@ -640,8 +641,8 @@ export default function MatchDetails() {
     return (
       <Box sx={{ maxWidth: 800, mx: 'auto' }}>
         <Skeleton variant="text" height={40} sx={{ mb: 2 }} />
-        <Skeleton variant="rectangular" height={300} sx={{ mb: 2, borderRadius: 4 }} />
-        <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 4 }} />
+        <Skeleton variant="rectangular" height={300} sx={{ mb: 2, borderRadius: '16px' }} />
+        <Skeleton variant="rectangular" height={200} sx={{ borderRadius: '16px' }} />
       </Box>
     );
   }
@@ -757,7 +758,7 @@ export default function MatchDetails() {
     if (isOnWaitlist) {
       return (
         <Stack spacing={1.5}>
-          <Alert severity="info" icon={<HourglassTopIcon />} sx={{ borderRadius: '12px' }}>
+          <Alert severity="info" icon={<HourglassTopIcon />} sx={{ borderRadius: '16px' }}>
             Na listi čekanja — pozicija #{waitlistPosition}
             {(match.waitlist?.length ?? 0) > 1 ? ` od ${match.waitlist!.length}` : ''}.
             Kada se mesto oslobodi, automatski ćete biti prijavljeni.
@@ -795,7 +796,7 @@ export default function MatchDetails() {
     <Box sx={{ maxWidth: 640, mx: 'auto', px: { xs: '10px', sm: 0 } }}>
       {/* Top bar: back / share / more */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: '8px', mx: '-8px' }}>
-        <IconButton aria-label="Nazad" onClick={() => navigate(-1)} sx={{ color: 'text.primary' }}>
+        <IconButton aria-label="Nazad" onClick={() => goBack('/')} sx={{ color: 'text.primary' }}>
           <ArrowBackIcon />
         </IconButton>
         <Stack direction="row">
@@ -816,7 +817,7 @@ export default function MatchDetails() {
         anchorEl={moreAnchor}
         open={Boolean(moreAnchor)}
         onClose={() => setMoreAnchor(null)}
-        slotProps={{ paper: { sx: { borderRadius: '14px', minWidth: 200 } } }}
+        slotProps={{ paper: { sx: { borderRadius: '16px', minWidth: 200 } } }}
       >
         <MenuItem
           onClick={async () => {
@@ -847,7 +848,7 @@ export default function MatchDetails() {
         sx={(t) => ({
           position: 'relative',
           height: { xs: 168, sm: 220 },
-          borderRadius: '20px',
+          borderRadius: '16px',
           overflow: 'hidden',
           bgcolor: alpha(t.palette.primary.main, 0.08),
           display: 'flex',
@@ -938,7 +939,7 @@ export default function MatchDetails() {
       {/* Primary action */}
       <Stack spacing="12px" sx={{ mt: '22px' }}>
         {match.slotReserved && (
-          <Alert severity="success" icon={<EventAvailableIcon />} sx={{ borderRadius: '12px' }}>
+          <Alert severity="success" icon={<EventAvailableIcon />} sx={{ borderRadius: '16px' }}>
             Termin je rezervisan. {formatSlotReservedMessage({
               matchDateTime: match.dateTime,
               locationName,
@@ -963,7 +964,7 @@ export default function MatchDetails() {
             </Button>
           </>
         )}
-        {match.status === 'completed' && user && match.players.some((p) => p._id === user._id) && (
+        {match.status === 'completed' && user && match.createdBy?._id === user._id && match.players.some((p) => p._id !== user._id) && (
           <Button
             variant="contained"
             color="warning"
@@ -1156,7 +1157,7 @@ export default function MatchDetails() {
                               sx={{
                                 px: 1.5,
                                 py: 0.5,
-                                borderRadius: 2,
+                                borderRadius: '16px',
                                 border: '1px solid',
                                 borderColor: paid ? 'success.light' : 'divider',
                                 bgcolor: paid ? 'success.light' : 'background.paper',
@@ -1206,7 +1207,7 @@ export default function MatchDetails() {
                 <Alert
                   severity={isPlayerPaid(match, user._id) ? 'success' : 'info'}
                   icon={<PaymentsIcon />}
-                  sx={{ borderRadius: 2 }}
+                  sx={{ borderRadius: '16px' }}
                 >
                   {isPlayerPaid(match, user._id)
                     ? `Organizator je označio da ste platili svoj udeo (${formatRsd(match.pricePerPlayer)}).`
@@ -1260,7 +1261,7 @@ export default function MatchDetails() {
                         elevation={0}
                         sx={{
                           p: 2,
-                          borderRadius: 2,
+                          borderRadius: '16px',
                           border: '1px solid',
                           borderColor: 'error.light',
                           bgcolor: 'error.light',
@@ -1341,7 +1342,7 @@ export default function MatchDetails() {
           sx={{
             mb: 3,
             p: 2.5,
-            borderRadius: 3,
+            borderRadius: '16px',
             border: '2px solid',
             borderColor: promoHighlight ? 'primary.main' : 'divider',
             bgcolor: promoHighlight ? 'action.selected' : 'action.hover',
@@ -1414,17 +1415,17 @@ export default function MatchDetails() {
         onClose={() => setCompleteDialogOpen(false)}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 4, p: 1 } }}
+        PaperProps={{ sx: { borderRadius: '16px', p: 1 } }}
       >
-        <DialogTitle sx={{ pb: 1 }}>
+        <DialogTitle component="div" sx={{ pb: 1 }}>
           <Stack direction="row" spacing={1} alignItems="center">
             <CheckCircleIcon color="success" />
-            <Typography variant="h6" fontWeight={700}>Potvrdi odigrani termin</Typography>
+            <Typography variant="h6" component="h2" fontWeight={700}>Potvrdi odigrani termin</Typography>
           </Stack>
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <Alert severity="info" sx={{ borderRadius: 2 }}>
+            <Alert severity="info" sx={{ borderRadius: '16px' }}>
               Kliknite na igrača da ga označite kao <strong>nije došao</strong>. Igrači koji nisu došli dobijaju penalizaciju pouzdanosti (-15 poena).
             </Alert>
             {match.players.filter(p => p._id !== user?._id).length === 0 ? (
@@ -1443,7 +1444,7 @@ export default function MatchDetails() {
                       onClick={() => toggleNoShow(p._id)}
                       sx={{
                         p: 2,
-                        borderRadius: 2,
+                        borderRadius: '16px',
                         border: '2px solid',
                         borderColor: isNoShow ? 'error.main' : 'success.main',
                         bgcolor: isNoShow ? 'error.light' : 'success.light',
@@ -1538,7 +1539,7 @@ export default function MatchDetails() {
         fullWidth
         PaperProps={{
           sx: {
-            borderRadius: 4,
+            borderRadius: '16px',
             overflow: 'hidden',
             textAlign: 'center',
             background: (t) =>
@@ -1623,14 +1624,14 @@ export default function MatchDetails() {
         onClose={() => !reserving && setReserveDialogOpen(false)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 4 } }}
+        PaperProps={{ sx: { borderRadius: '16px' } }}
       >
         <DialogTitle fontWeight={700}>Rezervacija termina</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary">
             Ekipa je spremna. Kad označiš termin kao rezervisan, svi igrači dobijaju obaveštenje:
           </Typography>
-          <Alert severity="success" icon={<EventAvailableIcon />} sx={{ mt: 2, borderRadius: 2 }}>
+          <Alert severity="success" icon={<EventAvailableIcon />} sx={{ mt: 2, borderRadius: '16px' }}>
             Termin je rezervisan. {formatSlotReservedMessage({
               matchDateTime: match?.dateTime,
               locationName,
@@ -1664,7 +1665,7 @@ export default function MatchDetails() {
         onClose={() => !boosting && setBoostDialogOpen(false)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 4 } }}
+        PaperProps={{ sx: { borderRadius: '16px' } }}
       >
         <DialogTitle fontWeight={700}>Hitan signal (Boost)</DialogTitle>
         <DialogContent>
@@ -1703,7 +1704,7 @@ export default function MatchDetails() {
         onClose={() => !sendingInvites && setInviteModalOpen(false)}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 4 } }}
+        PaperProps={{ sx: { borderRadius: '16px' } }}
       >
         <DialogTitle fontWeight={700}>Pozovi igrače u blizini</DialogTitle>
         <DialogContent dividers>

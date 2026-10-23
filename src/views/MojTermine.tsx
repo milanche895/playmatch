@@ -196,7 +196,7 @@ function RowCard({
         alignItems: 'center',
         gap: '8px',
         p: '12px 8px 12px 12px',
-        borderRadius: '14px',
+        borderRadius: '16px',
         border: '1px solid',
         borderColor: info.border,
         bgcolor: info.bg,
@@ -493,7 +493,7 @@ export default function MojTermine() {
       </Box>
     );
   }
-  if (error) return <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>;
+  if (error) return <Alert severity="error" sx={{ borderRadius: '16px' }}>{error}</Alert>;
 
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
@@ -645,7 +645,7 @@ export default function MojTermine() {
           sx={{
             display: 'flex',
             mb: '14px',
-            borderRadius: '14px',
+            borderRadius: '16px',
             border: '1px solid #E3E9F3',
             bgcolor: '#FFFFFF',
             py: '12px',
@@ -666,7 +666,7 @@ export default function MojTermine() {
       )}
 
       {rows.length === 0 ? (
-        <Alert severity="info" sx={{ borderRadius: '12px' }}>
+        <Alert severity="info" sx={{ borderRadius: '16px' }}>
           {emptyText}
         </Alert>
       ) : tab === 'today' ? (
@@ -709,7 +709,7 @@ export default function MojTermine() {
       >
         {selectedSlot && (
           <Box>
-            <Box sx={{ p: '14px', borderRadius: '14px', bgcolor: '#E3EEFF', mb: '16px' }}>
+            <Box sx={{ p: '14px', borderRadius: '16px', bgcolor: '#E3EEFF', mb: '16px' }}>
               <Typography sx={{ fontSize: 17, fontWeight: 800, color: 'text.primary' }}>{selectedSlot.fieldId.name}</Typography>
               <Typography sx={{ fontSize: 14.5, color: 'text.secondary', mt: '2px' }}>
                 {new Date(selectedSlot.dateTime).toLocaleString('sr-RS')}
@@ -792,7 +792,7 @@ function MatchSheetBody({
         </Typography>
       )}
       {match.description && (
-        <Box sx={{ mt: '12px', p: '12px', borderRadius: '12px', bgcolor: '#F4F7FC' }}>
+        <Box sx={{ mt: '12px', p: '12px', borderRadius: '16px', bgcolor: '#F4F7FC' }}>
           <Typography sx={{ fontSize: 14, color: 'text.secondary', fontStyle: 'italic' }}>{match.description}</Typography>
         </Box>
       )}

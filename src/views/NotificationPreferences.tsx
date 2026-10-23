@@ -9,9 +9,11 @@ import {
   InfoOutlined as InfoIcon,
   Send as SendIcon,
 } from '@mui/icons-material';
-import { useNavigate } from '@/lib/router';
+import { useNavigate, useGoBack } from '@/lib/router';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { getGameTypeName } from '../constants/games';
+import SegmentedControl from '../components/ui/SegmentedControl';
 import { syncPlayerLocation } from '../lib/location';
 import {
   subscribeToPushNotifications,
@@ -54,11 +56,13 @@ const PERMISSION_UI: Record<
 
 export default function NotificationPreferences() {
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const { user, refreshUser } = useAuth();
   const [status, setStatus] = useState<PushStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [savingRadius, setSavingRadius] = useState(false);
+  const [savingScope, setSavingScope] = useState(false);
   const [testing, setTesting] = useState(false);
   const [radius, setRadius] = useState(10);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +151,24 @@ export default function NotificationPreferences() {
     }
   }
 
+  async function handleScopeChange(next: 'preferred' | 'all') {
+    if (savingScope) return;
+    const onlyPreferred = next === 'preferred';
+    if (onlyPreferred === (user?.notifyOnlyPreferredSports !== false)) return;
+    try {
+      setSavingScope(true);
+      setError(null);
+      setSuccess(null);
+      await api.put('/api/players/profile', { notifyOnlyPreferredSports: onlyPreferred });
+      await refreshUser();
+      setSuccess(onlyPreferred ? 'Javljamo samo mečeve omiljenih igara.' : 'Javljamo mečeve svih igara u radijusu.');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Greška pri čuvanju obaveštenja');
+    } finally {
+      setSavingScope(false);
+    }
+  }
+
   async function handleTestNotification() {
     try {
       setTesting(true);
@@ -163,6 +185,8 @@ export default function NotificationPreferences() {
   }
 
   const isSubscribed = status?.subscribed ?? false;
+  const onlyPreferred = user?.notifyOnlyPreferredSports !== false;
+  const preferredNames = (user?.preferredSports || []).map(getGameTypeName);
   const blockMessage = pushBlockMessage(status?.blockReason ?? null);
   const permissionDenied = status?.permission === 'denied';
   const permission = PERMISSION_UI[status?.permission || 'default'] ?? PERMISSION_UI.default;
@@ -175,7 +199,7 @@ export default function NotificationPreferences() {
       <Stack direction="row" alignItems="center" spacing="6px" sx={{ mb: '14px' }}>
         <IconButton
           aria-label="Nazad"
-          onClick={() => navigate('/notification-settings')}
+          onClick={() => goBack('/notification-settings')}
           edge="start"
           sx={{ color: '#0B1B3F' }}
         >
@@ -187,12 +211,12 @@ export default function NotificationPreferences() {
       </Stack>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: '12px' }} onClose={() => setError(null)}>
+        <Alert severity="error" sx={{ mb: 2, borderRadius: '16px' }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
       {success && (
-        <Alert severity="success" sx={{ mb: 2, borderRadius: '12px' }} onClose={() => setSuccess(null)}>
+        <Alert severity="success" sx={{ mb: 2, borderRadius: '16px' }} onClose={() => setSuccess(null)}>
           {success}
         </Alert>
       )}
@@ -202,7 +226,7 @@ export default function NotificationPreferences() {
           <CircularProgress />
         </Box>
       ) : !status ? (
-        <Alert severity="error" sx={{ borderRadius: '12px' }}>
+        <Alert severity="error" sx={{ borderRadius: '16px' }}>
           Greška pri učitavanju postavki obaveštenja
         </Alert>
       ) : (
@@ -248,15 +272,46 @@ export default function NotificationPreferences() {
           </Stack>
 
           {blockMessage && (
-            <Alert severity="warning" sx={{ mt: '14px', borderRadius: '12px' }}>
+            <Alert severity="warning" sx={{ mt: '14px', borderRadius: '16px' }}>
               {blockMessage}
             </Alert>
           )}
           {!blockMessage && permissionDenied && !isSubscribed && (
-            <Alert severity="warning" sx={{ mt: '14px', borderRadius: '12px' }}>
+            <Alert severity="warning" sx={{ mt: '14px', borderRadius: '16px' }}>
               {DENIED_HINT}
             </Alert>
           )}
+
+          <Typography sx={{ ...sectionTitleSx, mt: '28px' }}>Novi mečevi</Typography>
+          <Typography sx={{ fontSize: 15, color: '#6B7A99', mt: '2px', mb: '12px', lineHeight: 1.4 }}>
+            Omiljene — samo igre koje si izabrao. Sve — svaki novi meč u radijusu. Prijava na meč ostaje slobodna.
+          </Typography>
+          <SegmentedControl
+            value={onlyPreferred ? 'preferred' : 'all'}
+            onChange={handleScopeChange}
+            options={[
+              { value: 'preferred', label: 'Omiljene' },
+              { value: 'all', label: 'Sve' },
+            ]}
+          />
+          {onlyPreferred && preferredNames.length > 0 && (
+            <Typography sx={{ fontSize: 14.5, color: '#6B7A99', mt: '10px', lineHeight: 1.4 }}>
+              Trenutno: {preferredNames.join(', ')}.
+            </Typography>
+          )}
+          {onlyPreferred && preferredNames.length === 0 && (
+            <Alert severity="info" sx={{ mt: '12px', borderRadius: '16px' }}>
+              Nemaš omiljene igre, pa ne dobijaš obaveštenja o novim mečevima.
+            </Alert>
+          )}
+          <Button
+            fullWidth
+            variant="text"
+            onClick={() => navigate('/omiljene-igre')}
+            sx={{ mt: '8px', fontWeight: 700, justifyContent: 'flex-start', px: 0 }}
+          >
+            Izmeni omiljene igre
+          </Button>
 
           {/* Distance */}
           <Stack direction="row" alignItems="baseline" justifyContent="space-between" sx={{ mt: '28px' }}>

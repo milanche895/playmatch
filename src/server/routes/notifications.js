@@ -6,6 +6,20 @@ const auth = require('../middleware/auth');
 const router = express.Router();
 const FEED_LIMIT = 50;
 
+// Lightweight counter for nav badges. Registered before "/:id" routes.
+router.get('/unread-count', auth(true), async (req, res) => {
+  try {
+    const unreadCount = await Notification.countDocuments({
+      userId: req.user.id,
+      readAt: { $exists: false },
+    });
+    res.json({ unreadCount });
+  } catch (e) {
+    console.error('Unread count error:', e);
+    res.status(500).json({ message: 'Greška servera' });
+  }
+});
+
 // Current user's notification feed (newest first) + unread counter
 router.get('/', auth(true), async (req, res) => {
   try {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Stack, Typography, Button, Alert, Box, Paper, Checkbox } from '@mui/material';
-import { useNavigate, Link, useSearchParams } from '@/lib/router';
+import { useNavigate, useGoBack, getPreviousHref, Link, useSearchParams } from '@/lib/router';
 import { useAuth } from '../context/AuthContext';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
@@ -27,6 +27,14 @@ const DRAFT_KEY = 'plejko:register-draft';
 
 function isStep(value: string | null): value is Step {
   return value === 'method' || value === 'role' || value === 'games' || value === 'account';
+}
+
+function registerHrefStep(href: string): Step | null {
+  const query = href.includes('?') ? href.slice(href.indexOf('?') + 1) : '';
+  const value = new URLSearchParams(query).get('step');
+  if (value && isStep(value)) return value;
+  if (href === '/register' || href.startsWith('/register?')) return 'method';
+  return null;
 }
 
 function isMethod(value: unknown): value is Method {
@@ -65,6 +73,7 @@ function readDraft() {
 export default function Register() {
   const { register, loginWithGoogle, loginWithFacebook, completeOAuthRegistration } = useAuth();
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const [searchParams] = useSearchParams();
   const referralId = searchParams.get('ref') || undefined;
   const stepParam = searchParams.get('step');
@@ -148,11 +157,14 @@ export default function Register() {
 
   function handleBack() {
     if (step === 'method') {
-      if (typeof window !== 'undefined' && window.history.length > 1) navigate(-1);
-      else navigate('/');
-    } else if (step === 'role') goTo('method');
-    else if (step === 'games') goTo('role');
-    else if (step === 'account') goTo('games');
+      goBack('/');
+      return;
+    }
+    const prev: Step = step === 'account' ? 'games' : step === 'games' ? 'role' : 'method';
+    const url = buildRegisterUrl(prev);
+    const previous = getPreviousHref();
+    if (previous && registerHrefStep(previous) === prev) goBack(url);
+    else navigate(url, { replace: true });
   }
 
   function handleMethodSelect(next: Method) {
@@ -311,20 +323,20 @@ export default function Register() {
       footer={step === 'account' ? undefined : loginFooter}
     >
       {error && (
-        <Alert severity="error" sx={{ mb: '18px', borderRadius: '12px' }}>
+        <Alert severity="error" sx={{ mb: '18px', borderRadius: '16px' }}>
           {error}
         </Alert>
       )}
 
       {oauthPending && (step === 'role' || step === 'games') && (
-        <Alert severity="info" sx={{ mb: '18px', borderRadius: '12px' }}>
+        <Alert severity="info" sx={{ mb: '18px', borderRadius: '16px' }}>
           Ovaj nalog još nije registrovan na Plejku. Izaberi da li si igrač ili teren i koje igre te
           zanimaju.
         </Alert>
       )}
 
       {referralId && step !== 'method' && (
-        <Alert severity="success" sx={{ mb: '18px', borderRadius: '12px' }}>
+        <Alert severity="success" sx={{ mb: '18px', borderRadius: '16px' }}>
           Registrovan si preko pozivnice — ti i prijatelj dobijate +2 kredita posle tvog prvog
           odigranog meča.
         </Alert>
@@ -380,7 +392,7 @@ export default function Register() {
           <Box
             sx={{
               p: 2,
-              borderRadius: 3,
+              borderRadius: '16px',
               border: '1px solid',
               borderColor: 'divider',
               bgcolor: 'background.default',
@@ -522,7 +534,7 @@ function MethodCard({
       elevation={0}
       sx={{
         p: 2.5,
-        borderRadius: 3,
+        borderRadius: '16px',
         border: '2px solid',
         borderColor: selected ? 'primary.main' : 'divider',
         bgcolor: selected ? 'primary.main' : 'background.paper',

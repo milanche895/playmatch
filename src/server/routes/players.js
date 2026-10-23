@@ -5,6 +5,7 @@ const Match = require('../models/Match');
 const auth = require('../middleware/auth');
 const { uploadImageBuffer } = require('../utils/cloudinary');
 const { debugLog } = require('../utils/debugLog');
+const { sanitizeGameIds } = require('../constants/games');
 
 const router = express.Router();
 
@@ -67,18 +68,24 @@ router.put('/profile', auth(true), async (req, res) => {
       return res.status(403).json({ message: 'Samo igrači mogu ažurirati profil' });
     }
 
-    const { bio, skills, phone, location, preferredSports, experience, name, avatarUrl, notificationEnabled, notificationRadius } = req.body;
+    const {
+      bio, skills, phone, location, preferredSports, experience, name, avatarUrl,
+      notificationEnabled, notificationRadius, notifyOnlyPreferredSports,
+    } = req.body;
 
     // Update allowed fields
     if (bio !== undefined) user.bio = bio;
     if (skills !== undefined) user.skills = skills;
     if (phone !== undefined) user.phone = phone;
     if (location !== undefined) user.location = location;
-    if (preferredSports !== undefined) user.preferredSports = preferredSports;
+    if (preferredSports !== undefined) user.preferredSports = sanitizeGameIds(preferredSports);
     if (experience !== undefined) user.experience = experience;
     if (name !== undefined) user.name = name;
     if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
     if (notificationEnabled !== undefined) user.notificationEnabled = notificationEnabled;
+    if (notifyOnlyPreferredSports !== undefined) {
+      user.notifyOnlyPreferredSports = Boolean(notifyOnlyPreferredSports);
+    }
     if (notificationRadius !== undefined) {
       const radius = parseFloat(notificationRadius);
       if (radius >= 0 && radius <= 100) {

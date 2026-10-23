@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import Providers from './providers';
+import { getSessionUser } from '@/lib/getSessionUser';
 
 export const metadata: Metadata = {
   title: 'Plejko — Pronađi · Okupi · Igraj',
@@ -25,7 +26,9 @@ export const viewport: Viewport = {
   themeColor: '#F4F7FC',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const initialUser = await getSessionUser();
+
   return (
     <html lang="sr">
       <head>
@@ -42,7 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <Providers>{children}</Providers>
+        <Providers initialUser={initialUser}>{children}</Providers>
       </body>
     </html>
   );

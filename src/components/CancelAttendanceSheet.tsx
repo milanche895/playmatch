@@ -68,7 +68,7 @@ export default function CancelAttendanceSheet({ open, onClose, onConfirm, loadin
             width: '100%',
             maxWidth: 520,
             bgcolor: '#FFFFFF',
-            borderRadius: '24px 24px 0 0',
+            borderRadius: '16px 16px 0 0',
             border: 'none',
             px: '20px',
             pt: '20px',
@@ -141,7 +141,7 @@ export default function CancelAttendanceSheet({ open, onClose, onConfirm, loadin
             gap: '12px',
             p: '14px',
             mb: '20px',
-            borderRadius: '14px',
+            borderRadius: '16px',
             bgcolor: hasPenalty ? '#FFF3E3' : '#EAF7EF',
           }}
         >

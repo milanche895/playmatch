@@ -55,7 +55,7 @@ export function AuthShell({
         bgcolor: { xs: 'transparent', md: 'background.paper' },
         border: { xs: 'none', md: '1px solid' },
         borderColor: { md: 'divider' },
-        borderRadius: { md: '20px' },
+        borderRadius: { md: '16px' },
         minHeight: { xs: 'calc(100dvh - 24px)', md: 'auto' },
         display: 'flex',
         flexDirection: 'column',

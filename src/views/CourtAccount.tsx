@@ -6,11 +6,14 @@ import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import { useNavigate } from '@/lib/router';
 import { useAuth } from '../context/AuthContext';
 import InstallButton from '../components/InstallButton';
+import UnreadCountBadge from '../components/UnreadCountBadge';
+import { unreadAriaLabel, useUnreadCount } from '../lib/unreadNotifications';
 
 /** Minimal court account so the owner can open notifications and sign out. */
 export default function CourtAccount() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const unread = useUnreadCount();
 
   return (
     <Box sx={{ maxWidth: 720, mx: 'auto' }}>
@@ -20,7 +23,7 @@ export default function CourtAccount() {
         </Typography>
         <InstallButton />
       </Stack>
-      <Paper elevation={0} sx={{ p: 2.5, borderRadius: 3, border: '1px solid', borderColor: 'divider', mb: 2 }}>
+      <Paper elevation={0} sx={{ p: 2.5, borderRadius: '16px', border: '1px solid', borderColor: 'divider', mb: 2 }}>
         <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{user?.name}</Typography>
         {user?.email && (
           <Typography sx={{ fontSize: 14, color: 'text.secondary', mt: 0.5 }}>{user.email}</Typography>
@@ -30,8 +33,13 @@ export default function CourtAccount() {
       <Stack spacing={1.5}>
         <Button
           variant="outlined"
-          startIcon={<NotificationsNoneIcon />}
+          startIcon={
+            <UnreadCountBadge count={unread}>
+              <NotificationsNoneIcon />
+            </UnreadCountBadge>
+          }
           onClick={() => navigate('/notification-settings')}
+          aria-label={unreadAriaLabel(unread)}
           sx={{ justifyContent: 'flex-start', borderRadius: 2, height: 48, fontWeight: 700 }}
         >
           Obaveštenja

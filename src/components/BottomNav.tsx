@@ -15,6 +15,8 @@ import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
 import PlaceIcon from '@mui/icons-material/Place';
 import { Link as RouterLink, useLocation, useNavigate } from '@/lib/router';
 import { useAuth } from '../context/AuthContext';
+import { unreadAriaLabel, useUnreadCount } from '../lib/unreadNotifications';
+import UnreadCountBadge from './UnreadCountBadge';
 
 export const BOTTOM_NAV_HEIGHT = 64;
 
@@ -38,7 +40,10 @@ export const BOTTOM_NAV_PATHS = PLAYER_ITEMS.map((i) => i.path);
 export const COURT_BOTTOM_NAV_PATHS = COURT_ITEMS.map((i) => i.path);
 
 /** Sub-pages that keep the bottom navigation and highlight their parent tab. */
-const PARENT_TAB: Record<string, string> = { '/moji-igraci': '/profil' };
+const PARENT_TAB: Record<string, string> = {
+  '/moji-igraci': '/profil',
+  '/omiljene-igre': '/profil',
+};
 
 /** Every path on which the bottom navigation is shown (tabs + their sub-pages). */
 export const BOTTOM_NAV_VISIBLE_PATHS = [...BOTTOM_NAV_PATHS, ...Object.keys(PARENT_TAB)];
@@ -48,6 +53,7 @@ export default function BottomNav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const unread = useUnreadCount();
   const isCourt = user?.role === 'court';
   const items = isCourt ? COURT_ITEMS : PLAYER_ITEMS;
 
@@ -71,12 +77,14 @@ export default function BottomNav() {
       {items.flatMap(({ label, path, Icon, ActiveIcon }, index) => {
         const active = (PARENT_TAB[pathname] ?? pathname) === path;
         const Glyph = active ? ActiveIcon : Icon;
+        const isNotifications = path === '/notification-settings';
         const link = (
           <Box
             key={path}
             component={RouterLink}
             to={path}
             aria-current={active ? 'page' : undefined}
+            aria-label={isNotifications ? unreadAriaLabel(unread) : undefined}
             sx={{
               flex: 1,
               display: 'flex',
@@ -91,7 +99,13 @@ export default function BottomNav() {
               lineHeight: 1.2,
             }}
           >
-            <Glyph sx={{ fontSize: 26 }} />
+            {isNotifications ? (
+              <UnreadCountBadge count={unread} borderColor="#FFFFFF">
+                <Glyph sx={{ fontSize: 26 }} />
+              </UnreadCountBadge>
+            ) : (
+              <Glyph sx={{ fontSize: 26 }} />
+            )}
             {label}
           </Box>
         );

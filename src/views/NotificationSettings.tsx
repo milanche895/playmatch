@@ -24,6 +24,7 @@ import {
   Cancel as CancelIcon,
   HowToReg as HowToRegIcon,
   EventAvailable as EventAvailableIcon,
+  Star as StarIcon,
 } from '@mui/icons-material';
 import { useNavigate } from '@/lib/router';
 import InstallButton from '../components/InstallButton';
@@ -31,7 +32,8 @@ import api from '../lib/api';
 import { AppNotification, AppNotificationType } from '../types';
 import { getGameTypeName } from '../constants/games';
 import { getNotificationStatus } from '../lib/notifications';
-import { formatCourtApprovedMessage, formatSlotReservedMessage, formatTeamReadyMessage } from '../lib/teamReadyMessage';
+import { formatCourtApprovedMessage, formatRatePlayersMessage, formatSlotReservedMessage, formatTeamReadyMessage } from '../lib/teamReadyMessage';
+import { setUnreadCount } from '../lib/unreadNotifications';
 import { useAuth } from '../context/AuthContext';
 
 type FeedItem = AppNotification & { unread: boolean };
@@ -46,6 +48,7 @@ const TYPE_CONFIG: Record<AppNotificationType, { title: string; Icon: ElementTyp
   court_rejected: { title: 'Teren je odbio termin', Icon: CancelIcon, color: '#E5484D', bg: '#FDE6E6' },
   team_ready: { title: 'Ekipa je spremna', Icon: HowToRegIcon, color: '#16A34A', bg: '#E3F6EA' },
   slot_reserved: { title: 'Termin je rezervisan', Icon: EventAvailableIcon, color: '#16A34A', bg: '#E3F6EA' },
+  rate_players: { title: 'Oceni saigrače', Icon: StarIcon, color: '#D97706', bg: '#FFF4DE' },
 };
 
 /** Serbian plural: 1 → one, 2–4 → few, rest → many (11–14 always many). */
@@ -97,6 +100,7 @@ function subtitleFor(n: AppNotification): string {
       locationName: n.locationName,
     });
   }
+  if (n.type === 'rate_players') return formatRatePlayersMessage({ locationName: n.locationName });
   if (n.type === 'reminder') return reminderText(n.matchDateTime);
   const sport = n.sport ? getGameTypeName(n.sport) : 'Meč';
   return n.locationName ? `${sport} · ${n.locationName}` : sport;
@@ -131,7 +135,8 @@ export default function NotificationSettings() {
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
       setFeed(items.map((n) => ({ ...n, unread: !n.readAt })));
       if (res.data?.unreadCount > 0) {
-        // Entries stay highlighted for this visit; server-side they are now read
+        // Entries stay highlighted for this visit; the badge drops as soon as they are seen
+        setUnreadCount(0);
         api.post('/api/notifications/read-all').catch(() => undefined);
       }
     } catch (err: any) {
@@ -193,7 +198,7 @@ export default function NotificationSettings() {
       </Stack>
 
       {feedError && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: '12px' }} onClose={() => setFeedError(null)}>
+        <Alert severity="error" sx={{ mb: 2, borderRadius: '16px' }} onClose={() => setFeedError(null)}>
           {feedError}
         </Alert>
       )}
@@ -209,7 +214,7 @@ export default function NotificationSettings() {
           <Typography sx={{ fontSize: 14, color: '#6B7A99', mt: 0.5 }}>
             {isCourt
               ? 'Ovde ćeš videti kada je ekipa spremna i čeka tvoju potvrdu.'
-              : 'Ovde ćeš videti prijave igrača, popunjene mečeve i podsetnike.'}
+              : 'Ovde ćeš videti prijave igrača, popunjene mečeve, podsetnike i poziv da oceniš saigrače.'}
           </Typography>
           {needsSetup && !isCourt && (
             <Button sx={{ mt: 1.5, fontWeight: 700, borderRadius: '12px' }} onClick={openPreferences}>
@@ -273,7 +278,7 @@ export default function NotificationSettings() {
                       lineHeight: 1.4,
                       color: '#4A5878',
                       display: '-webkit-box',
-                      WebkitLineClamp: n.type === 'team_ready' || n.type === 'court_approved' || n.type === 'slot_reserved' ? 3 : 1,
+                      WebkitLineClamp: n.type === 'team_ready' || n.type === 'court_approved' || n.type === 'slot_reserved' || n.type === 'rate_players' ? 3 : 1,
                       WebkitBoxOrient: 'vertical',
                       overflow: 'hidden',
                     }}

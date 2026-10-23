@@ -16,12 +16,13 @@ import { ThemeProvider as CustomThemeProvider, useThemeMode } from '../context/T
 import createAppTheme from '../theme';
 import Navbar from '../components/Navbar';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { User } from '../types';
 import { clearPlayerLocationSession, syncPlayerLocation } from '../lib/location';
 import PostRegisterNotificationDialog from '../components/PostRegisterNotificationDialog';
 import OnboardingTour from '../components/OnboardingTour';
 import { initPushNotifications } from '../lib/notifications';
 import { BOTTOM_NAV_HEIGHT, BOTTOM_NAV_VISIBLE_PATHS, COURT_BOTTOM_NAV_PATHS } from '../components/BottomNav';
-import { useLocation } from '../lib/router';
+import { NavigationHistory, useLocation } from '../lib/router';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -47,7 +48,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 }
 
 function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, loadSession } = useAuth();
   const { mode } = useThemeMode();
   const theme = createAppTheme(mode);
   const { pathname } = useLocation();
@@ -56,6 +57,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
     isMobile &&
     ((user?.role === 'player' && BOTTOM_NAV_VISIBLE_PATHS.includes(pathname)) ||
       (user?.role === 'court' && COURT_BOTTOM_NAV_PATHS.includes(pathname)));
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadSession(controller.signal);
+    return () => controller.abort();
+  }, [loadSession]);
 
   useEffect(() => {
     if (user?.role === 'player') {
@@ -80,6 +87,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <MuiThemeProvider theme={theme}>
       <CssBaseline />
+      <NavigationHistory />
       <Box
         sx={{
           minHeight: '100vh',
@@ -124,12 +132,18 @@ function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function Providers({ children }: { children: React.ReactNode }) {
+export default function Providers({
+  children,
+  initialUser,
+}: {
+  children: React.ReactNode;
+  initialUser: User | null;
+}) {
   return (
     <AppRouterCacheProvider>
       <ErrorBoundary>
         <CustomThemeProvider>
-          <AuthProvider>
+          <AuthProvider initialUser={initialUser}>
             <Suspense
               fallback={
                 <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">

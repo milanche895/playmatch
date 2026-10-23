@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useState } from 'react';
 import api from '../lib/api';
 import { User } from '../types';
 import { mergeAuthUser } from '../lib/emailVerified';
@@ -9,8 +9,11 @@ import { markPromptNotificationsOnLogin } from '../lib/notificationPrompt';
 
 type AuthContextValue = {
   user: User | null;
+  /** Server HTML snapshot. Nav uses this until the shell has hydrated. */
+  initialUser: User | null;
   loading: boolean;
   setUser: React.Dispatch<React.SetStateAction<User | null>>;
+  loadSession: (signal?: AbortSignal) => Promise<void>;
   refreshUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (
@@ -30,24 +33,35 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+export function AuthProvider({
+  children,
+  initialUser = null,
+}: {
+  children: React.ReactNode;
+  initialUser?: User | null;
+}) {
+  const [user, setUser] = useState<User | null>(initialUser);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    api.get('/api/auth/me', { signal: controller.signal })
-      .then((res) => {
-        if (res.data) setUser((prev) => mergeAuthUser(prev, res.data));
-        else setUser(null);
-      })
-      .catch((err) => {
-        if (err.name !== 'CanceledError') setUser(null);
-      })
-      .finally(() => setLoading(false));
-
-    return () => controller.abort();
+  // Must run from inside the suspended app shell (see AppShell). Starting it
+  // here lets /api/auth/me resolve before that tree hydrates, so the client
+  // nav (logged in) no longer matches the server HTML.
+  const loadSession = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await api.get('/api/auth/me', { signal });
+      if (signal?.aborted) return;
+      if (res.data) setUser((prev) => mergeAuthUser(prev, res.data));
+      else setUser(null);
+    } catch (err: unknown) {
+      const canceled =
+        signal?.aborted ||
+        (err as { name?: string; code?: string })?.name === 'CanceledError' ||
+        (err as { code?: string })?.code === 'ERR_CANCELED';
+      if (canceled) return;
+      setUser(null);
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
   }, []);
 
   async function login(email: string, password: string) {
@@ -146,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, setUser, refreshUser, login, register, logout, loginWithGoogle, loginWithFacebook, completeOAuthRegistration, resendVerification }}>
+    <AuthContext.Provider value={{ user, initialUser, loading, setUser, loadSession, refreshUser, login, register, logout, loginWithGoogle, loginWithFacebook, completeOAuthRegistration, resendVerification }}>
       {children}
     </AuthContext.Provider>
   );

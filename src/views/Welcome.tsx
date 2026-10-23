@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import PlejkoLogo from '../components/PlejkoLogo';
 import { getGameTypeName } from '../constants/games';
 import { markPromptNotificationsAfterRegister } from '../components/PostRegisterNotificationDialog';
+import { requestNotificationsBeforeCreate } from '../lib/notificationPrompt';
 import { markOnboardingTourPending } from '../lib/onboardingTour';
 import SportsIcon from '@mui/icons-material/Sports';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
@@ -58,7 +59,7 @@ export default function Welcome() {
           width: '100%',
           maxWidth: 560,
           p: { xs: 3, sm: 5 },
-          borderRadius: 4,
+          borderRadius: '16px',
           border: '1px solid',
           borderColor: 'divider',
           textAlign: 'center',
@@ -147,10 +148,7 @@ export default function Welcome() {
                 variant="contained"
                 size="large"
                 fullWidth
-                onClick={() => {
-                  markPromptNotificationsAfterRegister();
-                  navigate('/create', { replace: true });
-                }}
+                onClick={() => requestNotificationsBeforeCreate()}
                 sx={{ py: 1.5, fontSize: '1rem', mt: 1 }}
               >
                 Kreiraj prvi meč
