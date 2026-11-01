@@ -13,6 +13,7 @@ const notificationRoutes = require('./routes/notifications');
 const { connectDb, hasMongoUri } = require('./db');
 const { processExpiredMatches } = require('./utils/matchStatus');
 const { getRequiredSecret } = require('./utils/secrets');
+const { catchAsyncErrors, apiErrorHandler } = require('./middleware/asyncErrors');
 
 function createNoopIo() {
   return {
@@ -83,12 +84,14 @@ function attachApi(app, io = createNoopIo()) {
     }
   });
 
-  app.use('/api/auth', authRoutes);
-  app.use('/api/fields', fieldRoutes);
-  app.use('/api/matches', matchRoutesFactory(io));
-  app.use('/api/courts', courtRoutes);
-  app.use('/api/players', playerRoutes);
-  app.use('/api/notifications', notificationRoutes);
+  app.use('/api/auth', catchAsyncErrors(authRoutes));
+  app.use('/api/fields', catchAsyncErrors(fieldRoutes));
+  app.use('/api/matches', catchAsyncErrors(matchRoutesFactory(io)));
+  app.use('/api/courts', catchAsyncErrors(courtRoutes));
+  app.use('/api/players', catchAsyncErrors(playerRoutes));
+  app.use('/api/notifications', catchAsyncErrors(notificationRoutes));
+
+  app.use('/api', apiErrorHandler);
 
   return app;
 }

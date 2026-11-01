@@ -13,7 +13,7 @@
     "start:server": "cross-env NODE_ENV=production node server.js",
     "fix-index": "node scripts/fix-user-index.js",
     "backfill-user-metrics": "node scripts/backfill-user-metrics.js",
-    "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\""
+    "test": "node --test --test-concurrency=1 tests/"
   },
   "dependencies": {
     "@emotion/cache": "^11.13.1",
@@ -22,6 +22,7 @@
     "@mui/icons-material": "^6.1.6",
     "@mui/material": "^6.1.6",
     "@mui/material-nextjs": "^7.3.10",
+    "@types/jsonwebtoken": "^9.0.7",
     "@types/leaflet": "^1.9.8",
     "@types/node": "^20.16.11",
     "@types/react": "^18.3.3",

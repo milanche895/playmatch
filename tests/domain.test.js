@@ -149,6 +149,29 @@ test('auth rate limiter blocks the request after the configured maximum', () => 
   assert.deepEqual(calls, ['next', 'next', 429, 'stop']);
 });
 
+test('auth rate limiter counts each client behind the proxy separately', () => {
+  const limiter = createRateLimiter({ windowMs: 60_000, max: 1, message: 'stop' });
+  const calls = [];
+  const res = {
+    status(code) {
+      calls.push(code);
+      return this;
+    },
+    json() {},
+  };
+  // Same proxy address, different real clients
+  const reqA = { ip: '10.0.0.1', baseUrl: '/api/auth', path: '/login', headers: { 'x-forwarded-for': '198.51.100.1, 10.0.0.1' } };
+  const reqB = { ip: '10.0.0.1', baseUrl: '/api/auth', path: '/login', headers: { 'x-forwarded-for': '198.51.100.2, 10.0.0.1' } };
+  const reqARegister = { ...reqA, path: '/register' };
+
+  limiter(reqA, res, () => calls.push('next'));
+  limiter(reqB, res, () => calls.push('next'));
+  limiter(reqARegister, res, () => calls.push('next'));
+  limiter(reqA, res, () => calls.push('next'));
+
+  assert.deepEqual(calls, ['next', 'next', 'next', 429]);
+});
+
 test('production refuses to start auth with a missing secret', () => {
   const prevNodeEnv = process.env.NODE_ENV;
   const prevSecret = process.env.JWT_SECRET;

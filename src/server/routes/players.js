@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const multer = require('multer');
 const User = require('../models/User');
 const Match = require('../models/Match');
@@ -26,9 +27,19 @@ const upload = multer({
 });
 
 // Get player profile
-router.get('/profile/:id', async (req, res) => {
+// Fields anyone may see on a player's public profile. Never add email, tokens,
+// location, push subscription or provider data here.
+const PUBLIC_PROFILE_FIELDS = 'name avatarUrl role bio skills location preferredSports experience '
+  + 'ratingAvg ratingsCount reliabilityScore sportSkillLevels xp level badges';
+
+router.get('/profile/:id', auth(false), async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Korisnik nije pronađen' });
+    }
+    // Phone is only shown to signed-in users, so it can't be scraped anonymously
+    const fields = req.user ? `${PUBLIC_PROFILE_FIELDS} phone` : PUBLIC_PROFILE_FIELDS;
+    const user = await User.findById(req.params.id).select(fields);
     if (!user) {
       return res.status(404).json({ message: 'Korisnik nije pronađen' });
     }
@@ -567,7 +578,7 @@ router.get('/my-players', auth(true), async (req, res) => {
     const matches = await Match.find({
       createdBy: user._id,
       players: { $exists: true, $not: { $size: 0 } } // Matches with at least one player
-    }).populate('players', '_id name email avatarUrl experience preferredSports reliabilityScore');
+    }).populate('players', '_id name avatarUrl experience preferredSports reliabilityScore');
 
     // Extract unique players
     const uniquePlayers = new Map();
@@ -616,7 +627,7 @@ router.get('/my-players', auth(true), async (req, res) => {
 router.get('/blocked-players', auth(true), async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .populate('blockedPlayers', '_id name email avatarUrl');
+      .populate('blockedPlayers', '_id name avatarUrl');
     
     if (!user) {
       return res.status(404).json({ message: 'Korisnik nije pronađen' });

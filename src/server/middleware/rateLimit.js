@@ -1,9 +1,22 @@
+// Real client IP. On Vercel every request reaches the function from the platform's
+// proxy, so req.ip would be the same for everyone; Vercel overwrites these headers
+// with the caller's address, so they can't be spoofed by the client.
+function clientIp(req) {
+  const headers = req.headers || {};
+  const forwarded = headers['x-vercel-forwarded-for'] || headers['x-real-ip'] || headers['x-forwarded-for'];
+  if (forwarded) return String(forwarded).split(',')[0].trim();
+  return req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+
+// In-memory limiter. On serverless each warm instance keeps its own counters, so
+// this slows down brute force but is not a hard global limit.
 function createRateLimiter({ windowMs, max, message }) {
   const hits = new Map();
 
   return function rateLimit(req, res, next) {
     const now = Date.now();
-    const key = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    // Separate bucket per route, so e.g. failed logins don't block email verification
+    const key = `${clientIp(req)}|${req.baseUrl || ''}${req.path || ''}`;
     const recent = (hits.get(key) || []).filter((ts) => now - ts < windowMs);
 
     if (recent.length >= max) {
@@ -33,4 +46,4 @@ const authRateLimit = createRateLimiter({
   message: 'Previše pokušaja. Sačekaj par minuta pa pokušaj ponovo.',
 });
 
-module.exports = { createRateLimiter, authRateLimit };
+module.exports = { createRateLimiter, authRateLimit, clientIp };
